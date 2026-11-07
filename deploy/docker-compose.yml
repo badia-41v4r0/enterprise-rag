@@ -1,0 +1,84 @@
+# EnterpriseRAG: app, worker, postgres (+pgvector) and, optionally, a bundled Ollama.
+#
+#   docker compose up -d --build                 # app + worker + postgres; Ollama on the host
+#   docker compose --profile ollama up -d        # also run Ollama in a container (NVIDIA GPU via CDI)
+#
+# See docs/adr/0006-ollama-on-host.md for why the host Ollama is the default.
+name: enterprise-rag
+
+x-app-env: &app-env
+  ERAG_ENV: ${ERAG_ENV:-dev}
+  ERAG_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-erag}:${POSTGRES_PASSWORD:-erag}@postgres:5432/${POSTGRES_DB:-erag}
+  ERAG_SECRET_KEY: ${ERAG_SECRET_KEY:-dev-insecure-secret-change-me}
+  ERAG_MCP_CONTEXT_SECRET: ${ERAG_MCP_CONTEXT_SECRET:-dev-insecure-mcp-secret-change-me}
+  ERAG_OLLAMA_BASE_URL: ${ERAG_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  ERAG_LOCAL_CHAT_MODEL: ${ERAG_LOCAL_CHAT_MODEL:-qwen3:4b}
+  ERAG_OPENROUTER_API_KEY: ${ERAG_OPENROUTER_API_KEY:-}
+  ERAG_OPENROUTER_MODEL: ${ERAG_OPENROUTER_MODEL:-meta-llama/llama-3.3-8b-instruct:free}
+  ERAG_COOKIE_SECURE: ${ERAG_COOKIE_SECURE:-false}
+  ERAG_BLOB_DIR: /data/blobs
+  ERAG_MCP_TICKETS_DB: /data/tickets.sqlite3
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-erag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-erag}
+      POSTGRES_DB: ${POSTGRES_DB:-erag}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erag"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    mem_limit: 1g
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: enterprise-rag:dev
+    environment: *app-env
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - appdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1g
+
+  worker:
+    image: enterprise-rag:dev
+    environment: *app-env
+    command: ["python", "-m", "app.cli", "worker"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - appdata:/data
+    depends_on:
+      app:
+        condition: service_started
+    mem_limit: 768m
+
+  ollama:
+    image: ollama/ollama:0.12.3
+    profiles: ["ollama"]
+    volumes:
+      - ollama:/root/.ollama
+    devices:
+      - nvidia.com/gpu=all
+    ports:
+      - "127.0.0.1:11435:11434"
+
+volumes:
+  pgdata:
+  appdata:
+  ollama:

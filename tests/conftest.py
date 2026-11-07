@@ -1,0 +1,146 @@
+"""Shared fixtures.
+
+Tests run against a real PostgreSQL + pgvector database (`erag_test`), created on demand.
+Tests that need Postgres are skipped when it is unreachable. Nothing here mocks an LLM.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import subprocess
+import sys
+import tempfile
+from collections.abc import AsyncIterator
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+TEST_DB_URL = os.environ.get("ERAG_TEST_DATABASE_URL", "postgresql+asyncpg://erag:erag@localhost:55432/erag_test")
+os.environ["ERAG_DATABASE_URL"] = TEST_DB_URL
+os.environ.setdefault("ERAG_BLOB_DIR", tempfile.mkdtemp(prefix="erag-blobs-"))
+os.environ.setdefault("ERAG_MCP_TICKETS_DB", str(Path(tempfile.mkdtemp(prefix="erag-tickets-")) / "tickets.sqlite3"))
+os.environ.setdefault("ERAG_LOG_JSON", "false")
+os.environ.setdefault("ERAG_FRONTEND_DIST", str(ROOT / "nonexistent-dist"))
+
+import httpx  # noqa: E402
+from app.core.config import get_settings  # noqa: E402
+from app.core.db import dispose_engine, get_sessionmaker  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine  # noqa: E402
+
+
+def _admin_url(url: str) -> str:
+    base, _, _ = url.rpartition("/")
+    return base + "/postgres"
+
+
+async def _ensure_database() -> bool:
+    dbname = TEST_DB_URL.rsplit("/", 1)[1]
+    engine = create_async_engine(_admin_url(TEST_DB_URL), isolation_level="AUTOCOMMIT")
+    try:
+        async with engine.connect() as conn:
+            exists = await conn.scalar(text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": dbname})
+            if not exists:
+                await conn.execute(text(f'CREATE DATABASE "{dbname}"'))
+        return True
+    except (OSError, Exception):  # noqa: BLE001
+        return False
+    finally:
+        await engine.dispose()
+
+
+_DB_STATE: dict[str, bool] = {}
+
+
+def db_available() -> bool:
+    if "ok" not in _DB_STATE:
+        ok = asyncio.run(_ensure_database())
+        if ok:
+            subprocess.run(
+                [sys.executable, "-m", "alembic", "upgrade", "head"],
+                cwd=ROOT,
+                check=True,
+                env={**os.environ, "ERAG_DATABASE_URL": TEST_DB_URL},
+                capture_output=True,
+            )
+        _DB_STATE["ok"] = ok
+    return _DB_STATE["ok"]
+
+
+def ollama_has(model: str) -> bool:
+    key = f"ollama:{model}"
+    if key not in _DB_STATE:
+        try:
+            r = httpx.get(f"{get_settings().ollama_base_url}/api/tags", timeout=2)
+            names = {m["name"] for m in r.json().get("models", [])}
+            _DB_STATE[key] = model in names or f"{model}:latest" in names
+        except (httpx.HTTPError, ValueError):
+            _DB_STATE[key] = False
+    return _DB_STATE[key]
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    settings = get_settings()
+    for item in items:
+        if "db" in item.keywords and not db_available():
+            item.add_marker(pytest.mark.skip(reason="PostgreSQL test database unreachable"))
+        if "embeddings" in item.keywords and not ollama_has(settings.embed_model):
+            item.add_marker(pytest.mark.skip(reason=f"Ollama with {settings.embed_model} unreachable"))
+        if "provider_ollama" in item.keywords and not ollama_has(settings.local_chat_model):
+            item.add_marker(pytest.mark.skip(reason=f"Ollama with {settings.local_chat_model} unreachable"))
+        if "provider_openrouter" in item.keywords and settings.openrouter_api_key is None:
+            item.add_marker(pytest.mark.skip(reason="ERAG_OPENROUTER_API_KEY not set"))
+        if "provider_claude_code" in item.keywords and os.environ.get("ERAG_RUN_CLAUDE_CODE_TESTS") != "1":
+            item.add_marker(pytest.mark.skip(reason="set ERAG_RUN_CLAUDE_CODE_TESTS=1 to run"))
+
+
+TABLES = [
+    "audit_log",
+    "messages",
+    "conversations",
+    "ingestion_jobs",
+    "chunks",
+    "grants",
+    "tools",
+    "mcp_servers",
+    "user_roles",
+    "sessions",
+    "roles",
+    "users",
+    "document_versions",
+    "documents",
+    "containers",
+]
+
+
+async def truncate_all() -> None:
+    async with get_sessionmaker()() as s:
+        await s.execute(text("TRUNCATE " + ", ".join(TABLES) + " RESTART IDENTITY CASCADE"))
+        await s.commit()
+
+
+@pytest.fixture
+async def db() -> AsyncIterator[AsyncSession]:
+    """A clean database for each test."""
+    await truncate_all()
+    async with get_sessionmaker()() as session:
+        yield session
+    await truncate_all()
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def _dispose_engine() -> AsyncIterator[None]:
+    yield
+    await dispose_engine()
+
+
+@pytest.fixture
+async def client() -> AsyncIterator[httpx.AsyncClient]:
+    from app.main import create_app
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+        yield c
