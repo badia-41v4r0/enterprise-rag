@@ -1,7 +1,7 @@
 # EnterpriseRAG by Badia Partners: MVP Plan
 
 > Working plan. Language of the repo and white paper: English.
-> Scope locked: solo dev, single tenant, one admin, Apache-2.0, FastAPI, own frontend, Ollama + OpenRouter, MCP included, ACME Corp demo.
+> Scope locked: solo dev, single tenant, one admin, PolyForm Noncommercial 1.0.0 (source-available), FastAPI, own frontend, Ollama + OpenRouter, MCP included, ACME Corp demo.
 
 ## 1. Goal and non-goals
 
@@ -30,7 +30,7 @@ Decisions made while planning that improve on the original diagram. Update the d
 | Vector search | pgvector (HNSW) + Postgres FTS for hybrid (stretch) | Qdrant adapter later |
 | Blob storage | Local volume behind `BlobStore` | MinIO/S3 adapter later. MinIO's community edition has had licensing/maintenance changes, so not relied on (not re-verified) |
 | Jobs | `ingestion_jobs` table + worker using `FOR UPDATE SKIP LOCKED` | No Redis |
-| Parsing | `pypdf`, `python-docx`, `openpyxl`, `beautifulsoup4`; Docling optional extra | **Avoid AGPL deps (e.g. PyMuPDF)** to keep Apache-2.0 clean |
+| Parsing | `pypdf`, `python-docx`, `openpyxl`, `beautifulsoup4`; Docling optional extra | **Avoid AGPL deps (e.g. PyMuPDF)** to keep licensing clean (the repo is PolyForm Noncommercial and dual-licensed commercially, so no copyleft deps) |
 | Embeddings | Local, via Ollama: **`bge-m3`** (already installed, 1.2 GB, multilingual) | Always local; changing model = reindex |
 | LLM | One OpenAI-compatible client; providers: Ollama, OpenRouter, plus a **dev-only `claude-code` provider** (see §13) | |
 | MCP | Official `mcp` Python SDK | Gateway is an MCP client of the servers |
@@ -98,7 +98,7 @@ enterprise-rag/
 Estimates assume focused full-time work; double them for evenings and weekends.
 
 ### Phase 0: Foundations (≈1 wk)
-Repo scaffold, Compose (`app`, `worker`, `postgres+pgvector`, `ollama`), Alembic, config via env, CI (ruff, mypy, pytest), LICENSE (Apache-2.0), README stub, `docs/adr/` with the decisions in §2–3.
+Repo scaffold, Compose (`app`, `worker`, `postgres+pgvector`, `ollama`), Alembic, config via env, CI (ruff, mypy, pytest), LICENSE (PolyForm Noncommercial 1.0.0), NOTICE, COMMERCIAL-LICENSE.md, README stub, `docs/adr/` with the decisions in §2–3.
 **Exit:** `docker compose up` serves `/health`; CI green.
 
 ### Phase 1: Identity and permissions (≈1.5 wks)
@@ -192,3 +192,13 @@ Write sections 3–5 alongside Phases 1–5 (ADRs become paper text); sections 6
 - **Local tests** use the small Ollama model (free).
 - **OpenRouter** is added after the core works: prepaid credits only (cannot overspend), a hard cap of about €5 total, preferring `:free` models and the cheapest paid models for the few integration checks and the routing demo. The app also enforces a configurable monthly spend ceiling per provider.
 - Ollama in Docker needs the NVIDIA container toolkit. Fallback: run Ollama on the host and point the app at it via `OLLAMA_BASE_URL`.
+
+## 14. Licensing (decided 2026-11-08)
+
+- **Code:** PolyForm Noncommercial 1.0.0. Source-available, *not* OSI open source: never call it "open source" in the README, the white paper or the repo description.
+- **Commercial use:** requires a separate commercial license from Badia Partners (see `COMMERCIAL-LICENSE.md`). Consulting and implementation go through the same channel.
+- **Evaluation permit:** companies may evaluate it for 60 days in a non-production environment (stated in the README).
+- **White paper** (`docs/whitepaper/`): CC BY 4.0, so the *pattern* can spread while the code stays restricted.
+- **Dependencies:** permissive only (MIT/BSD/Apache/ISC). No GPL/AGPL/LGPL-incompatible copyleft, nothing that conflicts with dual licensing.
+- **Contributions:** do not accept external pull requests until a CLA is in place (needed to keep the right to grant commercial licenses).
+- **Before selling a commercial license:** have a lawyer review the contract.
