@@ -23,12 +23,12 @@ Single tenant, one admin who manages roles and permissions over containers and d
 EnterpriseRAG is **source-available**, not open source.
 
 - **Software:** [PolyForm Noncommercial License 1.0.0](LICENSE). You can read, run, modify and share it for noncommercial purposes (personal use, research, study, hobby projects, and use by educational, charitable, public-research and government institutions).
-- **Commercial use** (including running it inside a company for business purposes) requires a commercial license from Badia Partners. See [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md).
+- **Commercial use** (including running it inside a company for business purposes) requires a commercial license from the licensor, Alvaro Badia (Badia Partners). See [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md).
 - **White paper:** [CC BY 4.0](docs/whitepaper/LICENSE-CC-BY-4.0.txt), see [`docs/whitepaper/`](docs/whitepaper/).
 
 ### 60-day evaluation permit
 
-In addition to the license above, Badia Partners grants any company or organization permission to install and run EnterpriseRAG for **evaluation only**, for up to **60 days** from first installation, under these conditions:
+In addition to the license above, the licensor (Alvaro Badia, under the Badia Partners brand) grants any company or organization permission to install and run EnterpriseRAG for **evaluation only**, for up to **60 days** from first installation, under these conditions:
 
 - Evaluation means testing whether the software fits your needs, in a non-production environment. No production use and no use to operate your business.
 - Do not redistribute it or offer it to third parties.
