@@ -24,4 +24,4 @@ Apache-2.0. See [`LICENSE`](LICENSE).
 
 ## Consulting and implementation
 
-Need help adopting this in your company? Implementation and consulting are offered by Badia Partners.
+Need help adopting this in your company? Implementation and consulting are offered by Badia Partners: https://badiapartners.com

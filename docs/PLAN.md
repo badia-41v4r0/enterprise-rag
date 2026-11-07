@@ -186,7 +186,9 @@ Write sections 3–5 alongside Phases 1–5 (ADRs become paper text); sections 6
 ## 13. Development and cost strategy
 
 - **Development LLM = Claude Code (Pro subscription).** A dev-only `claude-code` provider implements the same `LLMProvider` interface by shelling out to the headless CLI (`claude -p`, tools disabled, structured output for tool calls). It runs only on the developer's machine, is disabled by default, and is **not** part of the shipped demo or the production path. Subscription limits apply, so use it for interactive development, not for test suites.
-- **Automated tests never call a paid or remote model.** They use a deterministic `FakeProvider` (scripted answers and tool calls) and, for retrieval and ACL tests, no LLM at all. The leakage suite checks the *context and outgoing requests*, not the model's prose, so it costs €0 and is reproducible.
-- **Local smoke tests** use the small Ollama model (free).
+- **No fake or mock providers in tests.** A provider is tested only once it is implemented, and its tests run against the real thing (Ollama locally, OpenRouter with a real key, the real `claude` CLI). If a provider does not exist yet, there are no tests for it.
+- **Most of the security suite needs no LLM at all:** permission logic, filtered retrieval, ACL re-check, context building, the MCP gateway against the real reference servers, and permission-token handling are tested directly. They assert on retrieved chunk IDs, built prompts and outgoing requests, never on model prose, so they cost €0 and are deterministic.
+- **Provider tests are opt-in markers** (`provider_ollama`, `provider_openrouter`, `provider_claude_code`), skipped when that provider is not configured. Assertions target authorization boundaries (which context was sent, which tool calls were allowed), not exact wording, because real models are non-deterministic.
+- **Local tests** use the small Ollama model (free).
 - **OpenRouter** is added after the core works: prepaid credits only (cannot overspend), a hard cap of about €5 total, preferring `:free` models and the cheapest paid models for the few integration checks and the routing demo. The app also enforces a configurable monthly spend ceiling per provider.
 - Ollama in Docker needs the NVIDIA container toolkit. Fallback: run Ollama on the host and point the app at it via `OLLAMA_BASE_URL`.
