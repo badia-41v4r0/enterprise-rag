@@ -168,6 +168,44 @@ try {
   await admin.screenshot({ path: `${OUT}/ui-mcp-registry.png`, fullPage: true });
   step(`MCP registry: acme-office approved, 2 tools for Engineering; engineer sees ${engTools.filter((t) => t.startsWith("acme")).join(", ")}; new hire sees none`);
 
+  // R5: an MCP packaged as an approved image runs in the isolated runner (no network, read-only, no caps).
+  if (process.env.SKIP_RUNNER !== "1") {
+    await admin.getByRole("button", { name: "Secrets", exact: true }).click();
+    await admin.getByPlaceholder("name (e.g. erp_token)").fill("office_booking_token");
+    await admin.getByPlaceholder("value").fill(`booking-${sfx}-not-real`);
+    await admin.getByRole("button", { name: "Save secret" }).click();
+    await admin.locator("td", { hasText: "office_booking_token" }).waitFor();
+    await admin.getByRole("button", { name: "MCP registry", exact: true }).click();
+    const iso = admin.locator('[data-server="office-isolated"]');
+    if ((await iso.count()) === 0) {
+      await admin.getByLabel("transport").selectOption("runner");
+      await admin.getByPlaceholder("name (e.g. acme-office)").fill("office-isolated");
+      await admin.getByLabel("image").selectOption("office");
+      await admin.getByPlaceholder("secrets as ENV_VAR=secret_name").fill("ERAG_OFFICE_API_TOKEN=office_booking_token");
+      await admin.getByLabel("clearance", { exact: true }).selectOption("internal");
+      await admin.getByRole("button", { name: "Register and discover tools" }).click();
+    }
+    await iso.waitFor({ timeout: 60_000 });
+    await iso.getByLabel("status of office-isolated").selectOption("approved");
+    const setIso = async (label, want) => {
+      const box = iso.getByLabel(label);
+      if ((await box.isChecked()) !== want) await box.click();
+      await admin.waitForFunction(
+        ([sel, w]) => document.querySelector(sel)?.checked === w,
+        [`[data-server="office-isolated"] input[aria-label="${label}"]`, want],
+      );
+    };
+    await setIso("enable office_info", true);
+    await setIso("Engineering may execute office_info", true);
+    await iso.getByRole("button", { name: "Start" }).click();
+    await iso.getByTestId("runner-state").getByText("running").waitFor({ timeout: 60_000 });
+    const panel = await iso.getByTestId("runner-panel").innerText();
+    if (!panel.includes("network none") || !panel.includes("read-only root true")) throw new Error(`runner panel: ${panel}`);
+    if (panel.includes(`booking-${sfx}-not-real`)) throw new Error("secret visible in logs");
+    await admin.screenshot({ path: `${OUT}/ui-runner.png`, fullPage: true });
+    step(`runner: office-isolated registered from the approved image, approved, started (${panel.split("\n")[0].slice(0, 140)})`);
+  }
+
   const user = await (await browser.newContext()).newPage();
   pages.push(user);
   await login(user, email, pw);

@@ -137,9 +137,9 @@ async def endpoint_for(db: AsyncSession, server: McpServer, settings: Settings |
     if server.transport == "runner":
         from app.runner.client import runner_endpoint
 
-        return await runner_endpoint(server, headers, s)
+        return await runner_endpoint(db, server, headers, s)
     if not server.url:
-        raise ValueError("server has no URL")
+        raise ValueError("server has no URL")  # pragma: no cover - checked at registration
     return HttpEndpoint(url=server.url, headers=headers, allowlist=tuple(s.ssrf_allowlist))
 
 

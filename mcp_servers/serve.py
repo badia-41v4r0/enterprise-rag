@@ -20,8 +20,16 @@ def serve(mcp: Any, argv: list[str] | None = None) -> None:
 
     if args.uds:
         # The socket is the only way in; its directory is shared with the gateway only.
+        from mcp.server.transport_security import TransportSecuritySettings
+
         os.umask(0o000)
-        app = mcp.streamable_http_app(stateless_http=True, json_response=True, host="localhost")
+        # DNS rebinding protection guards TCP listeners against browsers; a Unix socket is unreachable
+        # from a browser, and its only client is the gateway.
+        app = mcp.streamable_http_app(
+            stateless_http=True,
+            json_response=True,
+            transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+        )
         uvicorn.run(app, uds=args.uds, log_level="warning")
         return
     host, _, port = args.http.rpartition(":")

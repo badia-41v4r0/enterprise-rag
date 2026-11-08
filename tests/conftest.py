@@ -83,6 +83,17 @@ def ollama_has(model: str) -> bool:
     return _DB_STATE[key]
 
 
+def docker_available() -> bool:
+    if "docker" not in _DB_STATE:
+        sock = Path(os.environ.get("ERAG_RUNNER_DOCKER_SOCKET", "/var/run/docker.sock"))
+        try:
+            with httpx.Client(transport=httpx.HTTPTransport(uds=str(sock)), timeout=2) as c:
+                _DB_STATE["docker"] = c.get("http://docker/_ping").status_code == 200
+        except (httpx.HTTPError, OSError):
+            _DB_STATE["docker"] = False
+    return _DB_STATE["docker"]
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     settings = get_settings()
     for item in items:
@@ -94,6 +105,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(pytest.mark.skip(reason=f"Ollama with {settings.local_chat_model} unreachable"))
         if "provider_openrouter" in item.keywords and settings.openrouter_api_key is None:
             item.add_marker(pytest.mark.skip(reason="ERAG_OPENROUTER_API_KEY not set"))
+        if "docker" in item.keywords and not docker_available():
+            item.add_marker(pytest.mark.skip(reason="Docker daemon unreachable"))
         if "provider_claude_code" in item.keywords and os.environ.get("ERAG_RUN_CLAUDE_CODE_TESTS") != "1":
             item.add_marker(pytest.mark.skip(reason="set ERAG_RUN_CLAUDE_CODE_TESTS=1 to run"))
 

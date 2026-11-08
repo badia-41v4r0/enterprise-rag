@@ -89,4 +89,5 @@ markers = [
   "provider_ollama: real Ollama chat provider test (skipped when unreachable)",
   "provider_openrouter: real OpenRouter test (skipped without ERAG_OPENROUTER_API_KEY)",
   "provider_claude_code: real `claude -p` test (opt-in: ERAG_RUN_CLAUDE_CODE_TESTS=1)",
+  "docker: needs a real Docker daemon (isolated runner tests; skipped when unreachable)",
 ]

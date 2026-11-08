@@ -1,41 +1,57 @@
 # Architecture
 
-English rendering of the original architecture diagram, updated with the design deltas of [PLAN.md section 2](PLAN.md). Decisions are in [`adr/`](adr/README.md).
+English rendering of the original architecture diagram, updated with the design deltas of [PLAN.md section 2](PLAN.md) and the v0.2 extensions of [PLAN-v0.2.md](PLAN-v0.2.md). Decisions are in [`adr/`](adr/README.md).
 
 ```mermaid
 flowchart LR
-    U[Browser: React SPA] -- "HttpOnly session cookie + CSRF" --> API
+    U[Browser: React SPA] -- "HttpOnly session cookie + CSRF<br/>(+ TOTP step, step-up)" --> API
 
     subgraph App["app container (FastAPI)"]
-        API[API routers] --> ORCH[Chat orchestrator]
-        ORCH --> AUTHZ["authz.effective_permissions()<br/>(from Postgres, every request)"]
+        API[API routers<br/>auth, chat, content, admin,<br/>connectors, registry, secrets] --> ORCH[Chat orchestrator]
+        ORCH --> AUTHZ["authz.effective_permissions()<br/>read / contribute / manage / execute<br/>(from Postgres, every request)"]
         ORCH --> RET[Retriever]
         RET -- "query vector + ACL filter in SQL" --> PG
         RET --> RECHECK[ACL re-check]
         RECHECK --> CTX[Context builder<br/>dedupe, budget, citations]
         CTX --> ROUTER[Classification router<br/>max(context, history, tool results)]
         ROUTER --> PROMPT[Prompt builder<br/>untrusted data delimited]
-        PROMPT --> LLM[OpenAI-compatible client<br/>+ egress hook]
+        PROMPT --> LLM[OpenAI-compatible client<br/>+ egress hook + spend ceiling]
         ORCH --> TOOLS[Tool runtime]
-        TOOLS --> TAUTHZ[Tool authz<br/>grant, schema, resource]
-        TAUTHZ --> GW[MCP gateway<br/>allowlist, rate limit,<br/>signed permission context]
-        GW --> VAL[Result validator<br/>size, classification, injection]
+        TOOLS --> TAUTHZ[Tool authz<br/>grant, schema, constraints,<br/>clearance, approval state]
+        TAUTHZ --> GW[MCP gateway<br/>stdio / HTTP / Unix socket,<br/>rate limits, rug-pull hash check,<br/>signed context for built-ins]
+        GW --> VAL[Result validator<br/>size, label, injection]
         VAL --> ROUTER
+        VAULT[Credential store<br/>AES-256-GCM, audited use] -.-> LLM
+        VAULT -.-> GW
+        NG[SSRF guard<br/>public-only, IP pinning]
     end
 
+    KEY[(Master key file<br/>outside the DB)] -.-> VAULT
     LLM -- "any classification" --> OLLAMA[(Ollama, local<br/>qwen3:4b-instruct, bge-m3)]
-    LLM -- "public / internal only" --> OR[(OpenRouter, cloud)]
+    LLM -- "public / internal only<br/>key from the vault" --> OR[(OpenRouter, free models)]
     GW -- "stdio + _meta token" --> FILES[files_server]
-    GW -- "stdio + _meta token" --> TICKETS[tickets_server<br/>SQLite]
+    GW -- "stdio + _meta token" --> TICKETS[tickets_server]
+    GW -- "HTTPS via SSRF guard<br/>clearance + label" --> REMOTE[Registered remote MCP]
+    GW -- "HTTP over Unix socket" --> MCPC
+
+    subgraph RunnerBox["runner service (only holder of the Docker socket)"]
+        RUN[Runner API<br/>token auth, image allowlist<br/>pinned by ID, idle reaper]
+    end
+    API -- "ensure / stop / status / logs" --> RUN
+    RUN -- "Docker Engine API" --> MCPC[MCP container<br/>network none, read-only root,<br/>no caps, non-root, limits]
 
     subgraph Worker["worker container"]
         W[Ingestion worker<br/>FOR UPDATE SKIP LOCKED] --> PARSE[Parsers + chunker]
         PARSE --> EMB[bge-m3 embeddings]
+        SYNC[Connector sync<br/>folder / web, scheduler] --> UP[Normal upload + versioning]
     end
+    SYNC -- "web: via SSRF guard" --> WEB[(Web pages)]
+    SYNC -- "read-only mount" --> FS[(Connector roots)]
     API -- "upload: blob + job" --> BLOB[(Blob volume)]
+    UP --> BLOB
     W --> BLOB
     EMB --> OLLAMA
-    W --> PG[(PostgreSQL 16 + pgvector<br/>users, ACL, docs, chunks,<br/>jobs, conversations, audit)]
+    W --> PG[(PostgreSQL 16 + pgvector<br/>users, ACL, docs, chunks, jobs,<br/>secrets, connectors, registry,<br/>conversations, audit)]
     ORCH -- "messages, audit" --> PG
 ```
 
@@ -57,3 +73,12 @@ Upload ⇒ SHA-256 ⇒ duplicate check (same container) ⇒ blob stored content-
 ## Storage
 
 One PostgreSQL holds identities, ACL, documents, vectors, jobs, conversations and audit. Blobs live on a volume behind `BlobStore`; vectors behind `VectorStore` (pgvector). Both are interfaces so that S3 or Qdrant can be added later (ADR 0005).
+
+## v0.2: administration and extensibility
+
+- **Permissions** gain a `contribute` level between `read` and `manage` on containers (ADR 0017). Managers and contributors work on content through the same documents API; grants, roles, users and classification remain admin-only.
+- **Credential store** (`secrets` table, ADR 0018): values encrypted with AES-256-GCM, the name as associated data, the master key in `ERAG_SECRETS_KEY(_FILE)`. Only internal components decrypt, each with a consumer label written to the audit log. The model router reads the OpenRouter key from it (env var as fallback) and is rebuilt when the key or the provider settings change.
+- **MFA and step-up** (ADR 0019): sessions carry `mfa_pending` and `reauth_at`; sensitive endpoints depend on `require_step_up`.
+- **Connectors** (ADR 0020): `connectors`, `connector_items`, `sync_runs`. The worker claims queued runs, lists items through the connector kind, and pushes new or changed items through the normal upload/versioning path, so ingestion, ACLs and routing are unchanged. Outbound HTTP goes through `app/core/netguard.py`.
+- **MCP registry** (ADR 0021): registered servers are `pending` until approved; tools are discovered disabled; enabling pins the definition hash, which the gateway re-checks in the same session before every call. Each server has a clearance (max classification sent) and a result label (classification of everything returned).
+- **Isolated runner** (ADR 0022): a separate service with the Docker socket. It starts only images pinned by ID, with network `none`, a read-only root filesystem, no capabilities, no-new-privileges, the default seccomp profile, a non-root user and limits. The gateway reaches the server over a Unix socket in a per-MCP directory.

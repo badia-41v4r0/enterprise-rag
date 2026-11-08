@@ -36,3 +36,13 @@ Run all three against a running instance: `uv run python scripts/demo_scenarios.
 3. **Revocation.** The admin removes the HR role from `hr@acme.test` (Admin > Users, or the API); the same question immediately loses access. No re-index.
 
 Try also: log in as `exec@acme.test` and ask about "HR investigation 2026-03" (container read is not enough for a restricted document), or as `engineer@acme.test` ask the model to "search tickets" (the injected ticket title is removed before the model sees it).
+
+## v0.2 additions
+
+| Persona | Roles | What it shows |
+|---|---|---|
+| `hr.assistant@acme.test` | Employee, HR Contributor | `contribute` on HR Confidential: can upload and replace HR documents in the **Content** page, cannot delete them and never sees the restricted investigation (the canary matrix checks it). `hr@acme.test` holds `manage` on the same container (delegated management). |
+
+- **Folder connector** *Engineering wiki (folder)*: syncs `demo/acme/connector-source/engineering-wiki` (mounted read-only at `/connectors/acme`) into Engineering every 60 minutes. Try "How do engineers get VPN access?" as `engineer@` (answered from the wiki) and as `newhire@` ("no information").
+- **Remote MCP server** `acme-office` (Compose service `mcp-office`): registered as *pending* by the seed. As admin, open **Admin > MCP registry**, approve it, raise its clearance if you like, enable `list_holidays` and `convert_currency` and tick a role. Only that role's users are offered the tools; results are labeled confidential.
+- **Isolated runner**: build `deploy/mcp-office.Dockerfile`, put its image ID in `ERAG_RUNNER_IMAGES` (see the main README), then register a server with transport "isolated container", image `office` and the secret mapping `ERAG_OFFICE_API_TOKEN=<a secret name>`. The admin panel shows the container's confinement (network none, read-only root, capabilities dropped) and its redacted logs.

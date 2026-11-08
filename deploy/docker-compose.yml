@@ -30,6 +30,10 @@ x-app-env: &app-env
   ERAG_SSRF_ALLOWLIST: ${ERAG_SSRF_ALLOWLIST:-mcp-office:8791}
   # Demo: a "third-party" MCP server registered as pending on first start (Admin > MCP registry).
   ERAG_DEMO_OFFICE_MCP_URL: ${ERAG_DEMO_OFFICE_MCP_URL:-http://mcp-office:8791/mcp}
+  # Isolated MCP runner (ADR 0022). The app only knows its URL and token, never the Docker socket.
+  ERAG_RUNNER_URL: ${ERAG_RUNNER_URL:-http://runner:8790}
+  ERAG_RUNNER_TOKEN: ${ERAG_RUNNER_TOKEN:-dev-insecure-runner-token}
+  ERAG_RUNNER_SOCKET_DIR: ${ERAG_RUNNER_SOCKET_DIR:-/tmp/erag-runner-sockets}
   ERAG_MCP_TICKETS_DB: /data/tickets.sqlite3
   # Demo: seed ACME Corp on startup (idempotent). Set to false for a real installation.
   ERAG_SEED_DEMO: ${ERAG_SEED_DEMO:-true}
@@ -67,6 +71,8 @@ services:
     volumes:
       - appdata:/data
       - ../demo/acme/connector-source:/connectors/acme:ro
+      # Unix sockets of runner-managed MCP containers (same path on the host and in the containers).
+      - ${ERAG_RUNNER_SOCKET_DIR:-/tmp/erag-runner-sockets}:${ERAG_RUNNER_SOCKET_DIR:-/tmp/erag-runner-sockets}
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,6 +100,24 @@ services:
     depends_on:
       app:
         condition: service_started
+    mem_limit: 256m
+
+  # The only service with the Docker socket (root-equivalent). Narrow, token-authenticated API; it only
+  # starts images pinned by ID in ERAG_RUNNER_IMAGES, e.g. office=sha256:... (see README). Not published.
+  runner:
+    image: enterprise-rag:dev
+    user: root
+    command: ["python", "-m", "app.runner.service"]
+    environment:
+      ERAG_RUNNER_LISTEN: 0.0.0.0:8790
+      ERAG_RUNNER_TOKEN: ${ERAG_RUNNER_TOKEN:-dev-insecure-runner-token}
+      ERAG_RUNNER_IMAGES: ${ERAG_RUNNER_IMAGES:-}
+      ERAG_RUNNER_SOCKET_DIR: ${ERAG_RUNNER_SOCKET_DIR:-/tmp/erag-runner-sockets}
+      ERAG_RUNNER_MOUNT_ROOTS: ${ERAG_RUNNER_MOUNT_ROOTS:-}
+      ERAG_LOG_JSON: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${ERAG_RUNNER_SOCKET_DIR:-/tmp/erag-runner-sockets}:${ERAG_RUNNER_SOCKET_DIR:-/tmp/erag-runner-sockets}
     mem_limit: 256m
 
   ollama:

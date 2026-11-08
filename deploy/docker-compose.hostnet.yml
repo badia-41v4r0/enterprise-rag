@@ -14,7 +14,12 @@ services:
       ERAG_OLLAMA_BASE_URL: http://127.0.0.1:11434
       ERAG_SSRF_ALLOWLIST: 127.0.0.1:8791
       ERAG_DEMO_OFFICE_MCP_URL: http://127.0.0.1:8791/mcp
+      ERAG_RUNNER_URL: http://127.0.0.1:8790
     command: ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && uvicorn app.main:app --host 127.0.0.1 --port ${APP_PORT:-8000}"]
+  runner:
+    network_mode: host
+    environment:
+      ERAG_RUNNER_LISTEN: 127.0.0.1:8790
   mcp-office:
     network_mode: host
     command: ["python", "-m", "mcp_servers.office_server", "--http", "127.0.0.1:8791"]

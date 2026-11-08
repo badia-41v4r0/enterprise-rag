@@ -10,7 +10,7 @@ Plan: [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md). Work done autonomously; every re
 | R2 Credential store and MFA | Done | "R2: ..." |
 | R3 Connectors | Done | "R3: ..." |
 | R4 MCP registry and clearance | Done | "R4: ..." |
-| R5 Isolated runner | Not started | |
+| R5 Isolated runner | Done (network `none` only; allowlisted egress cut) | "R5: ..." |
 
 ### R1. Roles, delegated management and uploads
 
@@ -102,6 +102,58 @@ Plan: [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md). Work done autonomously; every re
 **Notes / known issues**
 - Port 8770 was taken on this machine, so the demo office server uses 8791.
 - One MCP session per call (no pooling) plus one `tools/list` per call for rug-pull detection.
+
+### R5. Isolated runner for MCP containers
+
+**What was built**
+- `runner` service (`python -m app.runner.service`, ADR 0022), the only holder of the Docker socket: token-authenticated API (`ensure`, `stop`, status, redacted logs, images), image allowlist pinned by image ID (`ERAG_RUNNER_IMAGES`), no command override, hardened container spec (uid 10001, read-only root, noexec tmpfs, `CapDrop ALL`, no-new-privileges, default seccomp, init, CPU/memory/PID limits), network `none`, per-MCP Unix-socket directory as the only writable mount, optional read-only mounts below `ERAG_RUNNER_MOUNT_ROOTS`, reuse by config hash, idle reaper scoped to its own containers. Engine-neutral interface (Docker Engine API v1.41 over its socket; Podman untested).
+- App side: `transport = runner` registry entries with a runtime spec (image, limits, env, secret mapping, mounts); secrets resolved from the vault per server and passed only to that container; gateway reaches the server over the Unix socket; admin endpoints and UI for start/stop/status/logs; registration form with "isolated container" transport.
+- Demo image `deploy/mcp-office.Dockerfile` (python:3.12-slim + `mcp`, serves the office server on `/run/mcp/mcp.sock`); Compose `runner` service (root, Docker socket, not published; host-network override on 127.0.0.1:8790).
+- **Cut (as instructed):** the allowlisted-egress forward proxy. Runner MCPs have no network at all.
+
+**Verified (2026-11-09)**
+- `uv run pytest`: **209 passed, 2 skipped** (the 2 skips are the OpenRouter provider test without an env key, and the opt-in claude-code test). New `tests/security/test_runner.py` (marker `docker`, real daemon, real image): runner API rejects missing/wrong token, non-allowlisted image, pinned digest that is not present, mount outside the roots, CPU above the maximum; a `Cmd` override is ignored (container runs the image's command). Two MCP containers started through the normal tool path (vault secret -> runner -> Unix socket -> gateway -> validator): A reports its booking secret configured, B does not; `secret.use` audited only for A; inspect shows network none, read-only root, `CapDrop ALL`, no-new-privileges, 128 MB, 0.5 CPU, 32 PIDs, user 10001; probes **from inside**: only `lo` in `/proc/net/dev`, connections to 1.1.1.1:53, the Docker bridge gateway, host Postgres (55432) and the app (8088) all fail, writing `/app` fails, `/tmp` works, the read-only mount is readable and not writable, `CapEff 0000000000000000`, `NoNewPrivs 1`, `Seccomp 2`, B sees only its own socket, the secret env var exists only in A; logs never contain the secret; idle reaping removes the container and the next call restarts it. Test containers (`erag-mcp-erag-test-*`) and socket dirs are removed afterwards; I also removed a superseded dangling image I built.
+- One flaky run: the 20 s wait for the socket timed out once under load; raised to 60 s, passed on rerun.
+- **Exit criterion (Docker + UI):** stack started with `ERAG_RUNNER_IMAGES="office=$(docker image inspect erag-mcp-office:0.2 --format '{{.Id}}')"`. `scripts/ui_smoke.mjs`: admin stores `office_booking_token`, registers `office-isolated` (transport isolated container, image `office`, `ERAG_OFFICE_API_TOKEN=office_booking_token`, clearance internal), approves it, enables `office_info` for Engineering, clicks Start; the panel shows `running`, network none, read-only root true, and the secret is not in the logs. `UI SMOKE PASSED`. Real chat as the engineer (local model): `tool_call office-isolated__office_info {"city":"berlin"}` -> `ok, confidential` -> "The Berlin office opens at 08:00 and closes at 19:00. Its booking system is configured." New hire: no office tools offered. From the host: `docker exec erag-mcp-office-isolated python -c "socket.create_connection(('1.1.1.1',53))"` -> `Network is unreachable`; to `127.0.0.1:55432` -> refused (own loopback); write to `/app` -> read-only file system; `/run/mcp` contains only `mcp.sock`; `docker inspect` -> `net=none ro=true caps=[ALL] no-new-privileges user=10001:10001 mem=268435456 pids=64`.
+- Found and fixed with the tests: the runner looked images up by their allowlist name instead of the pinned ID; the MCP SDK's DNS-rebinding check rejected `Host: localhost` over the Unix socket (disabled only for `--uds`, where it does not apply); `ToolChanged` raised inside the SDK task group surfaced as an `ExceptionGroup` (R4 fix); the test runner's reaper removed the dev stack's runner container (reaper now scoped to its own instance label).
+
+**Decisions:** ADR 0022 (Unix socket + network none instead of an internal Docker network; image pinned by ID; no command override; secrets as env vars of that container only; reaper scoped per runner instance; egress proxy cut).
+
+**Known issues**
+- Secret values passed to runner MCPs are visible in `docker inspect` to anyone with Docker access on the host (root-equivalent).
+- Rootless engines, user namespaces and gVisor are not configured; Podman is untested.
+- The runner validates mount sources in its own filesystem: in Docker Compose the runner container must see host paths at the same location (documented; no mount roots are configured by default).
+
+## Overall status and how to run everything
+
+```bash
+cd ~/Desktop/enterprise-rag && git checkout feat/admin-extensibility
+docker build -f deploy/mcp-office.Dockerfile -t erag-mcp-office:0.2 .          # optional: runner demo image
+export ERAG_RUNNER_IMAGES="office=$(docker image inspect erag-mcp-office:0.2 --format '{{.Id}}')"
+# On this machine: port 8000 is taken (APP_PORT=8088); deploy/.env sets a wrong local model id (override it);
+# ERAG_OPENROUTER_API_KEY= proves the OpenRouter key is read from the vault only.
+ERAG_OPENROUTER_API_KEY= ERAG_LOCAL_CHAT_MODEL=qwen3:4b-instruct-2507-q4_K_M APP_PORT=8088 \
+  docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.hostnet.yml up -d --build
+uv run python scripts/demo_scenarios.py --base http://127.0.0.1:8088
+NODE_PATH=.scratch/e2e/node_modules CHROMIUM=/usr/bin/chromium BASE=http://127.0.0.1:8088 node scripts/ui_smoke.mjs
+uv run pytest            # ~2 min; needs Postgres (55432), Ollama for embeddings/provider tests, Docker for -m docker
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run python scripts/check_licenses.py
+cd frontend && npm run build
+```
+
+Migrations added: 0004 (contribute), 0005 (secrets, settings, MFA, step-up), 0006 (connectors), 0007 (MCP registry). New ADRs: 0017 to 0022. Docs updated: README (features, quick start, configuration reference, security model and known boundaries; licensing section unchanged), `docs/threat-model.md` (T18 to T30, residual risks), `docs/architecture.md` (Mermaid + v0.2 section), `docs/whitepaper/whitepaper.md` (new 7.1 "Extensibility without losing control" and 7.2 "Known boundaries"; section 9 untouched), `ROADMAP.md`, `demo/acme/README.md`, `deploy/.env.example`.
+
+## Decisions for the owner (v0.2)
+
+1. **Concurrent commit on this branch.** While I worked, another session committed `96000e4` and `140dc5f` ("Whitepaper: ...") on `feat/admin-extensibility`. `140dc5f` also swept in three of my in-progress R1 files (`policy.py`, `models/__init__.py`, `services/documents.py`) **without migration 0004**, and that branch was merged into `origin/main` as PR #1 (`b845603`). So `origin/main` currently has the `contribute` enum value in the model but no migration for it (harmless until a `contribute` grant is created, but inconsistent). The R1 commit on this branch completes it. I did not touch `main`.
+2. **`deploy/.env`** on this machine sets `ERAG_LOCAL_CHAT_MODEL=nvidia/nemotron-3.5-lightning:free` (an OpenRouter id; Ollama returns 404 for it) and still contains `ERAG_OPENROUTER_API_KEY`. The key is now in the vault of the running stack; remove it from `deploy/.env` and fix the local model line (I did not edit the file).
+3. **Default clearance of registered MCP servers** is `public` (ADR 0021); you confirmed the default result label `confidential`, but the plan did not fix the clearance default. Keep, or default to `internal`?
+4. **A manager who restricts a document without a document grant cannot lift it again** (ADR 0017). Intended as a safety property; say if you prefer managers to always be able to un-restrict.
+5. **Dev master key:** without `ERAG_SECRETS_KEY(_FILE)` in dev the key is derived from `ERAG_SECRET_KEY` (ADR 0018); Compose generates `/data/secrets.key` instead. Prod refuses to start without a key.
+6. **Allowlisted egress for runner MCPs** was cut (network `none` only). Decide whether it is worth building, or whether networked MCPs should stay "remote HTTP" registrations.
+7. **White paper section 7** intro still lists "external connectors" and "a spend ceiling per cloud provider" as beyond the MVP; both now exist. I only added 7.1 and 7.2 and left the existing text for your review.
+8. **Demo office MCP port**: 8770 was taken on this machine, so the demo uses 8791.
+9. Tag (`v0.2.0`?), push and PR are left to you, as instructed.
 
 ---
 

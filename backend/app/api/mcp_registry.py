@@ -337,3 +337,71 @@ async def review_tool(
     audit(db, "admin.mcp.tool_review", user_id=auth.user.id, resource=f"tool:{s.name}__{t.name}", details=details)
     await db.commit()
     return _tool_view(s, t)
+
+
+# --- Isolated runner lifecycle (R5, ADR 0022) ----------------------------------------------------
+
+
+@router.get("/runner/images")
+async def runner_images(_: AuthContext = Depends(require_admin)) -> dict[str, Any]:
+    from app.runner.client import RunnerClient, RunnerError
+
+    try:
+        return {"available": True, "images": await RunnerClient().images()}
+    except (RunnerError, OSError) as exc:
+        return {"available": False, "images": [], "error": str(exc)}
+
+
+async def _runner_server(db: AsyncSession, server_id: uuid.UUID) -> McpServer:
+    s = await _server_or_404(db, server_id)
+    if s.transport != "runner":
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "this server does not run in the runner")
+    return s
+
+
+@router.post("/servers/{server_id}/runner/start")
+async def runner_start(
+    server_id: uuid.UUID, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    from app.runner.client import RunnerClient, RunnerError, runner_spec
+
+    s = await _runner_server(db, server_id)
+    try:
+        info = await RunnerClient().ensure(s.name, await runner_spec(db, s))
+        state = await RunnerClient().status(s.name)
+    except (RunnerError, vault.VaultError) as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    audit(db, "admin.mcp.runner.start", user_id=auth.user.id, resource=f"mcp_server:{s.name}", details=state)
+    await db.commit()
+    return {"started": info.get("started"), "status": state}
+
+
+@router.post("/servers/{server_id}/runner/stop")
+async def runner_stop(
+    server_id: uuid.UUID, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    from app.runner.client import RunnerClient, RunnerError
+
+    s = await _runner_server(db, server_id)
+    try:
+        out = await RunnerClient().stop(s.name)
+    except RunnerError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    audit(db, "admin.mcp.runner.stop", user_id=auth.user.id, resource=f"mcp_server:{s.name}")
+    await db.commit()
+    return out
+
+
+@router.get("/servers/{server_id}/runner")
+async def runner_status(
+    server_id: uuid.UUID, _: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """Container status and the last log lines, with secret values redacted by the runner."""
+    from app.runner.client import RunnerClient, RunnerError
+
+    s = await _runner_server(db, server_id)
+    try:
+        c = RunnerClient()
+        return {"status": await c.status(s.name), "logs": await c.logs(s.name, 200)}
+    except RunnerError as exc:
+        return {"status": {"state": "unavailable", "error": str(exc)}, "logs": ""}

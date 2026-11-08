@@ -1,6 +1,6 @@
-# Threat model (MVP)
+# Threat model
 
-Scope: a single-tenant installation with one administrator, employees with different roles, local and optional cloud models, and MCP tools. The goal is that **every piece of data a model sees, and every answer a user receives, was already authorized for that user**.
+Scope: a single-tenant installation with administrators, delegated content managers, employees with different roles, local and optional cloud models, and MCP tools. The goal is that **every piece of data a model sees, and every answer a user receives, was already authorized for that user**.
 
 ## Assets
 
@@ -46,6 +46,8 @@ Document contents (by classification), tool data (HR cases, invoices, tickets), 
 | T26 | Rug pull / tool poisoning (a server changes a tool after approval, or ships instructions in descriptions) | Tools start disabled; approval pins a hash; live definition checked on every call; changes disable and flag the tool; descriptions sanitized and withheld when instruction-like | `test_rug_pull_disables_the_tool_until_re_approved` |
 | T27 | Model abuses a third-party tool's arguments | Strict schema, admin constraints (enum, pattern, bounds, forced values) enforced by the gateway; per-user and per-tool rate limits; result size cap | `test_argument_constraints_are_enforced` |
 | T28 | Registering an internal URL as an "MCP server" (SSRF) | Same guard as connectors; step-up to register | `test_registration_needs_a_safe_url_and_step_up` |
+| T29 | A malicious or compromised MCP server attacks the infrastructure (database, app, other MCPs, internet, host) | Isolated runner: approved images pinned by ID, network `none` (Unix socket only), read-only root, no capabilities, no-new-privileges, seccomp, non-root, resource limits; the app has no Docker socket (ADR 0022) | `test_mcp_in_the_runner_is_confined_and_callable_through_the_gateway`, `test_runner_api_needs_its_token_and_allowlisted_pinned_images` |
+| T30 | One MCP obtains another MCP's credentials | Secrets resolved per server from the vault (assigned only), injected only into that container, redacted from logs | same test (secret present in A, absent in B), `test_log_redaction` |
 
 ## Residual risks (honest limits)
 
@@ -57,6 +59,7 @@ Document contents (by classification), tool data (HR cases, invoices, tickets), 
 - **In-process rate limiters** reset on restart and do not work across replicas (single-instance MVP).
 - **Audit log is in the same database** and writable by the app; no tamper evidence.
 - **Third-party MCP output cannot be filtered per user**: we do not know the ACLs of the system behind it. It is access-controlled per tool and role, labeled, and kept on cleared models, nothing more.
+- **Container isolation is not a VM.** A kernel or engine escape from an MCP container would reach the host; the runner and its Docker socket are root-equivalent. No allowlisted egress for runner MCPs (network `none` only); Podman is untested.
 - **Built-in reference MCP servers run as subprocesses of the app** with the app's OS user. Remote servers run wherever their operator runs them; containment is only provided by the isolated runner (R5).
 - **The credential store master key sits on the same host as the app.** It protects against database and backup leaks, not against compromise of that host. Losing it loses the secrets and MFA enrolments.
 - **Connectors do not mirror source permissions.** A folder or site whose audience is narrower than the container's leaks to every reader of that container. Point connectors only at content whose audience matches the container.

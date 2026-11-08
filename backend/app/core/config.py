@@ -94,12 +94,26 @@ class Settings(BaseSettings):
     # (`host`, `host:port` or a CIDR), for web connectors and remote MCP servers alike.
     ssrf_allowlist: list[str] = Field(default_factory=list)
 
-    @field_validator("connector_roots", "ssrf_allowlist", "allowed_hosts", mode="before")
+    @field_validator(
+        "connector_roots", "ssrf_allowlist", "allowed_hosts", "runner_images", "runner_mount_roots", mode="before"
+    )
     @classmethod
     def _split_csv(cls, v: object) -> object:
         if isinstance(v, str) and not v.strip().startswith("["):
             return [x.strip() for x in v.split(",") if x.strip()]
         return v
+
+    # Isolated MCP runner (ADR 0022). The app talks to the runner, never to the container engine.
+    runner_url: str | None = None  # e.g. http://127.0.0.1:8790 ; unset = runner disabled
+    runner_token: SecretStr | None = None  # shared secret between app and runner
+    # Runner side: images it may start, pinned by image ID ("name=sha256:...", comma-separated).
+    runner_images: list[str] = Field(default_factory=list)
+    runner_socket_dir: Path = Path("/tmp/erag-runner-sockets")  # noqa: S108 - per-MCP subdirs, see ADR 0022
+    runner_mount_roots: list[Path] = Field(default_factory=list)  # host paths MCPs may mount read-only
+    runner_docker_socket: Path = Path("/var/run/docker.sock")
+    runner_idle_minutes: int = 15
+    runner_max_cpus: float = 2.0
+    runner_max_memory_mb: int = 2048
 
     # Rate limiting (requests per minute)
     chat_rate_limit_per_minute: int = 20
@@ -126,6 +140,12 @@ class Settings(BaseSettings):
             value = getattr(self, name).get_secret_value()
             if value.startswith("dev-insecure") or len(value) < 32:
                 raise RuntimeError(f"ERAG_{name.upper()} must be set to a strong value in prod")
+        if self.runner_url and (
+            self.runner_token is None
+            or self.runner_token.get_secret_value().startswith("dev-insecure")
+            or len(self.runner_token.get_secret_value()) < 32
+        ):
+            raise RuntimeError("ERAG_RUNNER_TOKEN must be set to a strong value in prod when the runner is used")
         if self.secrets_key is None and self.secrets_key_file is None:
             raise RuntimeError("ERAG_SECRETS_KEY or ERAG_SECRETS_KEY_FILE is required in prod (erag secrets init)")
 
