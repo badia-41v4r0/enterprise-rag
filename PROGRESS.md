@@ -7,7 +7,7 @@ Branch: `feat/mvp` (not pushed). Plan: [`docs/PLAN.md`](docs/PLAN.md). Decisions
 | Phase | Status | Notes |
 |---|---|---|
 | 0. Foundations | Done | Compose, Alembic, config, CI workflow, ADRs |
-| 1. Identity and permissions | Not started | |
+| 1. Identity and permissions | Done | Sessions (argon2, HttpOnly cookie, CSRF), roles, containers, grants, `can()`, admin API, audit, CLI admin |
 | 2. Ingestion | Not started | |
 | 3. Authorized retrieval and chat | Not started | |
 | 4. Frontend | Not started | |
@@ -22,3 +22,8 @@ Branch: `feat/mvp` (not pushed). Plan: [`docs/PLAN.md`](docs/PLAN.md). Decisions
 - `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy`, `uv run pytest` pass locally.
 - `uv run python scripts/check_licenses.py`: no copyleft dependencies.
 - The GitHub Actions workflow (`.github/workflows/ci.yml`) was written but **not run** (nothing is pushed).
+
+## Verified (Phase 1)
+
+- `uv run pytest`: permission matrix (`tests/unit/test_policy.py`) and identity/admin API tests against real Postgres (`tests/integration/test_identity.py`): login/logout, CSRF rejection, login rate limit, admin-only routes, grant create/validate/duplicate/revoke with immediate effect, deactivation kills sessions, audit entries written.
+- `uv run erag create-admin --email admin@acme.test --password ...` created the admin in the dev DB; second run reports "already exists".

@@ -52,6 +52,9 @@ extend-exclude = ["frontend", ".scratch"]
 select = ["E", "F", "W", "I", "B", "UP", "S", "BLE", "ASYNC", "RUF", "SIM"]
 ignore = ["S101", "B008", "RUF012", "S311", "S608", "RUF001", "RUF002", "RUF003"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["app", "mcp_servers", "demo", "tests"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S108", "S603", "S607"]
 "backend/migrations/**" = ["E501"]

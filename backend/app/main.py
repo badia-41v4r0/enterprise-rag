@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import health
+from app.api import admin, auth, health
 from app.core.config import get_settings
 from app.core.db import dispose_engine
 from app.core.logging import configure_logging
@@ -29,6 +29,8 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="EnterpriseRAG", version="0.1.0.dev0", lifespan=lifespan)
     app.include_router(health.router)
+    app.include_router(auth.router)
+    app.include_router(admin.router)
 
     _mount_frontend(app, settings.frontend_dist)
     return app

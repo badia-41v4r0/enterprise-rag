@@ -25,10 +25,11 @@ os.environ.setdefault("ERAG_LOG_JSON", "false")
 os.environ.setdefault("ERAG_FRONTEND_DIST", str(ROOT / "nonexistent-dist"))
 
 import httpx  # noqa: E402
-from app.core.config import get_settings  # noqa: E402
-from app.core.db import dispose_engine, get_sessionmaker  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine  # noqa: E402
+
+from app.core.config import get_settings  # noqa: E402
+from app.core.db import dispose_engine, get_sessionmaker  # noqa: E402
 
 
 def _admin_url(url: str) -> str:

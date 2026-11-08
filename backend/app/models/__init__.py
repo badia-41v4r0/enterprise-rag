@@ -129,7 +129,7 @@ class Role(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(100), unique=True)
     description: Mapped[str] = mapped_column(Text, default="")
 
-    users: Mapped[list[User]] = relationship(secondary="user_roles", lazy="noload", back_populates="roles")
+    users: Mapped[list[User]] = relationship(secondary="user_roles", lazy="raise", back_populates="roles")
 
 
 class UserRole(Base):
