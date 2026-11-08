@@ -112,6 +112,27 @@ What the software decides for you (ADR 0023 to 0025):
 - **Dry run**: type a sample question, choose a classification and a persona, and see the permitted set, the decider's answers, the chosen model and the reason, without generating an answer.
 - **Decision log**: time, classification, permitted set, decider attempts, answers, chosen model, reason, latency and cost. Never the question or any context.
 
+#### Open decider (optional)
+
+Any server speaking `POST /v1/systemone` works. Tested on this project's reference machine with [Open-Jev 2B](https://huggingface.co/ZefanCai/Open-Jev-2B) (adapter Apache-2.0, code MIT, base `Qwen/Qwen3.5-2B` Apache-2.0), on CPU, about 3.3 GB of RAM and **about 1 minute per decision** with `--prefix-cache` (a GPU with 8 GB or more is much faster). Install it in its own environment, never in this project's:
+
+```bash
+mkdir -p ~/.cache/erag-open-jev && cd ~/.cache/erag-open-jev
+git clone https://github.com/Zefan-Cai/Open-Jev.git src
+uv venv -p 3.12 .venv
+uv pip install -p .venv/bin/python --index-url https://download.pytorch.org/whl/cpu "torch>=2.8"
+uv pip install -p .venv/bin/python "transformers==5.10.2" "peft==0.19.1" "accelerate==1.13.0" safetensors "huggingface_hub[cli]"
+uv pip install -p .venv/bin/python --no-deps -e ./src
+.venv/bin/hf download ZefanCai/Open-Jev-2B --revision 0c7aa498b1627be8da4acf34c863ff0ee0a92785 --local-dir models/Open-Jev-2B
+.venv/bin/hf download Qwen/Qwen3.5-2B --revision 15852e8c16360a2fea060d615a32b45270f8a8fc
+# Port 8791 is used by the demo MCP server, so use another one. Cap its memory so it can never take the host down.
+HF_HUB_OFFLINE=1 OMP_NUM_THREADS=6 systemd-run --user --scope -p MemoryMax=6500M \
+  .venv/bin/python -m jev.server --checkpoint models/Open-Jev-2B/package/checkpoint \
+  --device cpu --max-length 4096 --batch-size 1 --prefix-cache --host 127.0.0.1 --port 8792
+```
+
+Then in Admin > Model router add a decider of kind **Open Jev-style server**, URL `http://127.0.0.1:8792`, **self-hosted** ticked, timeout 120000 ms; it is local, so it may be cleared up to confidential and may "see context". Opt-in test: `ERAG_TEST_OPEN_JEV_URL=http://127.0.0.1:8792 uv run pytest -m decider_open`. Spike details: [ADR 0031](docs/adr/0031-open-decider-spike.md).
+
 #### Adding the official Jev key and testing it (about EUR 1)
 
 1. Admin > Model router > **Add a decider**: kind **Official Jev API (TypeSafe)**, a name, paste the API key (stored encrypted, never shown again). Leave the endpoint and model empty for the defaults (`https://api.typesafe.ai/v1/systemone`, `jev-latest`), or enter the base URL and model name you were given (for a key issued through another gateway, use that gateway's `/v1/systemone` URL). It starts cleared for `public` data only, with a daily cap of 100 requests and a monthly budget of 0.01 USD; raise the budget to what you want to spend (for example 1.00) in the same form.

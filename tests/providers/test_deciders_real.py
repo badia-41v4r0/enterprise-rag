@@ -47,7 +47,7 @@ async def test_open_jev_server_through_the_test_button(db: AsyncSession, client:
     await _admin(db, client)
     r = await client.post(
         "/api/admin/router/deciders",
-        json={"name": "open-jev", "kind": "protocol", "base_url": url, "self_hosted": True, "timeout_ms": 600_000},
+        json={"name": "open-jev", "kind": "protocol", "base_url": url, "self_hosted": True, "timeout_ms": 300_000},
     )
     assert r.status_code == 201, r.text
     d = r.json()

@@ -49,6 +49,23 @@ Plan: [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md). Branch created from `main` (d615
 
 **Known issues (R7)**: the permitted-set budget check is read-only (a model can still hit a limit at send time under concurrency, which then refuses as in R6); `supports_tools` has no UI toggle yet (API column only, default true).
 
+### R8: decision-protocol client, prompted LLM decider, open Jev-style decider (spike)
+
+**What was built** (code shipped with the R7 commit, finished here): the `/v1/systemone` client built from TypeSafe's API reference (`choice`/`score`/`noul`, answers with confidence and probabilities, `usage`), strict parsing; the prompted LLM decider (strict JSON, six keys, delimited untrusted question); the `protocol` decider kind for open Jev-style servers; per-decider timeouts up to 10 minutes (a CPU open decider needs about a minute); opt-in tests `decider_open` and `decider_official` (`tests/providers/test_deciders_real.py`, markers in `pyproject.toml`, skip logic in `tests/conftest.py`).
+
+**Spike (about 30 minutes, ADR 0031)**: Open-Jev 2B (adapter Apache-2.0, code MIT, base Qwen3.5-2B Apache-2.0, all verified on the files) installed in `~/.cache/erag-open-jev` (separate venv, CPU torch; nothing added to `pyproject.toml`/`uv.lock`), run under a systemd user scope capped at 6.5 GB RAM + 1.5 GB swap after unloading the Ollama models (restored afterwards; `mcp-office` did not need to be stopped). Results: ready in about 10 s, RSS about 3.3 GB; the protocol and answer shapes match the official reference exactly (plus a `metadata` object; `noul` spelling confirmed; no `model` needed); our 13-candidate router request took **155 s, or 58 s with `--prefix-cache`**; answers plausible. Port 8791 is taken by the demo MCP server here, so 8792 was used.
+
+**Verified (R8)**
+- Unit: protocol request/response against the official shapes; prompted output strictness (in `test_model_router.py`).
+- Real server: `ERAG_TEST_OPEN_JEV_URL=http://127.0.0.1:8792 uv run pytest -m decider_open` -> **1 passed** (117 s: a raw protocol call and the admin API's decider **Test**).
+- Live stack: a `protocol` decider at `http://127.0.0.1:8792` (self-hosted) created through the API: local, cleared for confidential, available; a dry run for `finance@acme.test` at `confidential` was decided by it in 58.7 s (tool_use not chosen: question_answering 0.62, needs tools p=0.74), kept on the local model; decider deleted, router left disabled.
+- Prompted decider on the real local qwen model: `test_prompted_decider_with_the_real_local_model` and the UI smoke's **Test** (about 3 s).
+- `decider_official` is skipped (no key tonight, as instructed).
+
+**Decisions (R8)**: ADR 0030 (protocol, prompted decider, clearance, budgets), ADR 0031 (spike result: works on CPU, too slow for interactive use here; the prompted decider stays the practical default). Decider timeout limit raised to 600000 ms for CPU deciders (router-wide default stays 3000 ms).
+
+**Not done (R8)**: no GPU run of Open-Jev (6 GB Turing, no bf16, documented peak 6.9 GiB); no quality benchmark; pjev-2b not inspected.
+
 ## Model providers from the admin panel, branch `feat/providers`
 
 Branch `feat/providers`, created from `fix/admin-ui-clutter` (not pushed). Work done autonomously; open questions became ADRs 0023 to 0025 and the list at the end of this section.

@@ -166,7 +166,7 @@ class DeciderIn(BaseModel):
     self_hosted: bool = False
     max_classification: Classification | None = None
     see_context: bool = False
-    timeout_ms: int | None = Field(default=None, ge=100, le=60_000)
+    timeout_ms: int | None = Field(default=None, ge=100, le=600_000)
     monthly_budget_usd: float | None = Field(default=None, ge=0)
     daily_request_cap: int | None = Field(default=None, ge=0)
     input_usd_per_mtok: float | None = Field(default=None, ge=0)
@@ -188,7 +188,7 @@ class DeciderPatch(BaseModel):
     self_hosted: bool | None = None
     max_classification: Classification | None = None
     see_context: bool | None = None
-    timeout_ms: int | None = Field(default=None, ge=100, le=60_000)
+    timeout_ms: int | None = Field(default=None, ge=100, le=600_000)
     monthly_budget_usd: float | None = Field(default=None, ge=0)
     daily_request_cap: int | None = Field(default=None, ge=0)
     input_usd_per_mtok: float | None = Field(default=None, ge=0)
