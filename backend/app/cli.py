@@ -28,6 +28,13 @@ def _cmd_worker(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_seed_acme(args: argparse.Namespace) -> int:
+    from demo.acme.seed import seed
+
+    asyncio.run(seed(password=args.password, ingest=not args.no_ingest))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erag")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -40,6 +47,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("worker", help="run the ingestion worker")
     p.add_argument("--once", action="store_true", help="process the queue once and exit")
     p.set_defaults(func=_cmd_worker)
+
+    p = sub.add_parser("seed-acme", help="seed the ACME Corp demo (users, roles, containers, docs, tools)")
+    p.add_argument("--password", default=os.environ.get("ERAG_DEMO_PASSWORD", "acme-demo-password"))
+    p.add_argument("--no-ingest", action="store_true", help="queue documents but leave them to the worker")
+    p.set_defaults(func=_cmd_seed_acme)
 
     args = parser.parse_args(argv)
     result: int = args.func(args)

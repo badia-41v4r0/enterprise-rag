@@ -58,12 +58,13 @@ known-first-party = ["app", "mcp_servers", "demo", "tests"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S108", "S603", "S607"]
 "backend/migrations/**" = ["E501"]
+"backend/app/llm/prompt_builder.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 mypy_path = "backend"
-packages = ["app", "mcp_servers"]
+packages = ["app", "mcp_servers", "demo"]
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
 disallow_untyped_decorators = false

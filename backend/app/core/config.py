@@ -55,6 +55,8 @@ class Settings(BaseSettings):
 
     # Retrieval / context
     retrieval_top_k: int = 8
+    # Cosine similarity floor for bge-m3 (calibrated on the ACME corpus: relevant >= ~0.48, noise ~0.25-0.45).
+    retrieval_min_score: float = 0.45
     context_token_budget: int = 2500
     history_max_messages: int = 6
 
