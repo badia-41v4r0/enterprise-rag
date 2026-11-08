@@ -263,6 +263,48 @@ async def seed_connector(db: AsyncSession) -> str:
     return "created, first sync queued"
 
 
+async def seed_office_mcp(db: AsyncSession) -> str:
+    """Register the demo office MCP server as PENDING (tools discovered, all disabled), when
+    ERAG_DEMO_OFFICE_MCP_URL is set. Approval, tool enabling and role grants are left to the admin."""
+    import asyncio
+    import os
+
+    from app.mcp.review import discover
+    from app.models import Classification as Cls
+    from app.models import McpServer, ServerStatus
+
+    url = os.environ.get("ERAG_DEMO_OFFICE_MCP_URL")
+    if not url:
+        return "skipped"
+    if await db.scalar(select(McpServer).where(McpServer.name == "acme-office")) is not None:
+        return "exists"
+    server = McpServer(
+        name="acme-office",
+        command="",
+        builtin=False,
+        transport="http",
+        url=url,
+        description="ACME office information (demo third-party MCP server)",
+        status=ServerStatus.pending,
+        max_classification=Cls.public,
+        result_classification=Cls.confidential,
+        send_permission_context=False,
+        limits={"timeout_seconds": 30, "rate_limit_per_minute": 30, "max_result_bytes": 16000},
+    )
+    db.add(server)
+    await db.flush()
+    for attempt in range(10):
+        try:
+            found = await discover(db, server)
+            await db.commit()
+            return f"registered as pending ({len(found.new)} tools, all disabled)"
+        except Exception as exc:  # noqa: BLE001 - the demo server may still be starting
+            last = exc
+            await asyncio.sleep(2 + attempt)
+    await db.rollback()
+    return f"not registered ({type(last).__name__})"
+
+
 async def seed(password: str, ingest: bool = True) -> None:
     from app.ingestion.worker import drain
 
@@ -273,8 +315,10 @@ async def seed(password: str, ingest: bool = True) -> None:
         await sync_registry(db)
         tools = await seed_tool_grants(db)
         connector = await seed_connector(db)
+        office = await seed_office_mcp(db)
     processed = await drain() if ingest else 0
     print(
         f"ACME seeded: {len(containers)} containers, {len(PERSONAS)} personas, "
-        f"{queued} documents queued, {processed} processed, {tools} tool grants, connector: {connector}."
+        f"{queued} documents queued, {processed} processed, {tools} tool grants, connector: {connector}, "
+        f"office MCP: {office}."
     )

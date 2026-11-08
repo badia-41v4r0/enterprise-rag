@@ -41,6 +41,11 @@ Document contents (by classification), tool data (HR cases, invoices, tickets), 
 | T21 | A folder connector reads outside its folder (`..`, absolute paths, symlinks, races) | Folder must resolve inside `ERAG_CONNECTOR_ROOTS` (read-only mount); symlinks never followed; `O_NOFOLLOW` open and re-check (ADR 0020) | `test_folder_must_resolve_inside_an_allowed_root`, `test_folder_sync_skips_symlinks_and_handles_update_delete_and_resync` |
 | T22 | Server-side request forgery through a web connector (cloud metadata, loopback services, private network, redirects, DNS rebinding) | Public addresses only unless operator-allowlisted; connection pinned to the checked IP; each redirect re-checked; credentials dropped across hosts; body cap (ADR 0020) | `test_ssrf_destinations_are_refused`, `test_ssrf_allowlist_is_exact`, `test_web_connector_crawls_allowlisted_server_and_blocks_redirect_escape` |
 | T23 | Connector content reaches people the source system would not show it to | Documents inherit the target container's access; warning in the UI and in the dry run. **Not solved:** source ACLs are not mirrored (known boundary) | `test_imported_documents_answer_only_for_readers_of_the_container` |
+| T24 | Confidential conversation data sent to a third-party MCP server as tool arguments | Per-server clearance (`max_classification`, default public): tools above the conversation's classification are not offered and calls are refused (ADR 0021) | `test_clearance_refuses_calls_above_the_server_ceiling` |
+| T25 | Third-party tool output treated as low-sensitivity | Every result labeled (default confidential) and validated; routing follows the label | `test_register_approve_two_tools_for_one_role` |
+| T26 | Rug pull / tool poisoning (a server changes a tool after approval, or ships instructions in descriptions) | Tools start disabled; approval pins a hash; live definition checked on every call; changes disable and flag the tool; descriptions sanitized and withheld when instruction-like | `test_rug_pull_disables_the_tool_until_re_approved` |
+| T27 | Model abuses a third-party tool's arguments | Strict schema, admin constraints (enum, pattern, bounds, forced values) enforced by the gateway; per-user and per-tool rate limits; result size cap | `test_argument_constraints_are_enforced` |
+| T28 | Registering an internal URL as an "MCP server" (SSRF) | Same guard as connectors; step-up to register | `test_registration_needs_a_safe_url_and_step_up` |
 
 ## Residual risks (honest limits)
 
@@ -51,7 +56,8 @@ Document contents (by classification), tool data (HR cases, invoices, tickets), 
 - **Cloud egress of internal data is allowed by default** (`ERAG_CLOUD_MAX_CLASSIFICATION=internal`). Set it to `public` to keep internal data local too.
 - **In-process rate limiters** reset on restart and do not work across replicas (single-instance MVP).
 - **Audit log is in the same database** and writable by the app; no tamper evidence.
-- **MCP servers run as subprocesses of the app** with the app's OS user; a malicious server binary would not be contained. Only the bundled reference servers are registered.
+- **Third-party MCP output cannot be filtered per user**: we do not know the ACLs of the system behind it. It is access-controlled per tool and role, labeled, and kept on cleared models, nothing more.
+- **Built-in reference MCP servers run as subprocesses of the app** with the app's OS user. Remote servers run wherever their operator runs them; containment is only provided by the isolated runner (R5).
 - **The credential store master key sits on the same host as the app.** It protects against database and backup leaks, not against compromise of that host. Losing it loses the secrets and MFA enrolments.
 - **Connectors do not mirror source permissions.** A folder or site whose audience is narrower than the container's leaks to every reader of that container. Point connectors only at content whose audience matches the container.
 - **MFA is optional**, also for admins. Admin account compromise remains the largest risk; enable MFA for admins.

@@ -130,6 +130,44 @@ try {
   await admin.getByText("is not a folder inside an allowed root").waitFor();
   step(`connectors: preview "${pv.split("\n")[0]}", sync run done, /etc refused`);
 
+  // R4: the seeded remote MCP server (pending) is approved, two of its tools are enabled and granted to
+  // the Engineering role only. Clearance raised to internal so engineering conversations may use it.
+  await admin.getByRole("button", { name: "MCP registry", exact: true }).click();
+  const office = admin.locator('[data-server="acme-office"]');
+  await office.waitFor();
+  const officeTools = await (await admin.evaluate(() => fetch("/api/admin/registry/servers").then((r) => r.json())))
+    .find((x) => x.name === "acme-office").tools;
+  if (officeTools.some((t) => t.enabled) && !process.env.UI_REUSE) console.log("  (office tools already enabled from an earlier run)");
+  await office.getByLabel("status of acme-office").selectOption("approved");
+  await office.getByLabel("clearance of acme-office").selectOption("internal");
+  // Controlled checkboxes: click, then wait for the server state to come back.
+  const setBox = async (label, want) => {
+    const box = office.getByLabel(label);
+    if ((await box.isChecked()) !== want) await box.click();
+    await admin.waitForFunction(
+      ([sel, w]) => document.querySelector(sel)?.checked === w,
+      [`[data-server="acme-office"] input[aria-label="${label}"]`, want],
+    );
+  };
+  for (const t of ["list_holidays", "convert_currency"]) {
+    await setBox(`enable ${t}`, true);
+    await setBox(`Engineering may execute ${t}`, true);
+  }
+  await setBox("enable office_info", false);
+  const toolsFor = async (email) => {
+    const page = await (await browser.newContext()).newPage();
+    pages.push(page);
+    await login(page, email, ADMIN_PW);
+    return (await page.evaluate(() => fetch("/api/tools").then((r) => r.json()))).map((t) => t.name);
+  };
+  const engTools = await toolsFor("engineer@acme.test");
+  const hireTools = await toolsFor("newhire@acme.test");
+  if (!engTools.includes("acme-office__list_holidays") || !engTools.includes("acme-office__convert_currency") || engTools.includes("acme-office__office_info"))
+    throw new Error(`engineer tools: ${engTools}`);
+  if (hireTools.some((t) => t.startsWith("acme-office__"))) throw new Error(`new hire sees office tools: ${hireTools}`);
+  await admin.screenshot({ path: `${OUT}/ui-mcp-registry.png`, fullPage: true });
+  step(`MCP registry: acme-office approved, 2 tools for Engineering; engineer sees ${engTools.filter((t) => t.startsWith("acme")).join(", ")}; new hire sees none`);
+
   const user = await (await browser.newContext()).newPage();
   pages.push(user);
   await login(user, email, pw);

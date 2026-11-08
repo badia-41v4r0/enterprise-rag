@@ -23,9 +23,10 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import Connectors from "@/pages/Connectors";
+import Registry from "@/pages/Registry";
 import { ContainerContent } from "@/pages/Content";
 
-const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "Tools", "Secrets", "Providers", "Audit", "Jobs"] as const;
+const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Audit", "Jobs"] as const;
 type Tab = (typeof TABS)[number];
 const CLASSES: Classification[] = ["public", "internal", "confidential"];
 
@@ -1080,6 +1081,7 @@ export default function AdminPage() {
       )}
       {tab === "Tools" && <Tools />}
       {tab === "Connectors" && <Connectors containers={containers.data ?? []} />}
+      {tab === "MCP registry" && <Registry />}
       {tab === "Secrets" && <Secrets />}
       {tab === "Providers" && <Providers />}
       {tab === "Audit" && <Audit />}

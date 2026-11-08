@@ -318,3 +318,36 @@ export interface PreviewResult {
   fatal: string | null;
   warning: string;
 }
+
+export interface RegistryTool {
+  id: string;
+  name: string;
+  model_name: string;
+  description: string;
+  description_for_model: string;
+  input_schema: Record<string, unknown>;
+  classification: Classification;
+  enabled: boolean;
+  needs_review: boolean;
+  review_reason: string | null;
+  approved: boolean;
+  arg_constraints: Record<string, Record<string, unknown>>;
+  cannot_enable: string | null;
+}
+export interface RegistryServer {
+  id: string;
+  name: string;
+  builtin: boolean;
+  transport: string;
+  url: string | null;
+  description: string;
+  status: "pending" | "approved" | "disabled";
+  auth_secret: string | null;
+  max_classification: Classification;
+  result_classification: Classification;
+  send_permission_context: boolean;
+  limits: Record<string, number>;
+  runtime: Record<string, unknown>;
+  last_discovered_at: string | null;
+  tools: RegistryTool[];
+}

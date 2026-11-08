@@ -27,7 +27,9 @@ x-app-env: &app-env
   # Folder connectors may only read below these roots (mounted read-only below). ADR 0020.
   ERAG_CONNECTOR_ROOTS: ${ERAG_CONNECTOR_ROOTS:-/connectors}
   # Non-public destinations that web connectors / remote MCP servers may reach (host, host:port, CIDR).
-  ERAG_SSRF_ALLOWLIST: ${ERAG_SSRF_ALLOWLIST:-}
+  ERAG_SSRF_ALLOWLIST: ${ERAG_SSRF_ALLOWLIST:-mcp-office:8791}
+  # Demo: a "third-party" MCP server registered as pending on first start (Admin > MCP registry).
+  ERAG_DEMO_OFFICE_MCP_URL: ${ERAG_DEMO_OFFICE_MCP_URL:-http://mcp-office:8791/mcp}
   ERAG_MCP_TICKETS_DB: /data/tickets.sqlite3
   # Demo: seed ACME Corp on startup (idempotent). Set to false for a real installation.
   ERAG_SEED_DEMO: ${ERAG_SEED_DEMO:-true}
@@ -83,6 +85,16 @@ services:
       app:
         condition: service_started
     mem_limit: 768m
+
+  # Demo remote MCP server (no access to the database or the app). In production, MCP servers run in
+  # the isolated runner (R5) or elsewhere; this one only exists so the registry can be tried.
+  mcp-office:
+    image: enterprise-rag:dev
+    command: ["python", "-m", "mcp_servers.office_server", "--http", "0.0.0.0:8791"]
+    depends_on:
+      app:
+        condition: service_started
+    mem_limit: 256m
 
   ollama:
     image: ollama/ollama:0.12.3

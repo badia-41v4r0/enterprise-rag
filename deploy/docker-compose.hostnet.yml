@@ -12,7 +12,12 @@ services:
     environment:
       ERAG_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-erag}:${POSTGRES_PASSWORD:-erag}@127.0.0.1:${POSTGRES_HOST_PORT:-55432}/${POSTGRES_DB:-erag}
       ERAG_OLLAMA_BASE_URL: http://127.0.0.1:11434
+      ERAG_SSRF_ALLOWLIST: 127.0.0.1:8791
+      ERAG_DEMO_OFFICE_MCP_URL: http://127.0.0.1:8791/mcp
     command: ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && uvicorn app.main:app --host 127.0.0.1 --port ${APP_PORT:-8000}"]
+  mcp-office:
+    network_mode: host
+    command: ["python", "-m", "mcp_servers.office_server", "--http", "127.0.0.1:8791"]
   worker:
     network_mode: host
     extra_hosts: !reset []

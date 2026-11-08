@@ -89,4 +89,6 @@ def _max_class(values: list[str]) -> str:
 
 
 def main() -> None:
-    mcp.run("stdio")
+    from mcp_servers.serve import serve
+
+    serve(mcp)

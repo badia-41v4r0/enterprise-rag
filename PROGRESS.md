@@ -9,7 +9,7 @@ Plan: [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md). Work done autonomously; every re
 | R1 Roles, delegated management, uploads | Done | see `git log` ("R1: ...") |
 | R2 Credential store and MFA | Done | "R2: ..." |
 | R3 Connectors | Done | "R3: ..." |
-| R4 MCP registry and clearance | Not started | |
+| R4 MCP registry and clearance | Done | "R4: ..." |
 | R5 Isolated runner | Not started | |
 
 ### R1. Roles, delegated management and uploads
@@ -79,6 +79,29 @@ Plan: [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md). Work done autonomously; every re
 **Not done / notes**
 - Web connector polish: no robots.txt handling, no per-page rate limiting, no JavaScript rendering; sitemap indexes (nested sitemaps) are not followed.
 - A sync run that crashes the worker mid-way stays `running` (no stale-run reaper yet).
+
+### R4. MCP registry for remote servers and the clearance model
+
+**What was built**
+- Registry (ADR 0021, migration 0007): remote servers over streamable HTTP with status `pending/approved/disabled`, bearer auth from a vault secret, `max_classification` (default public), `result_classification` (default confidential), limits; tools discovered disabled; enabling = approving the current definition hash (step-up); per-tool label and argument constraints (`enum`, `pattern`, `minimum`, `maximum`, `max_length`, `force`).
+- Gateway: transport abstraction (stdio, HTTP with the SSRF guard via an `httpx2` pinned transport, Unix socket for R5), rug-pull check in the same session before every registered call, per-tool rate limit across users, timeouts and result caps from the server limits.
+- Clearance: tools of servers below the conversation classification are not offered; calls above it are refused ("tool unavailable"); the orchestrator now passes the current classification to the tool runtime.
+- Description/schema sanitization; instruction-like descriptions withheld from models and flagged.
+- Reference servers: `--http` / `--uds` (shared `mcp_servers/serve.py`); new demo "third-party" server `mcp_servers/office_server` (holidays, offices, currency).
+- Admin API `/api/admin/registry/*` and UI "MCP registry" (register, status, clearance, rediscover, per-tool enable, label, role grants, constraints, review flags, what the model sees).
+- Demo: Compose service `mcp-office` (port 8791, allowlisted), registered as pending by the seed.
+
+**Verified (2026-11-09)**
+- `uv run pytest`: **206 passed, 2 skipped** in 121 s. New `tests/security/test_mcp_registry.py` (7 tests, real servers over HTTP): registration gives pending + 3 disabled tools; a granted tool of a pending server is not offered; after approving the server and enabling 2 tools for one role, only that role sees and calls them; the other role and the non-enabled tool get "unknown tool"; result labeled confidential; the old tools endpoint cannot enable a registered tool (409); 4 unsafe URLs and loopback-without-allowlist refused; registration without recent auth -> `step_up_required`; clearance `internal` refuses a call in a confidential conversation and hides the tool; constraints (unknown argument refused at config time, enum, maximum, forced value replaces the model's choice and is hidden from its schema); **rug pull**: a real server restarted on the same port with a poisoned description -> call refused, tool disabled and flagged, audit `mcp.tool.changed`, rediscover reports `changed`, description withheld from the model even after deliberate re-approval; auth secret from the vault audited as `mcp:<id>` and listed under "used by"; reference `tickets` server over HTTP scopes engineer/finance/HR exactly as over stdio and rejects a forged token. The existing `test_tools.py` suite (stdio) still passes.
+- `ruff`, `ruff format --check`, `mypy` strict, license check (`httpx2` is BSD-3, already a dependency of `mcp`), `npm run build`: pass.
+- **Exit criterion (Docker + UI):** `scripts/ui_smoke.mjs` approves the seeded `acme-office`, raises its clearance to internal, enables `list_holidays` and `convert_currency` and grants them to *Engineering* only: engineer's `/api/tools` lists both (not `office_info`), new hire's lists none. `UI SMOKE PASSED`. Real chat with the local model: engineer asks for Spain's 2026 holidays -> `tool_call acme-office__list_holidays {"country":"ES"}` -> `tool_result ok confidential` -> answer listing the holidays; new hire is offered no office tool and gets "I don't have information about that".
+- `scripts/demo_scenarios.py`: unchanged results (the engineer's visible tools now include the two approved office tools).
+
+**Decisions:** ADR 0021 (`max_classification` defaults to public; no permission context to third parties by default; unapproved tools look unknown; per-tool label initialised from `result_classification`; the old tools endpoint refuses registered tools).
+
+**Notes / known issues**
+- Port 8770 was taken on this machine, so the demo office server uses 8791.
+- One MCP session per call (no pooling) plus one `tools/list` per call for rug-pull detection.
 
 ---
 

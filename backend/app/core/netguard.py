@@ -21,6 +21,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+import httpx2
 
 IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
@@ -153,3 +154,24 @@ async def guarded_get(
 
 def pinned_client(allowlist: Sequence[str], timeout: float = 20.0, **kwargs: Any) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=PinnedTransport(allowlist), timeout=timeout, follow_redirects=False, **kwargs)
+
+
+class PinnedTransport2(httpx2.AsyncBaseTransport):
+    """The same guard for httpx2, which the MCP SDK's streamable HTTP client uses."""
+
+    def __init__(self, allowlist: Sequence[str]) -> None:
+        self.allowlist = list(allowlist)
+        self.inner = httpx2.AsyncHTTPTransport(verify=True, retries=0)
+
+    async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
+        target = await check_url(str(request.url), self.allowlist)
+        ip_host = f"[{target.ip}]" if ":" in target.ip else target.ip
+        request.url = request.url.copy_with(host=ip_host)
+        default_port = 443 if target.scheme == "https" else 80
+        request.headers["Host"] = target.host if target.port == default_port else f"{target.host}:{target.port}"
+        if target.scheme == "https":
+            request.extensions = {**request.extensions, "sni_hostname": target.host}
+        return await self.inner.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self.inner.aclose()
