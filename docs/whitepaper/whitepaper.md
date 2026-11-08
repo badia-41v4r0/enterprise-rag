@@ -136,6 +136,10 @@ Connectors, registered MCP servers and the cloud-model provider all need credent
 
 In short: the credential store makes the common failures (database and backup leaks, log exposure) harmless, and the surrounding measures bound the damage of the rare catastrophic one. A company with a high-risk threat model should adopt the "key manager" and "separate broker" rows before putting the system in production; the reference implementation is structured so that they can be added without changing how the rest of the system uses secrets.
 
+### 7.4 Choosing the model without widening what it may see (v0.3)
+
+Version 0.3 adds cost controls (token accounting, prices, limits checked on the worst case before every request, quotas per user and role) and an optional model router that picks, for each question, a suitable model: a small local model for an easy question, a stronger one for a hard question, a tool-capable one for tool use. The same principle as in section 4 applies, **classification first, optimization second**: the router only chooses among the models the request is already permitted to use (cleared for its classification, within budgets and quotas), so a manipulated question can change which permitted model answers but never what data reaches which model. The decider that judges the question (a prompted local model, an open decision model, or a hosted decision API) is itself treated as an external recipient: it receives only the question and metadata, never the retrieved documents unless it runs locally, and a hosted decider is only consulted for data it is cleared for (public by default). If the router fails, times out or is switched off, the system behaves exactly as before.
+
 ## 8. How-to: install, configure, onboard, operate, harden
 
 1. **Install:** Docker Compose and Ollama with `bge-m3` and a local chat model; `docker compose up`. See the README.

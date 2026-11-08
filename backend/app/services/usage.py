@@ -60,6 +60,7 @@ class ModelLimits:
     input_usd_per_mtok: float = 0.0
     output_usd_per_mtok: float = 0.0
     price_known: bool = False
+    supports_tools: bool = True
 
     @property
     def model_id(self) -> str:

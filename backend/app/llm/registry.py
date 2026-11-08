@@ -153,6 +153,7 @@ def model_limits(row: LlmProvider, m: LlmModel, locality: str, s: Settings) -> M
         input_usd_per_mtok=float(m.input_usd_per_mtok or 0.0),
         output_usd_per_mtok=float(m.output_usd_per_mtok or 0.0),
         price_known=price_known or local_free,
+        supports_tools=m.supports_tools,
     )
 
 

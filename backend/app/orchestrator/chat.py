@@ -80,6 +80,7 @@ class PreparedChat:
     provider: LLMProvider | None
     refusal: str | None
     messages: list[dict[str, Any]]
+    routing: dict[str, Any] | None = None  # the model router's decision, when it chose the model
 
 
 class ChatOrchestrator:
@@ -166,12 +167,20 @@ class ChatOrchestrator:
 
         provider: LLMProvider | None = None
         refusal: str | None = None
+        routing: dict[str, Any] | None = None
+        messages = build_messages(question, context, history, tools_available=bool(tools))
         if context.items or tools:
+            if requested_model is None:
+                # The model router (off by default; off = exactly the previous behaviour). It only chooses
+                # among the permitted models; on any failure the existing rules below decide (ADR 0029).
+                provider, routing = await self._smart_route(
+                    user, perms, question, classification, tools, context, messages
+                )
             try:
-                provider = self.router.choose(classification, requested_model)
+                if provider is None:
+                    provider = self.router.choose(classification, requested_model)
             except RoutingRefused as exc:
                 refusal = exc.reason
-        messages = build_messages(question, context, history, tools_available=bool(tools))
         return PreparedChat(
             conversation=conv,
             question=question,
@@ -185,7 +194,42 @@ class ChatOrchestrator:
             provider=provider,
             refusal=refusal,
             messages=messages,
+            routing=routing,
         )
+
+    async def _smart_route(
+        self,
+        user: User,
+        perms: EffectivePermissions,
+        question: str,
+        classification: Classification,
+        tools: list[ToolSpec],
+        context: BuiltContext,
+        messages: list[dict[str, Any]],
+    ) -> tuple[LLMProvider | None, dict[str, Any] | None]:
+        from app.modelrouter import service as smart
+
+        try:
+            cfg = await smart.load_config(self.db)
+            if not cfg.enabled:
+                return None, None
+            res = await smart.route(
+                self.db,
+                self.router,
+                question=question,
+                classification=classification,
+                tools_offered=bool(tools),
+                context_tokens=context.token_count,
+                context_text="\n\n".join(i.text for i in context.items) or None,
+                input_tokens=preventive_input_tokens(messages, tools),
+                user_id=user.id,
+                role_ids=perms.role_ids,
+                cfg=cfg,
+            )
+        except Exception:
+            log.exception("model router failed; falling back to the existing rules")
+            return None, None
+        return res.provider, res.summary() if res.provider is not None else None
 
     # --- generation ----------------------------------------------------------------------------
 
@@ -220,7 +264,14 @@ class ChatOrchestrator:
             answer = NO_INFO_ANSWER
             yield {"type": "delta", "text": answer}
         elif refusal is None and provider is not None:
-            yield {"type": "route", "model": provider.model_id, "classification": classification.value}
+            route_event: dict[str, Any] = {
+                "type": "route",
+                "model": provider.model_id,
+                "classification": classification.value,
+            }
+            if prep.routing:
+                route_event["router"] = prep.routing
+            yield route_event
             messages = list(prep.messages)
             max_iter = self.settings.tool_max_iterations
             turn_tokens = 0

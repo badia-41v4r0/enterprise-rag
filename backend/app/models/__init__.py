@@ -489,8 +489,82 @@ class LlmModel(TimestampMixin, Base):
     input_usd_per_mtok: Mapped[float | None] = mapped_column(Float, nullable=True)
     output_usd_per_mtok: Mapped[float | None] = mapped_column(Float, nullable=True)
     price_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # The model router only picks tool-capable models when tools are offered (PLAN-v0.3 R7).
+    supports_tools: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     provider: Mapped[LlmProvider] = relationship(back_populates="models", lazy="selectin")
+
+
+# --- Model router (PLAN-v0.3 R7 to R9, ADR 0029 to 0032) ------------------------------------------
+
+
+class RouterDecider(TimestampMixin, Base):
+    """A configured decider: a prompted registry model, an open Jev-style server or the official Jev API.
+
+    The rules decider is built in and always last; it is not stored. Locality is derived from the address
+    (as for providers) and caps the clearance: a non-local decider is never cleared for confidential."""
+
+    __tablename__ = "router_deciders"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    kind: Mapped[str] = mapped_column(String(20))  # "prompted" | "protocol" | "jev_official"
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    base_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(250), nullable=True)
+    secret_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    self_hosted: Mapped[bool] = mapped_column(Boolean, default=False)
+    locality: Mapped[str] = mapped_column(String(10), default="cloud")
+    max_classification: Mapped[Classification | None] = mapped_column(
+        _enum(Classification, "classification"), nullable=True
+    )
+    see_context: Mapped[bool] = mapped_column(Boolean, default=False)
+    timeout_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    monthly_budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    daily_request_cap: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_usd_per_mtok: Mapped[float | None] = mapped_column(Float, nullable=True)
+    output_usd_per_mtok: Mapped[float | None] = mapped_column(Float, nullable=True)
+    options: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class RouterLane(TimestampMixin, Base):
+    """Conditions on the decider's answers and an ordered list of target model ids (first permitted wins)."""
+
+    __tablename__ = "router_lanes"
+    __table_args__ = (
+        Index("uq_router_lanes_single_default", "is_default", unique=True, postgresql_where=text("is_default")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    conditions: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    targets: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class RouterDecision(Base):
+    """One routing decision. Never the question nor any context (PLAN-v0.3 section 5)."""
+
+    __tablename__ = "router_decisions"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now(), index=True)
+    dry_run: Mapped[bool] = mapped_column(Boolean, default=False)
+    classification: Mapped[Classification] = mapped_column(_enum(Classification, "classification"))
+    tools_offered: Mapped[bool] = mapped_column(Boolean, default=False)
+    permitted: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    decider: Mapped[str] = mapped_column(String(100))
+    attempts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    answers: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    lane: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    chosen_model: Mapped[str | None] = mapped_column(String(250), nullable=True)
+    reason: Mapped[str] = mapped_column(String(500), default="")
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class Secret(TimestampMixin, Base):

@@ -25,6 +25,8 @@ const ollamaSlug = `ui-ollama-${sfx}`;
 const apiSlug = `ui-api-${sfx}`;
 const apiKey = `ui-key-${sfx}-not-real`;
 const pw = "ui-tester-password-1";
+const deciderName = `ui-decider-${sfx}`;
+const laneName = `ui-lane-${sfx}`;
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s), to log in with MFA like an authenticator app would.
 import crypto from "node:crypto";
@@ -74,13 +76,18 @@ async function cleanup() {
     if (prov.default_model_id && ours(prov.default_model_id.split(":")[0]))
       await api("PUT", "/api/admin/models/default", { model_id: null });
     for (const p of prov.providers.filter((x) => ours(x.slug))) await api("DELETE", `/api/admin/providers/${p.id}`);
+    // Model router: remove this run's (and interrupted runs') deciders and lanes, and make sure it ends disabled.
+    await api("PUT", "/api/admin/router/settings", { enabled: false });
+    const mr = await list("/api/admin/router");
+    for (const d of mr.deciders.filter((x) => /^ui-decider-\d{6}$/.test(x.name))) await api("DELETE", `/api/admin/router/deciders/${d.id}`);
+    for (const l of mr.lanes.filter((x) => /^ui-lane-\d{6}$/.test(x.name))) await api("DELETE", `/api/admin/router/lanes/${l.id}`);
     const user = (await list("/api/admin/users")).find((u) => u.email === email);
     if (user) await api("PATCH", `/api/admin/users/${user.id}`, { role_ids: [], is_active: false });
     const r = (await list("/api/admin/roles")).find((x) => x.name === role);
     if (r) await api("DELETE", `/api/admin/roles/${r.id}`);
     const c = (await list("/api/admin/containers")).find((x) => x.name === container);
     if (c) await api("DELETE", `/api/admin/containers/${c.id}`);
-    console.log("cleanup: removed the test providers, role and container, reset the default model, deactivated the test user");
+    console.log("cleanup: removed the test providers, router deciders and lanes (router disabled), role (and its quotas) and container, reset the default model, deactivated the test user");
   } catch (err) {
     console.error("cleanup failed (remove the 'UI Tester'/'UI Facilities' leftovers manually):", err.message);
   }
@@ -344,6 +351,55 @@ try {
   await admin.getByTestId("limits-history").getByText("admin.price.update").first().waitFor();
   await admin.screenshot({ path: `${OUT}/ui-limits.png`, fullPage: true });
   step(`limits: ${tokensToday.replace(/\s+/g, " ")}; price 0.5/1.5 USD per 1M set, monthly ceiling raised to 0.5 USD and 1M tokens/day with step-up; both in the change history`);
+
+  // v0.3 R7/R8: the Model router tab. A prompted decider on the local model, a default lane to the test API
+  // model, a real decider test, a dry run for the test user, then the router is switched on for one real
+  // question and switched off again (cleanup also makes sure it ends disabled).
+  await admin.getByRole("button", { name: "Model router", exact: true }).click();
+  await admin.getByTestId("router-state").getByText("disabled").waitFor();
+  await admin.getByLabel("decider kind").selectOption("prompted");
+  await admin.getByLabel("decider name").fill(deciderName);
+  await admin.getByLabel("decider model").selectOption(`ollama:${QWEN}`);
+  await admin.getByRole("button", { name: "Add decider" }).click();
+  await confirmIfAsked(admin);
+  const decRow = admin.locator(`tr[data-decider="${deciderName}"]`);
+  await decRow.getByText("available").waitFor({ timeout: 30_000 });
+  await decRow.getByRole("button", { name: `test ${deciderName}` }).click();
+  const decTest = await decRow.getByTestId(`decider-test-${deciderName}`);
+  await decTest.waitFor({ timeout: 120_000 });
+  const decTestText = await decTest.innerText();
+  await admin.getByLabel("lane name").fill(laneName);
+  await admin.getByLabel("default lane").check();
+  await admin.getByLabel("lane target").selectOption(`${ollamaSlug}:${QWEN}`);
+  await admin.getByRole("button", { name: "Add target" }).click();
+  await admin.getByRole("button", { name: "Add lane" }).click();
+  await confirmIfAsked(admin);
+  await admin.locator(`tr[data-lane="${laneName}"]`).waitFor({ timeout: 15_000 });
+  await admin.getByLabel("dry run question").fill("Where do employees park?");
+  await admin.getByLabel("dry run classification").selectOption("internal");
+  await admin.getByLabel("dry run persona").selectOption({ label: email });
+  await admin.getByRole("button", { name: "Run", exact: true }).click();
+  const dry = admin.getByTestId("dry-run-result");
+  await dry.waitFor({ timeout: 120_000 });
+  const dryText = await dry.innerText();
+  if (!dryText.includes(`${ollamaSlug}:${QWEN}`)) throw new Error(`dry run did not choose the lane target: ${dryText}`);
+  await admin.getByRole("button", { name: "Enable router" }).click();
+  await confirmIfAsked(admin);
+  await admin.getByTestId("router-state").getByText("enabled").waitFor({ timeout: 15_000 });
+  await user.getByPlaceholder("Ask a question (Enter to send)").fill("Where do employees park?");
+  await user.getByRole("button", { name: "Send" }).click();
+  await user.getByText("thinking...").waitFor({ state: "detached", timeout: 180_000 });
+  // The default model is the API provider; the router sends this question to the lane target instead.
+  await user.getByText(`${ollamaSlug}:${QWEN}`, { exact: true }).last().waitFor({ timeout: 30_000 });
+  await admin.getByRole("button", { name: "Disable (kill switch)" }).click();
+  await admin.getByTestId("router-state").getByText("disabled").waitFor({ timeout: 15_000 });
+  await admin.getByRole("button", { name: "Users", exact: true }).click();
+  await admin.getByRole("button", { name: "Model router", exact: true }).click();
+  const logRows = await admin.locator("tr[data-decision]").count();
+  if (logRows < 2) throw new Error(`decision log has ${logRows} rows`);
+  if ((await admin.content()).includes("Where do employees park")) throw new Error("question text visible in the router page");
+  await admin.screenshot({ path: `${OUT}/ui-model-router.png`, fullPage: true });
+  step(`model router: decider ${deciderName} tested (${decTestText.slice(0, 120)}); default lane -> ${ollamaSlug}:${QWEN} (the chat default is ${apiSlug}); dry run chose it; enabled, the user's question was answered by it, disabled again; ${logRows} decisions logged without the question`);
 
   await admin.getByRole("button", { name: "Roles", exact: true }).click();
   await admin.getByLabel("quota role").selectOption({ label: role });

@@ -33,3 +33,5 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0026](0026-cost-limits-token-accounting-preventive-check.md) | Cost limits, token accounting, prices and a preventive worst-case check; admins may raise limits | Accepted |
 | [0027](0027-quotas-per-user-and-role.md) | Quotas per user and per role: standard caps, collective pools, overrides | Accepted, Owner review |
 | [0028](0028-remove-openrouter-free-only-rule.md) | Remove the OpenRouter free-only rule | Accepted |
+| [0029](0029-model-router.md) | Model router: permitted set first, deciders and lanes second, an instant kill switch | Accepted |
+| [0030](0030-decision-protocol-and-decider-clearance.md) | One decision protocol for the official and open deciders; decider clearance and egress | Accepted |

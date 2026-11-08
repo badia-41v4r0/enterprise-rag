@@ -18,6 +18,7 @@ from app.api import (
     documents,
     health,
     mcp_registry,
+    model_router,
     providers,
     quotas,
     secrets,
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(connectors.router)
     app.include_router(mcp_registry.router)
     app.include_router(quotas.router)
+    app.include_router(model_router.router)
 
     _mount_frontend(app, settings.frontend_dist)
     return app

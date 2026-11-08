@@ -90,4 +90,6 @@ markers = [
   "provider_openrouter: real OpenRouter test (skipped without ERAG_OPENROUTER_API_KEY)",
   "provider_claude_code: real `claude -p` test (opt-in: ERAG_RUN_CLAUDE_CODE_TESTS=1)",
   "docker: needs a real Docker daemon (isolated runner tests; skipped when unreachable)",
+  "decider_open: real open Jev-style decision server (opt-in: skipped unless ERAG_TEST_OPEN_JEV_URL answers /health)",
+  "decider_official: real TypeSafe Jev API calls (opt-in: skipped without ERAG_TEST_JEV_API_KEY; costs a little)",
 ]
