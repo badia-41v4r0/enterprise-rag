@@ -35,6 +35,7 @@ Document contents (by classification), tool data (HR cases, invoices, tickets), 
 | T15 | Admin silently reads everything | Admin is a management privilege; data access only via audited grants | ADR 0009, citation-endpoint test |
 | T16 | Weak secrets in production | App refuses to start in `prod` with dev secrets | `test_prod_refuses_dev_secrets` |
 | T17 | Path traversal via uploads or tools | Filenames reduced to basenames; blob keys are hashes; `read_file` rejects `..`/absolute paths and checks the root | upload and `test_file_scope` tests |
+| T18 | A content manager or contributor escalates (changes grants, classification, other containers, reads restricted content by un-restricting it or through upload deduplication) | Grants/classification/roles stay admin-only; `contribute`/`manage` scoped to one container; lifting `restricted` requires read access; dedupe ignores unreadable restricted documents (ADR 0017) | `tests/security/test_delegation.py` |
 
 ## Residual risks (honest limits)
 

@@ -45,6 +45,7 @@ export interface Me {
   is_admin: boolean;
   roles: string[];
   csrf_token: string;
+  can_manage_content: boolean;
 }
 export interface Citation {
   n: number;
@@ -104,6 +105,18 @@ export interface RoleRow {
   id: string;
   name: string;
   description: string;
+  user_count: number;
+  grant_count: number;
+}
+export type AccessLevel = "none" | "read" | "contribute" | "manage";
+export interface EffectivePermissions {
+  user_id: string;
+  is_admin: boolean;
+  is_active: boolean;
+  roles: string[];
+  containers: { id: string; name: string; classification: Classification; level: AccessLevel }[];
+  restricted_documents: { id: string; title: string; container: string }[];
+  tools: string[];
 }
 export interface ContainerRow {
   id: string;
@@ -112,6 +125,7 @@ export interface ContainerRow {
   description: string;
   classification: Classification;
   can_read?: boolean;
+  can_contribute?: boolean;
   can_manage?: boolean;
 }
 export interface DocumentRow {
@@ -121,15 +135,32 @@ export interface DocumentRow {
   filename: string;
   restricted: boolean;
   current_version_id: string | null;
+  latest_version_id: string | null;
   latest_status: string | null;
+  latest_error: string | null;
+  version_count: number;
   chunk_count: number;
+  can_read: boolean;
+}
+export interface VersionRow {
+  id: string;
+  sha256: string;
+  status: string;
+  error: string | null;
+  size_bytes: number;
+  created_at: string;
+  created_by: string | null;
+  is_current: boolean;
+}
+export interface DocumentDetail extends DocumentRow {
+  versions: VersionRow[];
 }
 export interface GrantRow {
   id: string;
   role_id: string;
   resource_type: "container" | "document" | "tool";
   resource_id: string;
-  action: "read" | "manage" | "execute";
+  action: "read" | "contribute" | "manage" | "execute";
 }
 export interface ToolRow {
   id: string;

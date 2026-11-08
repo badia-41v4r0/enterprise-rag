@@ -60,6 +60,8 @@ CONTAINERS = [
 ROLES: dict[str, dict[str, Action]] = {
     "Employee": {"general-handbook": Action.read, "product-docs": Action.read},
     "HR": {"hr-confidential": Action.manage},
+    # Delegated content work without access to restricted HR documents (ADR 0017).
+    "HR Contributor": {"hr-confidential": Action.contribute},
     "Finance": {"finance": Action.manage},
     "Engineering": {"engineering": Action.manage},
     "Executive": {c.slug: Action.read for c in CONTAINERS},
@@ -90,6 +92,7 @@ PERSONAS = [
     Persona("finance@acme.test", "Felix Finance Analyst", ["Employee", "Finance"]),
     Persona("engineer@acme.test", "Elena Engineer", ["Employee", "Engineering"]),
     Persona("newhire@acme.test", "Nico New Hire", ["Employee"]),
+    Persona("hr.assistant@acme.test", "Hugo HR Assistant", ["Employee", "HR Contributor"]),
     Persona("exec@acme.test", "Eva Executive", ["Employee", "Executive"]),
 ]
 

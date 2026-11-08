@@ -1,16 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Trash2, Upload } from "lucide-react";
-import { useState } from "react";
+import { RefreshCw, Trash2 } from "lucide-react";
+import { Fragment, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, ClassBadge, Table, Th } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import {
   api,
   json,
+  type AccessLevel,
   type AuditRow,
   type Classification,
   type ContainerRow,
   type DocumentRow,
+  type EffectivePermissions,
   type GrantRow,
   type JobRow,
   type RoleRow,
@@ -18,6 +20,7 @@ import {
   type UserRow,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { ContainerContent } from "@/pages/Content";
 
 const TABS = ["Users", "Roles", "Containers", "Grants", "Tools", "Audit", "Jobs"] as const;
 type Tab = (typeof TABS)[number];
@@ -169,136 +172,177 @@ function Users() {
 
 // --- Roles ---------------------------------------------------------------------------------------
 
+const TEMPLATES = [
+  { id: "", label: "no template" },
+  { id: "reader", label: "Reader (read)" },
+  { id: "contributor", label: "Contributor (read + upload)" },
+  { id: "manager", label: "Manager (read + upload + delete)" },
+];
+
 function Roles() {
   const inv = useInvalidate();
   const roles = useRoles();
-  const [name, setName] = useState("");
-  const create = useMutation({
-    mutationFn: () => api("/api/admin/roles", { method: "POST", body: json({ name }) }),
-    onSuccess: () => {
-      setName("");
-      inv("roles");
-    },
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => api(`/api/admin/roles/${id}`, { method: "DELETE" }),
-    onSuccess: () => inv("roles", "users", "grants"),
-  });
+  const containers = useContainers();
+  const users = useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/api/admin/users") });
+  const [form, setForm] = useState({ name: "", template: "", container_ids: [] as string[] });
+  const [error, setError] = useState("");
+  const [members, setMembers] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const run = async (fn: () => Promise<unknown>) => {
+    setError("");
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    inv("roles", "users", "grants");
+  };
+  const create = () =>
+    run(async () => {
+      await api("/api/admin/roles", {
+        method: "POST",
+        body: json({ name: form.name, template: form.template || null, container_ids: form.container_ids }),
+      });
+      setForm({ name: "", template: "", container_ids: [] });
+    });
+  const rename = (r: RoleRow) => {
+    const name = prompt("New name", r.name);
+    if (name && name !== r.name) run(() => api(`/api/admin/roles/${r.id}`, { method: "PATCH", body: json({ name }) }));
+  };
+  const clone = (r: RoleRow) => {
+    const name = prompt("Name of the copy", `${r.name} (copy)`);
+    if (name) run(() => api(`/api/admin/roles/${r.id}/clone`, { method: "POST", body: json({ name }) }));
+  };
+  const remove = (r: RoleRow) => {
+    if (r.user_count === 0) {
+      if (confirm(`Delete role ${r.name}?`)) run(() => api(`/api/admin/roles/${r.id}`, { method: "DELETE" }));
+      return;
+    }
+    const others = roles.data?.filter((x) => x.id !== r.id) ?? [];
+    const target = prompt(
+      `${r.user_count} user(s) hold ${r.name}. Type the name of the role to move them to:\n${others.map((o) => o.name).join(", ")}`,
+    );
+    const to = others.find((o) => o.name === target);
+    if (target && !to) setError(`No role named ${target}`);
+    if (to) run(() => api(`/api/admin/roles/${r.id}?reassign_to=${to.id}`, { method: "DELETE" }));
+  };
+  const saveMembers = (r: RoleRow) => {
+    const current = users.data?.filter((u) => u.role_ids.includes(r.id)).map((u) => u.id) ?? [];
+    const add = picked.filter((id) => !current.includes(id));
+    const removeIds = current.filter((id) => !picked.includes(id));
+    run(() => api(`/api/admin/roles/${r.id}/members`, { method: "POST", body: json({ add, remove: removeIds }) }));
+    setMembers(null);
+  };
+
   return (
-    <Card className="p-4">
-      <div className="mb-3 flex gap-2">
-        <Input placeholder="role name" value={name} onChange={(e) => setName(e.target.value)} className="max-w-xs" />
-        <Button size="sm" onClick={() => create.mutate()} disabled={!name}>
-          Create role
-        </Button>
-      </div>
-      <ErrorLine error={create.error} />
-      <ul className="divide-y divide-border text-sm">
-        {roles.data?.map((r) => (
-          <li key={r.id} className="flex items-center justify-between py-2">
-            {r.name}
-            <Button variant="ghost" size="icon" onClick={() => remove.mutate(r.id)} aria-label={`Delete ${r.name}`}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </Card>
+    <div className="space-y-4">
+      <Card className="p-4">
+        <h3 className="mb-3 text-sm font-semibold">Create role</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input placeholder="role name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="max-w-xs" />
+          <Select value={form.template} onChange={(e) => setForm({ ...form, template: e.target.value })} className="w-64" aria-label="template">
+            {TEMPLATES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </Select>
+          <Button size="sm" onClick={create} disabled={!form.name}>
+            Create role
+          </Button>
+        </div>
+        {form.template && (
+          <div className="mt-2 flex flex-wrap gap-3 text-sm">
+            <span className="text-xs text-muted-foreground">on containers:</span>
+            {containers.data?.map((c) => (
+              <label key={c.id} className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={form.container_ids.includes(c.id)}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      container_ids: e.target.checked ? [...form.container_ids, c.id] : form.container_ids.filter((x) => x !== c.id),
+                    })
+                  }
+                />
+                {c.name}
+              </label>
+            ))}
+          </div>
+        )}
+        <ErrorLine error={error} />
+      </Card>
+      <Card>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Role</Th>
+              <Th>Users</Th>
+              <Th>Grants</Th>
+              <Th>Actions</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {roles.data?.map((r) => (
+              <Fragment key={r.id}>
+                <tr className="border-t border-border" data-role={r.name}>
+                  <td>{r.name}</td>
+                  <td>{r.user_count}</td>
+                  <td>{r.grant_count}</td>
+                  <td className="flex gap-1">
+                    <Button variant="outline" size="sm" onClick={() => rename(r)}>
+                      Rename
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => clone(r)}>
+                      Clone
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMembers(members === r.id ? null : r.id);
+                        setPicked(users.data?.filter((u) => u.role_ids.includes(r.id)).map((u) => u.id) ?? []);
+                      }}
+                    >
+                      Members
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => remove(r)} aria-label={`Delete ${r.name}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+                {members === r.id && (
+                  <tr>
+                    <td colSpan={4} className="bg-muted/50">
+                      <div className="flex flex-wrap gap-3 text-xs">
+                        {users.data?.map((u) => (
+                          <label key={u.id} className="flex items-center gap-1">
+                            <input
+                              type="checkbox"
+                              checked={picked.includes(u.id)}
+                              onChange={(e) => setPicked(e.target.checked ? [...picked, u.id] : picked.filter((x) => x !== u.id))}
+                            />
+                            {u.email}
+                          </label>
+                        ))}
+                      </div>
+                      <Button className="mt-2" size="sm" onClick={() => saveMembers(r)}>
+                        Save members
+                      </Button>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </Table>
+      </Card>
+    </div>
   );
 }
 
 // --- Containers and documents ---------------------------------------------------------------------
-
-function Documents({ container }: { container: ContainerRow }) {
-  const inv = useInvalidate();
-  const docs = useQuery({
-    queryKey: ["docs", container.id],
-    queryFn: () => api<DocumentRow[]>(`/api/containers/${container.id}/documents`),
-    refetchInterval: 3000,
-  });
-  const [file, setFile] = useState<File | null>(null);
-  const [restricted, setRestricted] = useState(false);
-  const [msg, setMsg] = useState("");
-  const upload = useMutation({
-    mutationFn: async () => {
-      const fd = new FormData();
-      fd.append("file", file!);
-      fd.append("restricted", String(restricted));
-      return api<{ status: string }>(`/api/containers/${container.id}/documents`, { method: "POST", body: fd });
-    },
-    onSuccess: (r) => {
-      setMsg(r.status === "duplicate" ? "Identical file already present: skipped." : "Queued for ingestion.");
-      setFile(null);
-      inv("docs");
-    },
-  });
-  const patch = useMutation({
-    mutationFn: ({ id, restricted }: { id: string; restricted: boolean }) =>
-      api(`/api/documents/${id}`, { method: "PATCH", body: json({ restricted }) }),
-    onSuccess: () => inv("docs"),
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => api(`/api/documents/${id}`, { method: "DELETE" }),
-    onSuccess: () => inv("docs"),
-  });
-  return (
-    <Card className="p-4">
-      <h3 className="mb-3 text-sm font-semibold">Documents in {container.name}</h3>
-      <div className="mb-3 flex items-center gap-2">
-        <Input
-          type="file"
-          accept=".pdf,.docx,.xlsx,.html,.htm,.md,.markdown,.txt"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="max-w-sm"
-        />
-        <label className="flex items-center gap-1 text-sm">
-          <input type="checkbox" checked={restricted} onChange={(e) => setRestricted(e.target.checked)} />
-          restricted
-        </label>
-        <Button size="sm" onClick={() => upload.mutate()} disabled={!file || upload.isPending}>
-          <Upload className="h-4 w-4" /> Upload
-        </Button>
-        <span className="text-xs text-muted-foreground">{msg}</span>
-      </div>
-      <ErrorLine error={upload.error} />
-      <Table>
-        <thead>
-          <tr>
-            <Th>Title</Th>
-            <Th>File</Th>
-            <Th>Status</Th>
-            <Th>Chunks</Th>
-            <Th>Restricted</Th>
-            <Th />
-          </tr>
-        </thead>
-        <tbody>
-          {docs.data?.map((d) => (
-            <tr key={d.id} className="border-t border-border">
-              <td>{d.title}</td>
-              <td className="font-mono text-xs">{d.filename}</td>
-              <td>{d.latest_status}</td>
-              <td>{d.chunk_count}</td>
-              <td>
-                <input
-                  type="checkbox"
-                  checked={d.restricted}
-                  onChange={(e) => patch.mutate({ id: d.id, restricted: e.target.checked })}
-                  aria-label="restricted"
-                />
-              </td>
-              <td>
-                <Button variant="ghost" size="icon" onClick={() => remove.mutate(d.id)} aria-label="Delete document">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </Table>
-    </Card>
-  );
-}
 
 function Containers() {
   const inv = useInvalidate();
@@ -380,7 +424,7 @@ function Containers() {
           </tbody>
         </Table>
       </Card>
-      {current && <Documents container={current} />}
+      {current && <ContainerContent key={current.id} container={{ ...current, can_manage: true, can_contribute: true }} />}
     </div>
   );
 }
@@ -418,7 +462,7 @@ function Grants() {
     mutationFn: (id: string) => api(`/api/admin/grants/${id}`, { method: "DELETE" }),
     onSuccess: () => inv("grants"),
   });
-  const actions: GrantRow["action"][] = rtype === "container" ? ["read", "manage"] : rtype === "document" ? ["read"] : ["execute"];
+  const actions: GrantRow["action"][] = rtype === "container" ? ["read", "contribute", "manage"] : rtype === "document" ? ["read"] : ["execute"];
   const label = (g: GrantRow) => {
     if (g.resource_type === "container") return containers.data?.find((c) => c.id === g.resource_id)?.name ?? g.resource_id;
     if (g.resource_type === "tool") return tools.data?.find((t) => t.id === g.resource_id)?.model_name ?? g.resource_id;
@@ -543,6 +587,148 @@ function Grants() {
         </Table>
       </Card>
     </div>
+  );
+}
+
+// --- Grants matrix and effective permissions --------------------------------------------------------
+
+const LEVELS: AccessLevel[] = ["none", "read", "contribute", "manage"];
+
+function Matrix() {
+  const inv = useInvalidate();
+  const roles = useRoles();
+  const containers = useContainers();
+  const tools = useTools();
+  const grants = useQuery({ queryKey: ["grants", "all"], queryFn: () => api<GrantRow[]>("/api/admin/grants") });
+  const [error, setError] = useState("");
+  const levelOf = (roleId: string, containerId: string): AccessLevel => {
+    const actions = (grants.data ?? [])
+      .filter((g) => g.role_id === roleId && g.resource_type === "container" && g.resource_id === containerId)
+      .map((g) => g.action);
+    return actions.includes("manage") ? "manage" : actions.includes("contribute") ? "contribute" : actions.includes("read") ? "read" : "none";
+  };
+  const toolGrant = (roleId: string, toolId: string) =>
+    grants.data?.find((g) => g.role_id === roleId && g.resource_type === "tool" && g.resource_id === toolId);
+  const run = async (fn: () => Promise<unknown>) => {
+    setError("");
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    inv("grants", "roles");
+  };
+  return (
+    <Card className="p-4">
+      <h3 className="mb-1 text-sm font-semibold">Grants matrix</h3>
+      <p className="mb-3 text-xs text-muted-foreground">
+        contribute = read + upload/replace; manage = contribute + delete and restricted flag. Grants and classification stay with the admin.
+      </p>
+      <ErrorLine error={error} />
+      <Table>
+        <thead>
+          <tr>
+            <Th>Resource</Th>
+            {roles.data?.map((r) => (
+              <Th key={r.id}>{r.name}</Th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {containers.data?.map((c) => (
+            <tr key={c.id} className="border-t border-border" data-matrix-container={c.name}>
+              <td className="whitespace-nowrap">
+                {c.name} <ClassBadge value={c.classification} />
+              </td>
+              {roles.data?.map((r) => (
+                <td key={r.id}>
+                  <Select
+                    value={levelOf(r.id, c.id)}
+                    aria-label={`${r.name} on ${c.name}`}
+                    onChange={(e) =>
+                      run(() => api(`/api/admin/roles/${r.id}/containers/${c.id}`, { method: "PUT", body: json({ level: e.target.value }) }))
+                    }
+                    className="w-32"
+                  >
+                    {LEVELS.map((l) => (
+                      <option key={l}>{l}</option>
+                    ))}
+                  </Select>
+                </td>
+              ))}
+            </tr>
+          ))}
+          {tools.data?.map((t) => (
+            <tr key={t.id} className="border-t border-border">
+              <td className="font-mono text-xs">{t.model_name}</td>
+              {roles.data?.map((r) => {
+                const g = toolGrant(r.id, t.id);
+                return (
+                  <td key={r.id}>
+                    <input
+                      type="checkbox"
+                      checked={!!g}
+                      aria-label={`${r.name} executes ${t.model_name}`}
+                      onChange={() =>
+                        run(() =>
+                          g
+                            ? api(`/api/admin/grants/${g.id}`, { method: "DELETE" })
+                            : api("/api/admin/grants", {
+                                method: "POST",
+                                body: json({ role_id: r.id, resource_type: "tool", resource_id: t.id, action: "execute" }),
+                              }),
+                        )
+                      }
+                    />
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </Card>
+  );
+}
+
+function EffectivePreview() {
+  const users = useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/api/admin/users") });
+  const [userId, setUserId] = useState("");
+  const eff = useQuery({
+    queryKey: ["effective", userId],
+    queryFn: () => api<EffectivePermissions>(`/api/admin/users/${userId}/effective-permissions`),
+    enabled: !!userId,
+  });
+  return (
+    <Card className="p-4">
+      <h3 className="mb-2 text-sm font-semibold">Effective permissions preview</h3>
+      <Select value={userId} onChange={(e) => setUserId(e.target.value)} className="mb-3 max-w-sm" aria-label="preview user">
+        <option value="">select a user...</option>
+        {users.data?.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.email}
+          </option>
+        ))}
+      </Select>
+      {eff.data && (
+        <div className="space-y-2 text-sm" data-testid="effective">
+          <div>
+            Roles: {eff.data.roles.join(", ") || "none"} {eff.data.is_admin && "(admin: management only, no data access)"}
+            {!eff.data.is_active && " (inactive: no access)"}
+          </div>
+          <ul>
+            {eff.data.containers.map((c) => (
+              <li key={c.id}>
+                {c.name} <ClassBadge value={c.classification} />: <strong>{c.level}</strong>
+              </li>
+            ))}
+            {eff.data.containers.length === 0 && <li className="text-muted-foreground">no containers</li>}
+          </ul>
+          <div>Restricted documents: {eff.data.restricted_documents.map((d) => `${d.title} (${d.container})`).join(", ") || "none"}</div>
+          <div>Tools: {eff.data.tools.join(", ") || "none"}</div>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -708,7 +894,13 @@ export default function AdminPage() {
       {tab === "Users" && <Users />}
       {tab === "Roles" && <Roles />}
       {tab === "Containers" && <Containers />}
-      {tab === "Grants" && <Grants />}
+      {tab === "Grants" && (
+        <div className="space-y-4">
+          <Matrix />
+          <EffectivePreview />
+          <Grants />
+        </div>
+      )}
       {tab === "Tools" && <Tools />}
       {tab === "Audit" && <Audit />}
       {tab === "Jobs" && <Jobs />}

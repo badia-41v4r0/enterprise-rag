@@ -8,6 +8,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_auth
+from app.authz.policy import EffectivePermissions, content_containers, effective_permissions
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.ratelimit import RateLimiter
@@ -31,9 +32,11 @@ class MeOut(BaseModel):
     is_admin: bool
     roles: list[str]
     csrf_token: str
+    # True when the user may upload to at least one container (contribute or manage grant).
+    can_manage_content: bool = False
 
 
-def _me(auth_user: User, csrf: str) -> MeOut:
+def _me(auth_user: User, csrf: str, perms: EffectivePermissions | None = None) -> MeOut:
     return MeOut(
         id=str(auth_user.id),
         email=auth_user.email,
@@ -41,6 +44,7 @@ def _me(auth_user: User, csrf: str) -> MeOut:
         is_admin=auth_user.is_admin,
         roles=sorted(r.name for r in auth_user.roles),
         csrf_token=csrf,
+        can_manage_content=perms is not None and bool(content_containers(perms)),
     )
 
 
@@ -80,7 +84,7 @@ async def login(body: LoginIn, request: Request, response: Response, db: AsyncSe
         samesite="strict",
         path="/",
     )
-    return _me(user, csrf)
+    return _me(user, csrf, await effective_permissions(db, user))
 
 
 @router.post("/logout", status_code=204)
@@ -93,4 +97,4 @@ async def logout(response: Response, auth: AuthContext = Depends(get_auth), db: 
 
 @router.get("/me")
 async def me(auth: AuthContext = Depends(get_auth)) -> MeOut:
-    return _me(auth.user, auth.session.csrf_token)
+    return _me(auth.user, auth.session.csrf_token, auth.perms)

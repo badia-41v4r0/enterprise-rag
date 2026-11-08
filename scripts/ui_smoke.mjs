@@ -55,9 +55,8 @@ try {
   const row = admin.locator("tr", { hasText: container });
   await row.waitFor();
   await row.getByRole("button", { name: "Documents" }).click();
-  await admin.locator('input[type="file"]').setInputFiles(DOC);
-  await admin.getByRole("button", { name: "Upload" }).click();
-  await admin.getByText("Queued for ingestion.").waitFor();
+  await admin.getByTestId("upload-input").setInputFiles(DOC);
+  await admin.getByLabel("Upload queue").getByText("queued").waitFor();
   await admin.locator("tr", { hasText: "ui parking" }).getByText("ready").waitFor({ timeout: 60_000 });
   step(`container created, document uploaded and ingested: ${container}`);
 
@@ -71,14 +70,15 @@ try {
   step(`user created: ${email}`);
 
   await admin.getByRole("button", { name: "Grants", exact: true }).click();
-  const selects = admin.locator("select");
-  await selects.nth(0).selectOption({ label: role });
-  await selects.nth(1).selectOption("container");
-  await selects.nth(2).selectOption({ label: container });
-  await selects.nth(3).selectOption("read");
-  await admin.getByRole("button", { name: "Add grant" }).click();
-  await admin.locator("tr", { hasText: container }).waitFor();
-  step("grant created: read on the container");
+  const cell = admin.getByLabel(`${role} on ${container}`);
+  await cell.selectOption("read");
+  await admin.waitForFunction(
+    (label) => document.querySelector(`select[aria-label="${label}"]`)?.value === "read",
+    `${role} on ${container}`,
+  );
+  await admin.getByLabel("preview user").selectOption({ label: email });
+  await admin.getByTestId("effective").getByText(container).waitFor();
+  step("grant created in the matrix: read on the container; effective-permissions preview shows it");
   await admin.screenshot({ path: `${OUT}/ui-admin-grants.png`, fullPage: true });
 
   const user = await (await browser.newContext()).newPage();
@@ -94,6 +94,34 @@ try {
   const answer = await user.locator("p.whitespace-pre-wrap").last().innerText();
   step(`new user got a cited answer: ${JSON.stringify(answer.slice(0, 200))}`);
   await user.screenshot({ path: `${OUT}/ui-chat.png`, fullPage: true });
+
+  // R1 exit: a department head (manage on HR Confidential only) uploads and replaces a document in
+  // their own container, and sees nothing else to manage.
+  const hr = await (await browser.newContext()).newPage();
+  pages.push(hr);
+  await login(hr, "hr@acme.test", ADMIN_PW);
+  await hr.getByRole("button", { name: "Content" }).click();
+  const tabs = await hr.locator("main button").allInnerTexts();
+  if (!tabs.includes("HR Confidential") || tabs.some((t) => ["Finance", "Engineering", "General Handbook"].includes(t)))
+    throw new Error(`manager sees unexpected containers: ${tabs}`);
+  const hrDoc = path.resolve(OUT, `hr-onboarding-${sfx}.md`);
+  const fs = await import("node:fs");
+  fs.writeFileSync(hrDoc, `# HR onboarding checklist ${sfx}\n\nNew employees meet their HR partner on day one.\n`);
+  await hr.getByTestId("upload-input").setInputFiles(hrDoc);
+  const hrRow = hr.locator(`tr[data-doc="hr-onboarding-${sfx}.md"]`);
+  await hrRow.getByText("ready").waitFor({ timeout: 60_000 });
+  fs.writeFileSync(hrDoc, `# HR onboarding checklist ${sfx}\n\nNew employees meet their HR partner on day one and day five.\n`);
+  await hrRow.locator(`input[data-replace="hr-onboarding-${sfx}.md"]`).setInputFiles(hrDoc);
+  await hrRow.locator("td").nth(4).getByText("2").waitFor({ timeout: 30_000 });
+  await hrRow.getByText("ready").waitFor({ timeout: 60_000 });
+  step("HR manager uploaded and replaced a document in HR Confidential (2 versions, ready)");
+  hr.once("dialog", (d) => d.accept());
+  await hrRow.getByRole("button", { name: "Delete document" }).click();
+  await hrRow.waitFor({ state: "detached" });
+  step("HR manager deleted it again");
+  const adminTab = await hr.getByRole("button", { name: "Admin" }).count();
+  if (adminTab !== 0) throw new Error("manager sees the Admin tab");
+  await hr.screenshot({ path: `${OUT}/ui-content-manager.png`, fullPage: true });
   console.log("UI SMOKE PASSED");
 } catch (err) {
   console.error("UI SMOKE FAILED:", err);

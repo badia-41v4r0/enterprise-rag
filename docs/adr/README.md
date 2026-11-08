@@ -21,3 +21,4 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0014](0014-frontend.md) | Frontend: small React SPA with vendored shadcn-style components | Accepted |
 | [0015](0015-demo-bootstrap-and-hardening.md) | One-command seeded demo and MVP hardening | Accepted, Owner review |
 | [0016](0016-openrouter-free-only-and-spend-ceiling.md) | OpenRouter: free models only and a hard monthly spend ceiling | Accepted |
+| [0017](0017-delegated-content-management.md) | Delegated content management: `contribute` and `manage` on containers | Accepted |

@@ -1,15 +1,16 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogOut, MessageSquare, Shield } from "lucide-react";
+import { FolderUp, LogOut, MessageSquare, Shield } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api, setCsrf, type Me } from "@/lib/api";
 import AdminPage from "@/pages/Admin";
 import ChatPage from "@/pages/Chat";
+import ContentPage from "@/pages/Content";
 import LoginPage from "@/pages/Login";
 
 export default function App() {
   const qc = useQueryClient();
-  const [view, setView] = useState<"chat" | "admin">("chat");
+  const [view, setView] = useState<"chat" | "content" | "admin">("chat");
   const me = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
@@ -42,6 +43,11 @@ export default function App() {
           <Button variant={view === "chat" ? "outline" : "ghost"} size="sm" onClick={() => setView("chat")}>
             <MessageSquare className="h-4 w-4" /> Chat
           </Button>
+          {(me.data.can_manage_content || me.data.is_admin) && (
+            <Button variant={view === "content" ? "outline" : "ghost"} size="sm" onClick={() => setView("content")}>
+              <FolderUp className="h-4 w-4" /> Content
+            </Button>
+          )}
           {me.data.is_admin && (
             <Button variant={view === "admin" ? "outline" : "ghost"} size="sm" onClick={() => setView("admin")}>
               <Shield className="h-4 w-4" /> Admin
@@ -58,7 +64,9 @@ export default function App() {
           </Button>
         </div>
       </header>
-      <main className="min-h-0 flex-1">{view === "chat" ? <ChatPage /> : <AdminPage />}</main>
+      <main className="min-h-0 flex-1">
+        {view === "chat" ? <ChatPage /> : view === "content" ? <ContentPage /> : <AdminPage />}
+      </main>
     </div>
   );
 }

@@ -1,4 +1,44 @@
-# EnterpriseRAG MVP: progress report
+# EnterpriseRAG: progress report
+
+## Post-MVP releases (PLAN-v0.2), branch `feat/admin-extensibility`
+
+Plan: [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md). Work done autonomously; every release section below lists what was verified, how, what was skipped, and open decisions. Nothing is pushed or tagged.
+
+| Release | Status | Commit |
+|---|---|---|
+| R1 Roles, delegated management, uploads | Done | see `git log` ("R1: ...") |
+| R2 Credential store and MFA | Not started | |
+| R3 Connectors | Not started | |
+| R4 MCP registry and clearance | Not started | |
+| R5 Isolated runner | Not started | |
+
+### R1. Roles, delegated management and uploads
+
+**What was built**
+- Grant action `contribute` (migration 0004) between `read` and `manage` (ADR 0017). `contribute`: upload, replace documents you can read, retry failed ingestion. `manage`: also delete, upload restricted documents, toggle `restricted` (lifting it only on documents you can read). Grants, classification, roles and users stay admin-only.
+- Roles API: rename (`PATCH /api/admin/roles/{id}`), clone with grants (`POST .../clone`), templates Reader/Contributor/Manager on create or `POST .../apply-template`, bulk membership (`POST .../members`), matrix cell (`PUT /api/admin/roles/{id}/containers/{cid}` with `none|read|contribute|manage`), delete refused while users hold the role unless `?reassign_to=<role>`. Role list shows user and grant counts.
+- Effective-permissions preview: `GET /api/admin/users/{id}/effective-permissions` (same function as the request path).
+- Documents API: `POST /api/documents/{id}/versions` (replace, keeps the stored filename), `POST /api/documents/{id}/retry` (failed latest version), version history with uploader and current flag, latest error, `can_read` per document; dedupe never matches restricted documents the uploader cannot read (no read oracle).
+- UI: new **Content** page (shown to admins and to anyone with `contribute`/`manage`): multi-file drag and drop, per-file upload status, live document status (queued/processing/ready/failed with error), version history, replace, retry, delete, restricted toggle. Admin: roles screen (template, rename, clone, members, delete with reassign), **grants matrix** (role x container level, role x tool execute) and effective-permissions preview. `/api/auth/me` returns `can_manage_content`.
+- Demo: new persona `hr.assistant@acme.test` (role *HR Contributor*: `contribute` on HR Confidential, no access to the restricted HR case). The canary matrix now runs for 7 personas.
+
+**Verified (2026-11-09)**
+- `uv run pytest`: **170 passed, 2 skipped** (OpenRouter and claude-code opt-in) in 113 s. New `tests/security/test_delegation.py` (7 tests): a manager manages only their container (upload, replace, restrict, delete; other container 404); a manager cannot create grants, change classification, set matrix levels, list users, read a restricted document's chunk, or lift `restricted` on a document they cannot read (also not by re-uploading it with `restricted=false`); a contributor can upload and replace but not delete, restrict, upload restricted, replace or see a restricted document; dedupe is not an oracle; removing the `manage` grant through the admin API takes effect on the next request; role create-from-template, rename, clone, matrix level replace, bulk members, preview, delete refused in use then allowed with reassign; failed ingestion retry; all actions audited.
+- `uv run ruff check .`, `ruff format --check .`, `mypy` (strict), `scripts/check_licenses.py`, `npm run build`: pass.
+- Docker: `ERAG_LOCAL_CHAT_MODEL=qwen3:4b-instruct-2507-q4_K_M APP_PORT=8088 docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.hostnet.yml up -d --build`; log: `Running upgrade 0003 -> 0004`, `ACME seeded: 5 containers, 7 personas`.
+- `scripts/ui_smoke.mjs` (extended) against the stack: admin creates role, container, uploads (new drop zone input), user, read grant **through the matrix**, preview shows it; the new user gets "Employees park on level -2 [1]"; **R1 exit:** `hr@acme.test` (manage on HR Confidential) opens Content, sees only HR Confidential, uploads a document, replaces it (2 versions, ready), deletes it, and has no Admin tab. `UI SMOKE PASSED`.
+- `scripts/demo_scenarios.py --base http://127.0.0.1:8088`: all three scenarios unchanged (HR gets 58,000 to 72,000 EUR from the local model, engineer and new hire get "no information"; finance invoices tool call; revocation).
+
+**Decisions:** ADR 0017 (contribute level, un-restrict rule, metadata vs content for managers, dedupe oracle, replace-by-name rule, templates as presets, delete with reassign).
+
+**Known issues / notes**
+- A manager without a document grant who restricts a document cannot un-restrict it again (by design, ADR 0017); the admin can.
+- Uploading a file named like a restricted document you cannot read returns 403, which reveals the name exists.
+- `deploy/.env` on this machine sets `ERAG_LOCAL_CHAT_MODEL=nvidia/nemotron-3.5-lightning:free` (an OpenRouter id), so the stack's local model returned HTTP 404 until I started compose with `ERAG_LOCAL_CHAT_MODEL=qwen3:4b-instruct-2507-q4_K_M` in the shell (shell variables override the file). I did not edit `deploy/.env`.
+
+---
+
+# MVP progress report (v0.1.0)
 
 Branch: `feat/mvp` (not pushed). Plan: [`docs/PLAN.md`](docs/PLAN.md). Decisions: [`docs/adr/`](docs/adr/README.md).
 
