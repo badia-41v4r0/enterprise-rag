@@ -15,7 +15,8 @@ flowchart LR
         RECHECK --> CTX[Context builder<br/>dedupe, budget, citations]
         CTX --> ROUTER[Classification router<br/>max(context, history, tool results)]
         ROUTER --> PROMPT[Prompt builder<br/>untrusted data delimited]
-        PROMPT --> LLM[OpenAI-compatible client<br/>+ egress hook + spend ceiling]
+        PROMPT --> LLM[OpenAI-compatible client<br/>+ egress hook + destination guard<br/>+ spend ceiling + daily cap]
+        REG[Provider registry<br/>locality from address,<br/>clearance cap, default model] -.-> ROUTER
         ORCH --> TOOLS[Tool runtime]
         TOOLS --> TAUTHZ[Tool authz<br/>grant, schema, constraints,<br/>clearance, approval state]
         TAUTHZ --> GW[MCP gateway<br/>stdio / HTTP / Unix socket,<br/>rate limits, rug-pull hash check,<br/>signed context for built-ins]
@@ -29,6 +30,8 @@ flowchart LR
     KEY[(Master key file<br/>outside the DB)] -.-> VAULT
     LLM -- "any classification" --> OLLAMA[(Ollama, local<br/>qwen3:4b-instruct, bge-m3)]
     LLM -- "public / internal only<br/>key from the vault" --> OR[(OpenRouter, free models)]
+    LLM -- "local: any classification<br/>(private address, Ollama or self-hosted)" --> LANLLM[(Admin-added local providers<br/>Ollama, vLLM, LM Studio)]
+    LLM -- "cloud: up to the provider's clearance<br/>(public by default), HTTPS, pinned IP" --> APILLM[(Admin-added OpenAI-compatible APIs)]
     GW -- "stdio + _meta token" --> FILES[files_server]
     GW -- "stdio + _meta token" --> TICKETS[tickets_server]
     GW -- "HTTPS via SSRF guard<br/>clearance + label" --> REMOTE[Registered remote MCP]
@@ -62,7 +65,7 @@ flowchart LR
 3. Retrieval: the question is embedded locally; pgvector search runs with the ACL filter inside the SQL query (and only over current document versions); each hit is re-checked against the documents table; a similarity floor drops noise.
 4. History: earlier answers in the conversation whose cited documents are no longer readable are withheld.
 5. Tools: only tools with an `execute` grant are offered to the model.
-6. Routing: effective classification = max(context, history). Confidential ⇒ local models only; if no permitted model exists, the request is refused before anything is sent. With no authorized context and no tools, no model is called at all.
+6. Routing: effective classification = max(context, history). Confidential ⇒ local models only; if no permitted model exists, the request is refused before anything is sent. The user's chosen model, then the admin's default model, is used only if cleared for that classification; otherwise a cleared model (local first). With no authorized context and no tools, no model is called at all.
 7. Generation streams over SSE. On a tool call: arguments are validated (strict schema, no reserved names, resource checks), the gateway mints a 60-second token scoped from the same permissions, the MCP server enforces the scope again, the validator tags and scrubs the result, and the router re-checks the model choice before the result is sent to any model.
 8. The answer, citations, model and classification are stored; audit entries record retrieved chunk IDs, dropped chunks, withheld history, every LLM request (destination + classification) and every tool decision.
 
@@ -82,3 +85,9 @@ One PostgreSQL holds identities, ACL, documents, vectors, jobs, conversations an
 - **Connectors** (ADR 0020): `connectors`, `connector_items`, `sync_runs`. The worker claims queued runs, lists items through the connector kind, and pushes new or changed items through the normal upload/versioning path, so ingestion, ACLs and routing are unchanged. Outbound HTTP goes through `app/core/netguard.py`.
 - **MCP registry** (ADR 0021): registered servers are `pending` until approved; tools are discovered disabled; enabling pins the definition hash, which the gateway re-checks in the same session before every call. Each server has a clearance (max classification sent) and a result label (classification of everything returned).
 - **Isolated runner** (ADR 0022): a separate service with the Docker socket. It starts only images pinned by ID, with network `none`, a read-only root filesystem, no capabilities, no-new-privileges, the default seccomp profile, a non-root user and limits. The gateway reaches the server over a Unix socket in a per-MCP directory.
+
+## Provider registry (after v0.2)
+
+- **Providers and models in the database** (`llm_providers`, `llm_models`, ADR 0023). Two kinds: Ollama instances and OpenAI-compatible APIs. The built-in `ollama` and `openrouter` rows are bootstrapped from the environment on start-up; the dev `claude-code` provider stays env-only.
+- **Router build** (`app/llm/registry.py`, `load_router`): for each enabled provider the host is resolved and the locality derived (local only if every address is private), the clearance capped by locality and `ERAG_CLOUD_MAX_CLASSIFICATION`, the key read from the credential store, and one `OpenAICompatProvider` created per enabled model. The admin's default model is passed to `ModelRouter`, which uses it only when it is cleared. The router is cached and rebuilt when providers, models, secrets or settings change.
+- **Every request** goes through `check_clearance`, the egress hook and a destination guard that re-resolves the host, applies the provider's address policy (private only for Ollama/self-hosted; a local provider must stay private), pins the connection to the checked address and never follows redirects (ADR 0025). Metered providers (every API provider and any non-local Ollama) are checked against a monthly ceiling and a daily request cap before the request is sent (ADR 0024).
