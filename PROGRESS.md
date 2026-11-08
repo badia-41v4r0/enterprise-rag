@@ -7,7 +7,7 @@ Plan: [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md). Work done autonomously; every re
 | Release | Status | Commit |
 |---|---|---|
 | R1 Roles, delegated management, uploads | Done | see `git log` ("R1: ...") |
-| R2 Credential store and MFA | Not started | |
+| R2 Credential store and MFA | Done | "R2: ..." |
 | R3 Connectors | Not started | |
 | R4 MCP registry and clearance | Not started | |
 | R5 Isolated runner | Not started | |
@@ -35,6 +35,28 @@ Plan: [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md). Work done autonomously; every re
 - A manager without a document grant who restricts a document cannot un-restrict it again (by design, ADR 0017); the admin can.
 - Uploading a file named like a restricted document you cannot read returns 403, which reveals the name exists.
 - `deploy/.env` on this machine sets `ERAG_LOCAL_CHAT_MODEL=nvidia/nemotron-3.5-lightning:free` (an OpenRouter id), so the stack's local model returned HTTP 404 until I started compose with `ERAG_LOCAL_CHAT_MODEL=qwen3:4b-instruct-2507-q4_K_M` in the shell (shell variables override the file). I did not edit `deploy/.env`.
+
+### R2. Credential store and MFA
+
+**What was built**
+- Credential store (ADR 0018): table `secrets` (migration 0005), AES-256-GCM with the name as associated data, master key from `ERAG_SECRETS_KEY` / `ERAG_SECRETS_KEY_FILE` (required in prod; Compose uses `/data/secrets.key`, generated on first start in dev), key id per ciphertext, write-only admin API (`PUT/DELETE /api/admin/secrets`, list with "used by"), `secret.use` audit with the consumer, `reveal_assigned` for consumers with assigned secrets, `erag secrets init|set|list|rotate-master`.
+- OpenRouter: key looked up in the vault first, env var as bootstrap fallback; Providers screen (`GET/PUT /api/admin/providers/openrouter`) sets key, model, on/off and ceiling; router cached and rebuilt when the setting or the secret changes (no restart). Free-only and the env ceiling stay hard limits (UI can only lower the ceiling).
+- MFA (ADR 0019): optional TOTP for everyone, QR (SVG) + manual key, 10 recovery codes (hashed, single use), two-step login with a pending session that grants nothing, attempt limit and rate limit, replay protection by time step, session rotation after the second factor, admin reset (step-up) and `erag reset-mfa`.
+- Step-up: `POST /api/auth/step-up` (password, or TOTP when MFA is on); required within 5 minutes for secrets, provider settings, creating/promoting admins and MFA resets (`403 step_up_required`, the UI prompts and retries).
+- UI: Account page (MFA setup/disable/new recovery codes), MFA step on the login page, step-up dialog, admin Secrets and Providers tabs, MFA column + reset on Users.
+- Fixed on the way: logout did not return to the login page (the `me` query observer was detached by `queryClient.clear()`; an MVP bug the old smoke test did not exercise).
+
+**Verified (2026-11-09)**
+- `uv run pytest`: **178 passed, 2 skipped**. New `tests/security/test_vault_and_mfa.py` (8 tests): cipher binds name and key and detects tampering; secrets API write-only, audited, ciphertext swap detected, a scan of every table finds neither the plaintext nor its hex; step-up required for 6 sensitive endpoints after the 5-minute window, wrong password refused, then allowed; OpenRouter vault-first/env-fallback, paid model and ceiling above the cap refused, hot reload of `/api/models`, disable; MFA enrolment with codes computed from the secret decrypted from the DB, password-only session gets 401 everywhere, replayed code refused, next step accepted, session cookie rotated, recovery code works once; 6th wrong code gives 429 and kills the pending session; step-up with MFA needs TOTP (password refused); admin reset ends sessions; `python -m app.cli reset-mfa` works; master key rotation.
+- `ruff`, `ruff format --check`, `mypy` strict, license check (new deps: `cryptography` Apache-2.0/BSD, `pyotp` MIT, `segno` BSD), `npm run build`: pass.
+- **Exit criterion, OpenRouter key only in the vault:** stack rebuilt (`Running upgrade 0004 -> 0005`, `Generated a new credential-store master key at /data/secrets.key`); `docker exec enterprise-rag-app-1 python -m app.cli secrets set openrouter_api_key --from-env ERAG_OPENROUTER_API_KEY` (value never printed); restarted with `ERAG_OPENROUTER_API_KEY=` (verified empty inside the container); `GET /api/admin/providers/openrouter` -> `configured: true, key_source: vault`; model set to `nvidia/nemotron-3.5-lightning:free` through the API; **one real request** as the new hire (public context) routed to `openrouter:nvidia/nemotron-3.5-lightning:free` and answered from the release notes; audit shows `secret.use` by `provider:openrouter`; recorded spend 0.0 USD.
+- **Exit criterion, login with and without MFA:** `scripts/ui_smoke.mjs` now also stores and deletes a secret (value never in the page), reads the provider status ("configured (credential store)"), and the new user enables MFA (QR + recovery codes), logs out, and logs in with password + a TOTP computed in Node. Admin and HR log in without MFA. `UI SMOKE PASSED`.
+
+**Decisions:** ADR 0018 (dev key derivation and dev key-file bootstrap, key id, router fingerprint cache, UI ceiling can only lower the env cap), ADR 0019 (fresh login counts as recent auth; password not accepted for step-up when MFA is on; recovery codes as HMAC; disabling MFA needs a code).
+
+**Known issues / notes**
+- Secret values are decrypted when the provider router is rebuilt, not per request; each rebuild is audited.
+- The stack on this machine must currently be started with `ERAG_OPENROUTER_API_KEY=` (empty) to prove vault-only operation, because `deploy/.env` still holds the key. **Owner:** remove the key from `deploy/.env` now that it is in the vault (I did not edit that file).
 
 ---
 

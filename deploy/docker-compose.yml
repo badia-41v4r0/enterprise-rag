@@ -13,6 +13,11 @@ x-app-env: &app-env
   ERAG_MCP_CONTEXT_SECRET: ${ERAG_MCP_CONTEXT_SECRET:-dev-insecure-mcp-secret-change-me}
   ERAG_OLLAMA_BASE_URL: ${ERAG_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
   ERAG_LOCAL_CHAT_MODEL: ${ERAG_LOCAL_CHAT_MODEL:-qwen3:4b-instruct-2507-q4_K_M}
+  # Credential store master key (ADR 0018). In dev the file is generated on first start; in prod create
+  # it with `erag secrets init --file ...` (or set ERAG_SECRETS_KEY) and keep a backup outside the database.
+  ERAG_SECRETS_KEY_FILE: ${ERAG_SECRETS_KEY_FILE:-/data/secrets.key}
+  # Bootstrap fallback only: once the key is in the credential store (Admin > Providers, or
+  # `erag secrets set openrouter_api_key --from-env ERAG_OPENROUTER_API_KEY`), remove it from here.
   ERAG_OPENROUTER_API_KEY: ${ERAG_OPENROUTER_API_KEY:-}
   ERAG_OPENROUTER_MODEL: ${ERAG_OPENROUTER_MODEL:-meta-llama/llama-3.3-8b-instruct:free}
   ERAG_OPENROUTER_ALLOW_PAID: ${ERAG_OPENROUTER_ALLOW_PAID:-false}

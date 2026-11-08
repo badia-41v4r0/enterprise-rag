@@ -23,4 +23,7 @@ def test_prod_refuses_dev_secrets() -> None:
 
     with pytest.raises(RuntimeError):
         Settings(env="prod").check_secrets()
-    Settings(env="prod", secret_key="x" * 40, mcp_context_secret="y" * 40).check_secrets()
+    strong = {"secret_key": "x" * 40, "mcp_context_secret": "y" * 40}
+    with pytest.raises(RuntimeError, match="ERAG_SECRETS_KEY"):
+        Settings(env="prod", **strong).check_secrets()  # the credential store master key is required too
+    Settings(env="prod", secrets_key="k" * 44, **strong).check_secrets()

@@ -14,7 +14,25 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+// Sensitive admin actions answer 403 "step_up_required" unless the user re-authenticated recently.
+// The app registers a handler that asks for the password (or a TOTP code) and calls /api/auth/step-up.
+let stepUpHandler: (() => Promise<boolean>) | null = null;
+export function setStepUpHandler(fn: (() => Promise<boolean>) | null) {
+  stepUpHandler = fn;
+}
+
+export async function api<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+  try {
+    return await rawApi<T>(path, init);
+  } catch (e) {
+    if (!retried && e instanceof ApiError && e.status === 403 && e.message === "step_up_required" && stepUpHandler) {
+      if (await stepUpHandler()) return api<T>(path, init, true);
+    }
+    throw e;
+  }
+}
+
+async function rawApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (method !== "GET" && csrfToken) headers.set("X-CSRF-Token", csrfToken);
@@ -46,6 +64,30 @@ export interface Me {
   roles: string[];
   csrf_token: string;
   can_manage_content: boolean;
+  mfa_enabled: boolean;
+  mfa_required: boolean;
+  step_up_valid: boolean;
+}
+export interface SecretRow {
+  name: string;
+  description: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string | null;
+  last_used_by: string | null;
+  used_by: string[];
+}
+export interface OpenRouterSettings {
+  configured: boolean;
+  key_source: "vault" | "env" | "none";
+  enabled: boolean;
+  model: string;
+  monthly_budget_usd: number;
+  budget_cap_usd: number;
+  allow_paid: boolean;
+  spent_this_month_usd: number;
+  cloud_max_classification: string;
 }
 export interface Citation {
   n: number;
@@ -100,6 +142,7 @@ export interface UserRow {
   is_admin: boolean;
   is_active: boolean;
   role_ids: string[];
+  mfa_enabled: boolean;
 }
 export interface RoleRow {
   id: string;

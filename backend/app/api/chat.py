@@ -18,7 +18,7 @@ from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.ratelimit import RateLimiter
 from app.ingestion.embedder import get_embedder
-from app.llm.router import get_router
+from app.llm.router import load_router
 from app.models import Classification, Conversation, Message
 from app.orchestrator.chat import ChatOrchestrator, ConversationNotFound, ToolRuntime, sse
 
@@ -72,7 +72,7 @@ async def chat(
         conv = await db.get(Conversation, body.conversation_id)
         if conv is None or conv.user_id != auth.user.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
-    orch = ChatOrchestrator(db, get_embedder(), get_router(), get_tool_runtime())
+    orch = ChatOrchestrator(db, get_embedder(), await load_router(db), get_tool_runtime())
 
     async def stream() -> AsyncIterator[str]:
         try:
@@ -141,10 +141,10 @@ async def delete_conversation(
 
 
 @router.get("/models")
-async def list_models(_: AuthContext = Depends(get_auth)) -> list[ModelOut]:
+async def list_models(_: AuthContext = Depends(get_auth), db: AsyncSession = Depends(get_db)) -> list[ModelOut]:
     return [
         ModelOut(
             id=m.id, provider=m.provider, model=m.model, locality=m.locality, max_classification=m.max_classification
         )
-        for m in get_router().models()
+        for m in (await load_router(db)).models()
     ]

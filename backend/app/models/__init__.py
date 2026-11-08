@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -113,6 +114,14 @@ class User(TimestampMixin, Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # MFA (ADR 0019). The TOTP secret is stored encrypted (AAD = "mfa:<user id>"). While enrolling,
+    # the secret is stored with mfa_enabled = False and only becomes active after a valid code.
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    mfa_secret_ct: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    mfa_secret_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    mfa_key_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Highest TOTP time step accepted so far: a code can never be used twice.
+    mfa_last_step: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
 
     roles: Mapped[list[Role]] = relationship(secondary="user_roles", lazy="selectin", back_populates="users")
 
@@ -124,6 +133,19 @@ class Session(TimestampMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     csrf_token: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Password accepted, second factor still missing: the session grants nothing but /mfa/verify.
+    mfa_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    mfa_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Last time the user proved who they are (login or step-up); sensitive actions need it recent.
+    reauth_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RecoveryCode(Base):
+    __tablename__ = "mfa_recovery_codes"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))  # HMAC-SHA256, never the code
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Role(TimestampMixin, Base):
@@ -284,6 +306,33 @@ class ProviderSpend(Base):
     month: Mapped[str] = mapped_column(String(7), primary_key=True)  # "YYYY-MM"
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     requests: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Secret(TimestampMixin, Base):
+    """Encrypted credential (ADR 0018). The value is write-only through the API."""
+
+    __tablename__ = "secrets"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    key_id: Mapped[str] = mapped_column(String(16))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
+class AppSetting(Base):
+    """Runtime settings editable from the admin UI (e.g. the OpenRouter provider)."""
+
+    __tablename__ = "app_settings"
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
 class AuditLog(Base):

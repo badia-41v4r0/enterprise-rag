@@ -221,7 +221,11 @@ class ChatOrchestrator:
                     step_text = ""
                     if provider.locality == "cloud":
                         # Hard monthly ceiling, checked before anything leaves the process (ADR 0016).
-                        await ensure_budget(self.db, provider.provider, self.settings.openrouter_monthly_budget_usd)
+                        await ensure_budget(
+                            self.db,
+                            provider.provider,
+                            self.router.budgets.get(provider.provider, self.settings.openrouter_monthly_budget_usd),
+                        )
                     await self._audit_egress(user, provider, classification, prep, iteration)
                     models_used.append(provider.model_id)
                     usage: dict[str, Any] = {}

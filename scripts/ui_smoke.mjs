@@ -22,6 +22,24 @@ const container = `UI Facilities ${sfx}`;
 const email = `ui.tester.${sfx}@acme.test`;
 const pw = "ui-tester-password-1";
 
+// RFC 6238 TOTP (SHA-1, 6 digits, 30 s), to log in with MFA like an authenticator app would.
+import crypto from "node:crypto";
+function base32(s) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const ch of s.replace(/=+$/, "")) bits += alphabet.indexOf(ch).toString(2).padStart(5, "0");
+  const bytes = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.slice(i, i + 8), 2));
+  return Buffer.from(bytes);
+}
+function totp(secret, seconds = Date.now() / 1000) {
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(seconds / 30)));
+  const h = crypto.createHmac("sha1", base32(secret)).update(counter).digest();
+  const o = h[h.length - 1] & 0xf;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1_000_000).padStart(6, "0");
+}
+
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/usr/bin/chromium" });
 const step = (s) => console.log(`- ${s}`);
 const pages = [];
@@ -81,6 +99,20 @@ try {
   step("grant created in the matrix: read on the container; effective-permissions preview shows it");
   await admin.screenshot({ path: `${OUT}/ui-admin-grants.png`, fullPage: true });
 
+  // R2: credential store (write-only) and the provider key source.
+  await admin.getByRole("button", { name: "Secrets", exact: true }).click();
+  await admin.getByPlaceholder("name (e.g. erp_token)").fill(`ui_smoke_${sfx}`);
+  await admin.getByPlaceholder("value").fill("not-a-real-secret-value");
+  await admin.getByRole("button", { name: "Save secret" }).click();
+  await admin.locator("td", { hasText: `ui_smoke_${sfx}` }).waitFor();
+  if ((await admin.content()).includes("not-a-real-secret-value")) throw new Error("secret value visible in the page");
+  admin.once("dialog", (d) => d.accept());
+  await admin.getByLabel(`Delete secret ui_smoke_${sfx}`).click();
+  await admin.locator("td", { hasText: `ui_smoke_${sfx}` }).waitFor({ state: "detached" });
+  await admin.getByRole("button", { name: "Providers", exact: true }).click();
+  const orStatus = await admin.getByTestId("openrouter-status").innerText();
+  step(`secret stored (value never shown) and deleted; OpenRouter: ${orStatus.split("\n")[0]}`);
+
   const user = await (await browser.newContext()).newPage();
   pages.push(user);
   await login(user, email, pw);
@@ -94,6 +126,22 @@ try {
   const answer = await user.locator("p.whitespace-pre-wrap").last().innerText();
   step(`new user got a cited answer: ${JSON.stringify(answer.slice(0, 200))}`);
   await user.screenshot({ path: `${OUT}/ui-chat.png`, fullPage: true });
+
+  // R2: the user enrols in MFA and logs in again with a TOTP code.
+  await user.getByRole("button", { name: "Account" }).click();
+  await user.getByRole("button", { name: "Set up MFA" }).click();
+  const secret = (await user.getByTestId("mfa-secret").innerText()).trim();
+  await user.getByLabel("Code").fill(totp(secret));
+  await user.getByRole("button", { name: "Confirm and enable" }).click();
+  await user.getByTestId("recovery-codes").waitFor();
+  await user.getByRole("button", { name: "Log out" }).click();
+  await user.getByLabel("Email").fill(email);
+  await user.getByLabel("Password").fill(pw);
+  await user.getByRole("button", { name: "Sign in" }).click();
+  await user.getByLabel("Authenticator code (or a recovery code)").fill(totp(secret, Date.now() / 1000 + 30));
+  await user.getByRole("button", { name: "Verify" }).click();
+  await user.getByRole("button", { name: "Chat" }).waitFor();
+  step("user enabled MFA (QR + recovery codes) and logged in again with password + TOTP");
 
   // R1 exit: a department head (manage on HR Confidential only) uploads and replaces a document in
   // their own container, and sees nothing else to manage.

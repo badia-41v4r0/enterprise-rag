@@ -36,6 +36,8 @@ Document contents (by classification), tool data (HR cases, invoices, tickets), 
 | T16 | Weak secrets in production | App refuses to start in `prod` with dev secrets | `test_prod_refuses_dev_secrets` |
 | T17 | Path traversal via uploads or tools | Filenames reduced to basenames; blob keys are hashes; `read_file` rejects `..`/absolute paths and checks the root | upload and `test_file_scope` tests |
 | T18 | A content manager or contributor escalates (changes grants, classification, other containers, reads restricted content by un-restricting it or through upload deduplication) | Grants/classification/roles stay admin-only; `contribute`/`manage` scoped to one container; lifting `restricted` requires read access; dedupe ignores unreadable restricted documents (ADR 0017) | `tests/security/test_delegation.py` |
+| T19 | Database dump or backup leaks credentials (OpenRouter key, connector and MCP tokens, MFA secrets) | AES-256-GCM per value, name/owner bound as associated data, master key outside the database; write-only API; every use audited with its consumer (ADR 0018) | `test_secret_api_is_write_only_audited_and_never_stored_in_clear`, `test_cipher_binds_name_and_key`, `test_master_key_rotation` |
+| T20 | Stolen password; hijacked admin session used for sensitive changes | Optional TOTP with replay protection, attempt limits and single-use recovery codes; pending sessions grant nothing; step-up (password or TOTP within 5 min) for secrets, providers, admin promotion and MFA resets (ADR 0019) | `test_mfa_enrolment_two_step_login_replay_and_recovery`, `test_mfa_attempts_are_limited_and_step_up_needs_totp`, `test_sensitive_actions_need_recent_reauthentication` |
 
 ## Residual risks (honest limits)
 
@@ -47,4 +49,5 @@ Document contents (by classification), tool data (HR cases, invoices, tickets), 
 - **In-process rate limiters** reset on restart and do not work across replicas (single-instance MVP).
 - **Audit log is in the same database** and writable by the app; no tamper evidence.
 - **MCP servers run as subprocesses of the app** with the app's OS user; a malicious server binary would not be contained. Only the bundled reference servers are registered.
-- **The OpenRouter spend ceiling is not enforced** yet (no key available during development).
+- **The credential store master key sits on the same host as the app.** It protects against database and backup leaks, not against compromise of that host. Losing it loses the secrets and MFA enrolments.
+- **MFA is optional**, also for admins. Admin account compromise remains the largest risk; enable MFA for admins.

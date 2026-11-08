@@ -14,7 +14,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import AuthContext, require_admin
+from app.api.deps import STEP_UP_REQUIRED, AuthContext, recently_authenticated, require_admin, require_step_up
 from app.authz.policy import effective_permissions
 from app.core.db import get_db
 from app.core.security import hash_password
@@ -33,6 +33,7 @@ from app.models import (
     User,
     UserRole,
 )
+from app.services import mfa
 from app.services.audit import audit
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -47,6 +48,7 @@ class UserOut(BaseModel):
     is_admin: bool
     is_active: bool
     role_ids: list[uuid.UUID]
+    mfa_enabled: bool = False
 
 
 class UserIn(BaseModel):
@@ -205,6 +207,7 @@ def _user_out(u: User) -> UserOut:
         is_admin=u.is_admin,
         is_active=u.is_active,
         role_ids=sorted((r.id for r in u.roles), key=str),
+        mfa_enabled=u.mfa_enabled,
     )
 
 
@@ -226,6 +229,11 @@ async def _set_roles(db: AsyncSession, user_id: uuid.UUID, role_ids: list[uuid.U
         db.add(UserRole(user_id=user_id, role_id=rid))
 
 
+def _require_recent_auth(auth: AuthContext) -> None:
+    if not recently_authenticated(auth.session):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, STEP_UP_REQUIRED)
+
+
 # --- Users ----------------------------------------------------------------------------------------
 
 
@@ -239,6 +247,8 @@ async def list_users(_: AuthContext = Depends(require_admin), db: AsyncSession =
 async def create_user(
     body: UserIn, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
 ) -> UserOut:
+    if body.is_admin:
+        _require_recent_auth(auth)
     user = User(
         email=body.email.strip().lower(),
         display_name=body.display_name,
@@ -272,6 +282,8 @@ async def update_user(
         user.password_hash = hash_password(body.password)
         changes["password"] = "changed"  # noqa: S105 - audit marker, not a secret
     if body.is_admin is not None:
+        if body.is_admin and not user.is_admin:
+            _require_recent_auth(auth)  # promoting to admin is a step-up action (ADR 0019)
         if user.id == auth.user.id and not body.is_admin:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot remove your own admin flag")
         user.is_admin = body.is_admin
@@ -290,6 +302,20 @@ async def update_user(
     await db.commit()
     await db.refresh(user, ["roles"])
     return _user_out(user)
+
+
+@router.post("/users/{user_id}/reset-mfa", status_code=204)
+async def reset_user_mfa(
+    user_id: uuid.UUID, auth: AuthContext = Depends(require_step_up), db: AsyncSession = Depends(get_db)
+) -> None:
+    """Remove a user's second factor (lost device). Their sessions are ended."""
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    await mfa.reset(db, user)
+    await db.execute(delete(Session).where(Session.user_id == user.id))
+    audit(db, "admin.user.reset_mfa", user_id=auth.user.id, resource=f"user:{user.id}")
+    await db.commit()
 
 
 # --- Roles ----------------------------------------------------------------------------------------

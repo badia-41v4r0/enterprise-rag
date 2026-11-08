@@ -24,6 +24,16 @@ class Settings(BaseSettings):
     # Secrets. The defaults are only usable in dev; the app refuses to start with them in prod.
     secret_key: SecretStr = SecretStr("dev-insecure-secret-change-me")
     mcp_context_secret: SecretStr = SecretStr("dev-insecure-mcp-secret-change-me")
+    # Master key of the credential store (ADR 0018): 32 random bytes, base64. Generate it with
+    # `erag secrets init`. Either the value or a file holding it; required in prod. In dev, without
+    # either, a key derived from ERAG_SECRET_KEY is used (insecure, for local demos only).
+    secrets_key: SecretStr | None = None
+    secrets_key_file: Path | None = None
+
+    # MFA and step-up re-authentication (ADR 0019)
+    mfa_issuer: str = "EnterpriseRAG"
+    step_up_seconds: int = 300
+    mfa_max_attempts: int = 5
 
     # Sessions
     session_ttl_hours: int = 12
@@ -99,6 +109,8 @@ class Settings(BaseSettings):
             value = getattr(self, name).get_secret_value()
             if value.startswith("dev-insecure") or len(value) < 32:
                 raise RuntimeError(f"ERAG_{name.upper()} must be set to a strong value in prod")
+        if self.secrets_key is None and self.secrets_key_file is None:
+            raise RuntimeError("ERAG_SECRETS_KEY or ERAG_SECRETS_KEY_FILE is required in prod (erag secrets init)")
 
 
 @lru_cache

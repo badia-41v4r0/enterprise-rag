@@ -99,6 +99,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 TABLES = [
     "audit_log",
+    "secrets",
+    "app_settings",
+    "mfa_recovery_codes",
     "provider_spend",
     "messages",
     "conversations",
@@ -118,6 +121,9 @@ TABLES = [
 
 
 async def truncate_all() -> None:
+    from app.llm.router import invalidate_router_cache
+
+    invalidate_router_cache()
     async with get_sessionmaker()() as s:
         await s.execute(text("TRUNCATE " + ", ".join(TABLES) + " RESTART IDENTITY CASCADE"))
         await s.commit()
