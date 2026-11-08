@@ -53,7 +53,7 @@ Set `APP_PORT` if port 8000 is taken. A bundled Ollama container exists behind `
 
 ### Optional: OpenRouter (free models only)
 
-Set `ERAG_OPENROUTER_API_KEY` to add a cloud model. Only models whose id ends in `:free` are accepted, and a hard monthly spend ceiling (`ERAG_OPENROUTER_MONTHLY_BUDGET_USD`, default `0.01`) is enforced before every request ([ADR 0016](docs/adr/0016-openrouter-free-only-and-spend-ceiling.md)). Confidential data never goes to the cloud; what else may go is controlled by `ERAG_CLOUD_MAX_CLASSIFICATION`.
+Put your key in `ERAG_OPENROUTER_API_KEY` to add a cloud model: in `deploy/.env` when you run with Docker Compose, or in `.env` at the repo root when you run the app or the tests locally (both files are git-ignored; copy `deploy/.env.example` as a starting point). Only models whose id ends in `:free` are accepted, and a hard monthly spend ceiling (`ERAG_OPENROUTER_MONTHLY_BUDGET_USD`, default `0.01`) is enforced before every request ([ADR 0016](docs/adr/0016-openrouter-free-only-and-spend-ceiling.md)). Confidential data never goes to the cloud; what else may go is controlled by `ERAG_CLOUD_MAX_CLASSIFICATION`.
 
 ## Development
 

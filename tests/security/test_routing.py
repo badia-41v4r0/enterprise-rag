@@ -144,3 +144,65 @@ async def test_internal_context_may_use_cloud_and_carries_only_authorized_data(
     assert CANARY_BY_SLUG["engineering"] in body
     for slug in ("hr-confidential", "finance"):
         assert CANARY_BY_SLUG[slug] not in body
+
+
+# --- one case per classification, with the ACME data (public / internal / confidential) -------------
+
+
+@pytest.mark.parametrize(
+    ("ceiling", "classification", "cloud_allowed"),
+    [
+        (Classification.public, Classification.public, True),
+        (Classification.public, Classification.internal, False),
+        (Classification.public, Classification.confidential, False),
+        (Classification.internal, Classification.public, True),
+        (Classification.internal, Classification.internal, True),
+        (Classification.internal, Classification.confidential, False),
+    ],
+)
+def test_cloud_ceiling_matrix(ceiling: Classification, classification: Classification, cloud_allowed: bool) -> None:
+    """ERAG_CLOUD_MAX_CLASSIFICATION decides how far the cloud may go; confidential is never cloud."""
+    assert bool(ModelRouter([cloud(ceiling)]).permitted(classification)) is cloud_allowed
+
+
+@pytest.mark.db
+@pytest.mark.embeddings
+async def test_public_context_may_use_cloud_even_with_the_strictest_ceiling(
+    session: AsyncSession, egress: list[EgressRecord]
+) -> None:
+    newhire = next(p for p in PERSONAS if p.email == "newhire@acme.test")
+    u = await user(session, newhire)
+    perms = await effective_permissions(session, u)
+    orch = ChatOrchestrator(session, OllamaEmbedder(), ModelRouter([cloud(Classification.public), local()]))
+    _ = [
+        e
+        async for e in orch.run(
+            u,
+            perms,
+            "What is new in version 4.2 of the ACME Cloud Planner mobile app?",
+            requested_model="openrouter:some/cloud-model",
+        )
+    ]
+    seen = {k: v in str(egress[0].payload) for k, v in CANARY_BY_SLUG.items()}
+    assert [r.provider for r in egress] == ["openrouter"], (egress[0].classification, seen)
+    assert egress[0].classification == Classification.public
+    assert CANARY_BY_SLUG["product-docs"] in str(egress[0].payload)
+
+
+@pytest.mark.db
+@pytest.mark.embeddings
+async def test_internal_context_stays_local_when_the_cloud_ceiling_is_public(
+    session: AsyncSession, egress: list[EgressRecord]
+) -> None:
+    eng = next(p for p in PERSONAS if p.email == "engineer@acme.test")
+    u = await user(session, eng)
+    perms = await effective_permissions(session, u)
+    orch = ChatOrchestrator(session, OllamaEmbedder(), ModelRouter([cloud(Classification.public), local()]))
+    _ = [
+        e
+        async for e in orch.run(
+            u, perms, "When are we allowed to deploy to production?", requested_model="openrouter:some/cloud-model"
+        )
+    ]
+    assert [r.provider for r in egress] == ["ollama"]
+    assert egress[0].classification == Classification.internal
