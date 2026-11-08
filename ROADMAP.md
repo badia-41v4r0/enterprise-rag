@@ -21,3 +21,4 @@ Items outside the scope of the MVP (docs/PLAN.md section 1) and of v0.2 (docs/PL
 - Kubernetes/Helm, horizontal scaling (rate limiters are in-process).
 - Hardware-backed master key (KMS/HSM/TPM) for the credential store.
 - English version of the original architecture diagram as an editable Excalidraw file (a Mermaid version is in `docs/architecture.md`).
+- **Credential hardening** (see white paper 7.3): a pluggable master-key provider backed by a key manager (cloud KMS, HSM or a vault service) or a manual unlock at boot, and a separate credential-broker service so the web application never holds secrets.
