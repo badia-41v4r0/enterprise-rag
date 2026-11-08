@@ -335,6 +335,60 @@ class AppSetting(Base):
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
+# --- Connectors (R3, ADR 0020) --------------------------------------------------------------------
+
+
+class Connector(TimestampMixin, Base):
+    """An information source synced into ONE container; its documents inherit that container's access."""
+
+    __tablename__ = "connectors"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    kind: Mapped[str] = mapped_column(String(50))
+    container_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("containers.id", ondelete="CASCADE"), index=True)
+    config: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    secret_refs: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"names": [...]} assigned secrets
+    schedule_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(20), default="idle")
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    @property
+    def secret_names(self) -> list[str]:
+        return [str(n) for n in (self.secret_refs or {}).get("names", [])]
+
+
+class ConnectorItem(Base):
+    __tablename__ = "connector_items"
+    __table_args__ = (UniqueConstraint("connector_id", "external_id", name="uq_connector_item"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    connector_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("connectors.id", ondelete="CASCADE"), index=True)
+    external_id: Mapped[str] = mapped_column(String(2000))
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    version_hint: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SyncRun(TimestampMixin, Base):
+    __tablename__ = "sync_runs"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    connector_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("connectors.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued|running|done|failed
+    dry_run: Mapped[bool] = mapped_column(Boolean, default=False)
+    triggered_by: Mapped[str] = mapped_column(String(100), default="")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    counts: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    errors: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"items": [{"item": ..., "error": ...}]}
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

@@ -24,6 +24,10 @@ x-app-env: &app-env
   ERAG_OPENROUTER_MONTHLY_BUDGET_USD: ${ERAG_OPENROUTER_MONTHLY_BUDGET_USD:-0.01}
   ERAG_COOKIE_SECURE: ${ERAG_COOKIE_SECURE:-false}
   ERAG_BLOB_DIR: /data/blobs
+  # Folder connectors may only read below these roots (mounted read-only below). ADR 0020.
+  ERAG_CONNECTOR_ROOTS: ${ERAG_CONNECTOR_ROOTS:-/connectors}
+  # Non-public destinations that web connectors / remote MCP servers may reach (host, host:port, CIDR).
+  ERAG_SSRF_ALLOWLIST: ${ERAG_SSRF_ALLOWLIST:-}
   ERAG_MCP_TICKETS_DB: /data/tickets.sqlite3
   # Demo: seed ACME Corp on startup (idempotent). Set to false for a real installation.
   ERAG_SEED_DEMO: ${ERAG_SEED_DEMO:-true}
@@ -60,6 +64,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - appdata:/data
+      - ../demo/acme/connector-source:/connectors/acme:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +78,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - appdata:/data
+      - ../demo/acme/connector-source:/connectors/acme:ro
     depends_on:
       app:
         condition: service_started

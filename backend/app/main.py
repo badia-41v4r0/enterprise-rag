@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import admin, auth, chat, documents, health, secrets, tools
+from app.api import admin, auth, chat, connectors, documents, health, secrets, tools
 from app.core.config import get_settings
 from app.core.db import dispose_engine
 from app.core.logging import configure_logging
@@ -37,6 +37,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(tools.router)
     app.include_router(secrets.router)
+    app.include_router(connectors.router)
 
     _mount_frontend(app, settings.frontend_dist)
     return app

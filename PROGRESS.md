@@ -8,7 +8,7 @@ Plan: [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md). Work done autonomously; every re
 |---|---|---|
 | R1 Roles, delegated management, uploads | Done | see `git log` ("R1: ...") |
 | R2 Credential store and MFA | Done | "R2: ..." |
-| R3 Connectors | Not started | |
+| R3 Connectors | Done | "R3: ..." |
 | R4 MCP registry and clearance | Not started | |
 | R5 Isolated runner | Not started | |
 
@@ -57,6 +57,28 @@ Plan: [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md). Work done autonomously; every re
 **Known issues / notes**
 - Secret values are decrypted when the provider router is rebuilt, not per request; each rebuild is audited.
 - The stack on this machine must currently be started with `ERAG_OPENROUTER_API_KEY=` (empty) to prove vault-only operation, because `deploy/.env` still holds the key. **Owner:** remove the key from `deploy/.env` now that it is in the vault (I did not edit that file).
+
+### R3. Connectors
+
+**What was built**
+- Connector framework (ADR 0020): `connectors`, `connector_items`, `sync_runs` (migration 0006); kinds registered in `KINDS` (`folder`, `web`); sync engine with upsert by external id + version hint/SHA-256 through normal versioning, deletion only after a complete listing, per-item error isolation, item/size/type limits, dry run; worker claims queued runs (`SKIP LOCKED`) and schedules due connectors.
+- `folder`: real path must be inside `ERAG_CONNECTOR_ROOTS` (Compose mounts `demo/acme/connector-source` read-only at `/connectors/acme` in app and worker); symlinks never followed; `O_NOFOLLOW` reads.
+- `web`: URLs and/or sitemap, same-host crawl, page/depth limits, optional regex, optional bearer token from an assigned vault secret, ETag/`If-None-Match`. SSRF guard `app/core/netguard.py` (public-only unless `ERAG_SSRF_ALLOWLIST`, IP pinning with SNI, re-checked redirects, credential stripping across hosts, body cap).
+- Admin API: kinds/schema, list, create/edit (step-up), delete (with its documents), test, preview (dry run), sync now, run history; connector secrets show up under "used by" in the Secrets screen.
+- UI: Admin > Connectors (create form with the audience warning, test, preview, sync now, runs with errors, enable, delete).
+- Demo: `demo/acme/connector-source/engineering-wiki` (2 pages) and a seeded connector *Engineering wiki (folder)* into Engineering (sync every 60 min, first sync queued at seed time).
+
+**Verified (2026-11-09)**
+- `uv run pytest`: **199 passed, 2 skipped** in 110 s. New `tests/security/test_connectors.py` (21 tests): `/etc`, an outside folder, `../` traversal, a symlink to an outside folder and a missing folder are refused at creation (422); a sync skips a symlinked file and a symlinked folder pointing outside the root, an unsupported file and a file over the size limit, imports the 2 valid files, is idempotent on re-sync (unchanged, no new versions), creates a new version on change, imports a new file and deletes a removed one; the item limit stops the listing and suppresses deletion; dry run writes nothing; 13 SSRF destinations refused (loopback, `localhost`, RFC 1918, link-local metadata IP, `::1`, IPv4-mapped IPv6, `0.0.0.0`, CGNAT, `file:`, `gopher:`, credentials in URL); allowlist matches exactly (`host:port`, CIDR); a real local site is refused without allowlist (zero requests reached it), crawled with it (3 pages, external link ignored), and a redirect to a second real loopback server is refused (zero requests reached it); re-sync unchanged; a config naming an unassigned secret is refused at create and at sync; the bearer token reaches the server; `secret.use` audited as `connector:<id>`; **permission boundary with real bge-m3**: the imported page's canary is retrieved for the role that reads the container and never for another role.
+- `ruff`, `ruff format --check`, `mypy` strict, license check, `npm run build`: pass.
+- **Exit criterion (Docker):** after rebuild (`Running upgrade 0005 -> 0006`, seed: `connector: created, first sync queued`), the worker ran the sync (`done`, `seen 2, created 2`) and ingested both pages. "How do engineers get VPN access?": engineer -> sources include *vpn access (Engineering)*, answer "requesting the eng-vpn profile in the IT portal, approved by their team lead within one working day [1]"; new hire and finance -> "I don't have information about that in the sources available to you."
+- `scripts/ui_smoke.mjs`: Connectors tab lists the seeded connector, preview shows "unchanged 2, seen 2", sync now -> run `done`, a connector on `/etc` is refused with the roots message. `UI SMOKE PASSED`. `scripts/demo_scenarios.py`: unchanged.
+
+**Decisions:** ADR 0020 (SSRF allowlist is environment-only, deletion only after complete listings, connector filenames prefixed with the connector name, step-up for create/edit only).
+
+**Not done / notes**
+- Web connector polish: no robots.txt handling, no per-page rate limiting, no JavaScript rendering; sitemap indexes (nested sitemaps) are not followed.
+- A sync run that crashes the worker mid-way stays `running` (no stale-run reaper yet).
 
 ---
 

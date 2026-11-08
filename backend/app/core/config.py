@@ -5,14 +5,14 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="ERAG_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="ERAG_", extra="ignore", enable_decoding=False)
 
     env: str = "dev"
     log_level: str = "INFO"
@@ -83,6 +83,23 @@ class Settings(BaseSettings):
     tool_rate_limit_per_minute: int = 20
     mcp_files_root: Path = REPO_ROOT / "demo" / "acme" / "docs"
     mcp_tickets_db: Path = REPO_ROOT / "data" / "tickets.sqlite3"
+
+    # Connectors (ADR 0020). Folder connectors may only read below these roots (comma-separated or a
+    # JSON list); mount them read-only into the app and the worker.
+    connector_roots: list[Path] = Field(default_factory=list)
+    connector_max_items: int = 1000
+    connector_max_item_mb: int = 25
+    connector_scheduler_seconds: float = 30.0
+    # Outbound destinations that are not public addresses are refused unless listed here
+    # (`host`, `host:port` or a CIDR), for web connectors and remote MCP servers alike.
+    ssrf_allowlist: list[str] = Field(default_factory=list)
+
+    @field_validator("connector_roots", "ssrf_allowlist", "allowed_hosts", mode="before")
+    @classmethod
+    def _split_csv(cls, v: object) -> object:
+        if isinstance(v, str) and not v.strip().startswith("["):
+            return [x.strip() for x in v.split(",") if x.strip()]
+        return v
 
     # Rate limiting (requests per minute)
     chat_rate_limit_per_minute: int = 20

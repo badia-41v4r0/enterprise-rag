@@ -24,3 +24,4 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0017](0017-delegated-content-management.md) | Delegated content management: `contribute` and `manage` on containers | Accepted |
 | [0018](0018-credential-store.md) | Credential store: AES-256-GCM, master key outside the database, OpenRouter key in the vault | Accepted |
 | [0019](0019-mfa-and-step-up.md) | Optional TOTP MFA and step-up re-authentication | Accepted |
+| [0020](0020-connectors-and-ssrf.md) | Connectors: container-inherited permissions, folder roots, SSRF guard | Accepted |

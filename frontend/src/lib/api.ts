@@ -284,3 +284,37 @@ export async function streamChat(
     }
   }
 }
+
+export interface ConnectorRow {
+  id: string;
+  name: string;
+  kind: "folder" | "web";
+  container_id: string;
+  container_name: string;
+  config: Record<string, unknown>;
+  secret_names: string[];
+  schedule_minutes: number | null;
+  enabled: boolean;
+  status: string;
+  last_sync_at: string | null;
+  last_error: string | null;
+  item_count: number;
+}
+export interface SyncRunRow {
+  id: string;
+  status: string;
+  dry_run: boolean;
+  triggered_by: string;
+  created_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  counts: Record<string, number>;
+  errors: { items?: { item: string; error: string }[]; fatal?: string | null };
+}
+export interface PreviewResult {
+  counts: Record<string, number>;
+  items: { item: string; action: string }[];
+  errors: { item: string; error: string }[];
+  fatal: string | null;
+  warning: string;
+}

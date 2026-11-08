@@ -22,9 +22,10 @@ import {
   type UserRow,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import Connectors from "@/pages/Connectors";
 import { ContainerContent } from "@/pages/Content";
 
-const TABS = ["Users", "Roles", "Containers", "Grants", "Tools", "Secrets", "Providers", "Audit", "Jobs"] as const;
+const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "Tools", "Secrets", "Providers", "Audit", "Jobs"] as const;
 type Tab = (typeof TABS)[number];
 const CLASSES: Classification[] = ["public", "internal", "confidential"];
 
@@ -1078,6 +1079,7 @@ export default function AdminPage() {
         </div>
       )}
       {tab === "Tools" && <Tools />}
+      {tab === "Connectors" && <Connectors containers={containers.data ?? []} />}
       {tab === "Secrets" && <Secrets />}
       {tab === "Providers" && <Providers />}
       {tab === "Audit" && <Audit />}

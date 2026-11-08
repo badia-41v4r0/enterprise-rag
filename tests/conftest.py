@@ -22,6 +22,7 @@ os.environ["ERAG_DATABASE_URL"] = TEST_DB_URL
 os.environ.setdefault("ERAG_BLOB_DIR", tempfile.mkdtemp(prefix="erag-blobs-"))
 os.environ.setdefault("ERAG_MCP_TICKETS_DB", str(Path(tempfile.mkdtemp(prefix="erag-tickets-")) / "tickets.sqlite3"))
 os.environ.setdefault("ERAG_LOG_JSON", "false")
+os.environ.setdefault("ERAG_CONNECTOR_ROOTS", tempfile.mkdtemp(prefix="erag-connector-root-"))
 os.environ.setdefault("ERAG_FRONTEND_DIST", str(ROOT / "nonexistent-dist"))
 
 import httpx  # noqa: E402
@@ -99,6 +100,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 TABLES = [
     "audit_log",
+    "sync_runs",
+    "connector_items",
+    "connectors",
     "secrets",
     "app_settings",
     "mfa_recovery_codes",

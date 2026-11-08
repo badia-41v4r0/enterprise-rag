@@ -113,6 +113,23 @@ try {
   const orStatus = await admin.getByTestId("openrouter-status").innerText();
   step(`secret stored (value never shown) and deleted; OpenRouter: ${orStatus.split("\n")[0]}`);
 
+  // R3: connectors. The seeded folder connector is listed; preview is a dry run; a path outside the
+  // allowed roots is refused.
+  await admin.getByRole("button", { name: "Connectors", exact: true }).click();
+  const wiki = admin.locator('tr[data-connector="Engineering wiki (folder)"]');
+  await wiki.waitFor();
+  await wiki.getByRole("button", { name: "Preview" }).click();
+  const pv = await admin.getByTestId("preview").innerText();
+  await wiki.getByRole("button", { name: "Sync now" }).click();
+  await wiki.getByRole("button", { name: "Runs" }).click();
+  await admin.getByTestId("runs").getByText("done").first().waitFor({ timeout: 60_000 });
+  await admin.getByPlaceholder("connector name").fill(`escape-${sfx}`);
+  await admin.getByLabel("target container").selectOption({ label: `${container} (internal)` });
+  await admin.getByPlaceholder("e.g. acme/engineering-wiki").fill("/etc");
+  await admin.getByRole("button", { name: "Create connector" }).click();
+  await admin.getByText("is not a folder inside an allowed root").waitFor();
+  step(`connectors: preview "${pv.split("\n")[0]}", sync run done, /etc refused`);
+
   const user = await (await browser.newContext()).newPage();
   pages.push(user);
   await login(user, email, pw);
