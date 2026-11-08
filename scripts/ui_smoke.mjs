@@ -44,6 +44,37 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? 
 const step = (s) => console.log(`- ${s}`);
 const pages = [];
 
+// Remove what this run created so repeated runs do not pile up roles and containers in the dev database.
+// There is no delete-user API, so the test user is emptied of roles and deactivated instead.
+async function cleanup() {
+  try {
+    const res = await fetch(`${BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@acme.test", password: ADMIN_PW }),
+    });
+    if (!res.ok) throw new Error(`admin login ${res.status}`);
+    const cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+    const { csrf_token } = await res.json();
+    const api = (method, p, body) =>
+      fetch(`${BASE}${p}`, {
+        method,
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf_token, Cookie: cookie },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    const list = async (p) => (await api("GET", p)).json();
+    const user = (await list("/api/admin/users")).find((u) => u.email === email);
+    if (user) await api("PATCH", `/api/admin/users/${user.id}`, { role_ids: [], is_active: false });
+    const r = (await list("/api/admin/roles")).find((x) => x.name === role);
+    if (r) await api("DELETE", `/api/admin/roles/${r.id}`);
+    const c = (await list("/api/admin/containers")).find((x) => x.name === container);
+    if (c) await api("DELETE", `/api/admin/containers/${c.id}`);
+    console.log("cleanup: removed the test role and container, deactivated the test user");
+  } catch (err) {
+    console.error("cleanup failed (remove the 'UI Tester'/'UI Facilities' leftovers manually):", err.message);
+  }
+}
+
 async function login(page, user, password) {
   await page.goto(BASE);
   await page.getByLabel("Email").fill(user);
@@ -269,5 +300,6 @@ try {
   for (const [i, p] of pages.entries()) await p.screenshot({ path: `${OUT}/ui-failure-${i}.png`, fullPage: true });
   process.exitCode = 1;
 } finally {
+  await cleanup();
   await browser.close();
 }

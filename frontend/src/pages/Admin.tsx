@@ -28,6 +28,7 @@ import { ContainerContent } from "@/pages/Content";
 
 const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Audit", "Jobs"] as const;
 type Tab = (typeof TABS)[number];
+const CLASSIFICATIONS = ["public", "internal", "confidential"] as const;
 const CLASSES: Classification[] = ["public", "internal", "confidential"];
 
 function useInvalidate() {
@@ -1061,10 +1062,10 @@ export default function AdminPage() {
             {t}
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-1 pb-1">
-          {containers.data?.map((c) => (
-            <span key={c.id} title={c.name}>
-              <ClassBadge value={c.classification} />
+        <div className="ml-auto flex items-center gap-3 pb-1 text-xs text-muted-foreground" aria-label="Containers by classification">
+          {CLASSIFICATIONS.map((k) => (
+            <span key={k} className="flex items-center gap-1">
+              <ClassBadge value={k} /> {containers.data?.filter((c) => c.classification === k).length ?? 0}
             </span>
           ))}
         </div>
