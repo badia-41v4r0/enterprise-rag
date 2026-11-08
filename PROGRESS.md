@@ -83,7 +83,7 @@ Other notable choices: Phase 5 (MCP) was done before Phase 4 (frontend) because 
 4. Cloud may receive `internal` data by default (`ERAG_CLOUD_MAX_CLASSIFICATION=internal`). Keep or tighten to `public`?
 5. The compose file seeds the demo by default (ADR 0015). Fine for a reference repo; turn off for real deployments.
 6. Add an OpenRouter key (prepaid, capped) to run `provider_openrouter` tests and the cloud half of the routing demo; implement the spend ceiling first.
-7. Enable GitHub private vulnerability reporting (SECURITY.md points to it) and review the white paper draft (`docs/whitepaper/whitepaper.md`, section 9 is a TODO).
+7. Enable GitHub private vulnerability reporting (SECURITY.md points to it) and review the white paper draft (`docs/whitepaper/whitepaper.md`).
 8. Tag `v0.1.0` and push when satisfied (nothing was pushed).
 
 ## Verified (Phase 0)

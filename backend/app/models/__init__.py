@@ -73,6 +73,8 @@ class ResourceType(enum.StrEnum):
 
 class Action(enum.StrEnum):
     read = "read"
+    # Upload new documents and new versions of documents the user can read (ADR 0017).
+    contribute = "contribute"
     manage = "manage"
     execute = "execute"
 
