@@ -160,11 +160,12 @@ async def test_openrouter_key_vault_first_env_fallback_and_hot_reload(
     env_settings = get_settings().model_copy(update={"openrouter_api_key": SecretStr("env-key-value")})
     assert (await resolve_openrouter(db, env_settings)).key_source == "env"
 
-    # Paid model and a ceiling above the env cap are refused.
-    r = await client.put("/api/admin/providers/openrouter", json={"model": "openai/gpt-5"})
+    # Since ADR 0028 a paid model id is accepted and the ceiling may be raised above the env default (D2,
+    # step-up: this endpoint always required it). An invalid model id is still refused.
+    r = await client.put("/api/admin/providers/openrouter", json={"model": "bad id with spaces"})
     assert r.status_code == 422
     r = await client.put("/api/admin/providers/openrouter", json={"monthly_budget_usd": 100})
-    assert r.status_code == 422
+    assert r.status_code == 200 and r.json()["monthly_budget_usd"] == 100
 
     r = await client.put(
         "/api/admin/providers/openrouter",

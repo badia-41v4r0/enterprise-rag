@@ -23,15 +23,22 @@ from app.core.config import Settings, get_settings
 from app.core.db import get_db
 from app.core.netguard import BlockedDestination
 from app.llm import registry
-from app.llm.router import invalidate_router_cache, load_router, validate_openrouter_model
+from app.llm.router import invalidate_router_cache, load_router
 from app.models import Classification, LlmModel, LlmProvider
-from app.services import vault
+from app.services import usage, vault
 from app.services.audit import audit
-from app.services.spend import month_spend, requests_today
+from app.services.spend import day_key, month_key, month_spend, requests_today
 
 router = APIRouter(prefix="/api/admin", tags=["providers"])
 
 Kind = Literal["ollama", "api"]
+
+
+class UsageFigures(BaseModel):
+    requests: int = 0
+    tokens: int = 0
+    cost_usd: float = 0.0
+    estimated_requests: int = 0
 
 
 class ModelOut(BaseModel):
@@ -41,6 +48,17 @@ class ModelOut(BaseModel):
     enabled: bool
     env_managed: bool
     is_default: bool
+    # Per-model overrides (NULL = the provider's value) and price in USD per million tokens (NULL = unknown).
+    max_output_tokens: int | None = None
+    max_input_tokens: int | None = None
+    tokens_per_day: int | None = None
+    tokens_per_month: int | None = None
+    monthly_budget_usd: float | None = None
+    input_usd_per_mtok: float | None = None
+    output_usd_per_mtok: float | None = None
+    price_source: str | None = None
+    today: UsageFigures = Field(default_factory=UsageFigures)
+    month: UsageFigures = Field(default_factory=UsageFigures)
 
 
 class ProviderOut(BaseModel):
@@ -65,7 +83,15 @@ class ProviderOut(BaseModel):
     daily_request_limit: int | None
     daily_cap_env: int | None
     requests_today: int
-    free_only: bool
+    # Token limits (NULL = not set; max output falls back to ERAG_PROVIDER_MAX_OUTPUT_TOKENS).
+    max_output_tokens: int | None
+    default_max_output_tokens: int
+    max_input_tokens: int | None
+    tokens_per_day: int | None
+    tokens_per_month: int | None
+    max_turn_tokens: int | None
+    today: UsageFigures
+    month: UsageFigures
     available: bool
     status_reason: str
     models: list[ModelOut]
@@ -88,6 +114,11 @@ class ProviderIn(BaseModel):
     max_classification: Classification | None = None
     monthly_budget_usd: float | None = Field(default=None, ge=0)
     daily_request_limit: int | None = Field(default=None, ge=0)
+    max_output_tokens: int | None = Field(default=None, ge=1, le=1_000_000)
+    max_input_tokens: int | None = Field(default=None, ge=1, le=10_000_000)
+    tokens_per_day: int | None = Field(default=None, ge=0)
+    tokens_per_month: int | None = Field(default=None, ge=0)
+    max_turn_tokens: int | None = Field(default=None, ge=1)
     models: list[str] = Field(default_factory=list, max_length=100)
     enabled: bool = True
 
@@ -104,6 +135,11 @@ class ProviderPatch(BaseModel):
     max_classification: Classification | None = None
     monthly_budget_usd: float | None = Field(default=None, ge=0)
     daily_request_limit: int | None = Field(default=None, ge=0)
+    max_output_tokens: int | None = Field(default=None, ge=1, le=1_000_000)
+    max_input_tokens: int | None = Field(default=None, ge=1, le=10_000_000)
+    tokens_per_day: int | None = Field(default=None, ge=0)
+    tokens_per_month: int | None = Field(default=None, ge=0)
+    max_turn_tokens: int | None = Field(default=None, ge=1)
 
 
 class ModelIn(BaseModel):
@@ -111,14 +147,38 @@ class ModelIn(BaseModel):
 
 
 class ModelPatch(BaseModel):
-    enabled: bool
+    """Fields left out are unchanged; an explicit null resets a limit or price to "not set"."""
+
+    enabled: bool | None = None
+    max_output_tokens: int | None = Field(default=None, ge=1, le=1_000_000)
+    max_input_tokens: int | None = Field(default=None, ge=1, le=10_000_000)
+    tokens_per_day: int | None = Field(default=None, ge=0)
+    tokens_per_month: int | None = Field(default=None, ge=0)
+    monthly_budget_usd: float | None = Field(default=None, ge=0)
+    input_usd_per_mtok: float | None = Field(default=None, ge=0, le=100_000)
+    output_usd_per_mtok: float | None = Field(default=None, ge=0, le=100_000)
+
+
+PROVIDER_LIMITS = (
+    "monthly_budget_usd",
+    "daily_request_limit",
+    "max_output_tokens",
+    "max_input_tokens",
+    "tokens_per_day",
+    "tokens_per_month",
+    "max_turn_tokens",
+)
+MODEL_LIMITS = ("max_output_tokens", "max_input_tokens", "tokens_per_day", "tokens_per_month", "monthly_budget_usd")
+MODEL_PRICES = ("input_usd_per_mtok", "output_usd_per_mtok")
 
 
 class DefaultIn(BaseModel):
     model_id: str | None = Field(default=None, max_length=250)  # "<slug>:<model>"; null = automatic
 
 
-SENSITIVE_PATCH = {"base_url", "self_hosted", "api_key", "clear_api_key", "max_classification"}
+# Step-up (ADR 0019) for anything that opens a destination, raises what may be sent, or changes a limit (D2:
+# limits may be raised, so every limit change is treated as sensitive and kept in the change history).
+SENSITIVE_PATCH = {"base_url", "self_hosted", "api_key", "clear_api_key", "max_classification", *PROVIDER_LIMITS}
 
 
 def _422(msg: str) -> HTTPException:
@@ -136,17 +196,12 @@ async def _row_or_404(db: AsyncSession, provider_id: uuid.UUID, *, fresh: bool =
     return row
 
 
-def _check_limits(row: LlmProvider, s: Settings, budget: float | None, daily: int | None) -> None:
-    """The admin panel may only lower the environment ceilings (ADR 0016, ADR 0024)."""
-    cap = registry.budget_cap(row, s)
-    if budget is not None and budget > cap:
-        env = (
-            "ERAG_OPENROUTER_MONTHLY_BUDGET_USD" if registry.is_openrouter(row) else "ERAG_PROVIDER_MONTHLY_BUDGET_USD"
-        )
-        raise _422(f"The monthly ceiling cannot exceed {env} ({cap})")
-    env_daily = registry.daily_cap_env(row, s)
-    if daily is not None and env_daily is not None and daily > env_daily:
-        raise _422(f"The daily request limit cannot exceed ERAG_PROVIDER_DAILY_REQUEST_CAP ({env_daily})")
+def _env_defaults(row: LlmProvider, s: Settings) -> dict[str, Any]:
+    return {
+        "monthly_budget_usd": registry.budget_cap(row, s),
+        "daily_request_limit": registry.daily_cap_env(row, s),
+        "max_output_tokens": s.provider_max_output_tokens,
+    }
 
 
 def _check_clearance(requested: Classification | None, locality: str, s: Settings) -> None:
@@ -194,20 +249,44 @@ async def _out(
         daily_request_limit=registry.effective_daily_cap(row, s) if is_metered else None,
         daily_cap_env=registry.daily_cap_env(row, s) if is_metered else None,
         requests_today=await requests_today(db, row.slug),
-        free_only=registry.is_openrouter(row) and not s.openrouter_allow_paid,
+        max_output_tokens=row.max_output_tokens,
+        default_max_output_tokens=s.provider_max_output_tokens,
+        max_input_tokens=row.max_input_tokens,
+        tokens_per_day=row.tokens_per_day,
+        tokens_per_month=row.tokens_per_month,
+        max_turn_tokens=row.max_turn_tokens,
+        today=_figures(await usage.totals(db, provider=row.slug, day=day_key())),
+        month=_figures(await usage.totals(db, provider=row.slug, month=month_key())),
         available=bool(state and state.available),
         status_reason=(state.reason if state else "") or ("" if state and state.available else "not loaded"),
-        models=[
-            ModelOut(
-                id=m.id,
-                model_id=f"{row.slug}:{m.model}",
-                model=m.model,
-                enabled=m.enabled,
-                env_managed=m.env_managed,
-                is_default=m.is_default,
-            )
-            for m in row.models
-        ],
+        models=[await _model_out(db, row.slug, m) for m in row.models],
+    )
+
+
+def _figures(t: usage.Totals) -> UsageFigures:
+    return UsageFigures(
+        requests=t.requests, tokens=t.tokens, cost_usd=round(t.cost_usd, 8), estimated_requests=t.estimated_requests
+    )
+
+
+async def _model_out(db: AsyncSession, slug: str, m: LlmModel) -> ModelOut:
+    return ModelOut(
+        id=m.id,
+        model_id=f"{slug}:{m.model}",
+        model=m.model,
+        enabled=m.enabled,
+        env_managed=m.env_managed,
+        is_default=m.is_default,
+        max_output_tokens=m.max_output_tokens,
+        max_input_tokens=m.max_input_tokens,
+        tokens_per_day=m.tokens_per_day,
+        tokens_per_month=m.tokens_per_month,
+        monthly_budget_usd=m.monthly_budget_usd,
+        input_usd_per_mtok=m.input_usd_per_mtok,
+        output_usd_per_mtok=m.output_usd_per_mtok,
+        price_source=m.price_source,
+        today=_figures(await usage.totals(db, provider=slug, model=m.model, day=day_key())),
+        month=_figures(await usage.totals(db, provider=slug, model=m.model, month=month_key())),
     )
 
 
@@ -269,9 +348,13 @@ async def create_provider(
         max_classification=requested,
         monthly_budget_usd=body.monthly_budget_usd,
         daily_request_limit=body.daily_request_limit,
+        max_output_tokens=body.max_output_tokens,
+        max_input_tokens=body.max_input_tokens,
+        tokens_per_day=body.tokens_per_day,
+        tokens_per_month=body.tokens_per_month,
+        max_turn_tokens=body.max_turn_tokens,
         created_by=auth.user.id,
     )
-    _check_limits(row, s, body.monthly_budget_usd, body.daily_request_limit)
     row.models = [LlmModel(model=m) for m in dict.fromkeys(models)]
     db.add(row)
     if body.api_key is not None:
@@ -292,6 +375,7 @@ async def create_provider(
             "locality": locality,
             "max_classification": requested.value if requested else None,
             "models": models,
+            "limits": {n: getattr(row, n) for n in PROVIDER_LIMITS},
             "api_key_set": body.api_key is not None,
         },
     )
@@ -336,12 +420,20 @@ async def update_provider(
         _check_clearance(body.max_classification, locality, s)
         row.max_classification = body.max_classification
         changes["max_classification"] = body.max_classification.value if body.max_classification else None
-    if "monthly_budget_usd" in fields or "daily_request_limit" in fields:
-        budget = body.monthly_budget_usd if "monthly_budget_usd" in fields else row.monthly_budget_usd
-        daily = body.daily_request_limit if "daily_request_limit" in fields else row.daily_request_limit
-        _check_limits(row, s, budget, daily)
-        row.monthly_budget_usd, row.daily_request_limit = budget, daily
-        changes.update(monthly_budget_usd=budget, daily_request_limit=daily)
+    limit_changes: dict[str, Any] = {}
+    for name in PROVIDER_LIMITS:
+        if name in fields and getattr(body, name) != getattr(row, name):
+            limit_changes[name] = {"from": getattr(row, name), "to": getattr(body, name)}
+            setattr(row, name, getattr(body, name))
+    if limit_changes:
+        # Limits may be raised as well as lowered (D2); every change is in the change history.
+        audit(
+            db,
+            "admin.limits.provider",
+            user_id=auth.user.id,
+            resource=f"provider:{row.slug}",
+            details={"changes": limit_changes, "env_defaults": _env_defaults(row, s)},
+        )
     if body.name is not None:
         row.name = body.name
         changes["name"] = body.name
@@ -438,24 +530,36 @@ async def add_model(
     db: AsyncSession = Depends(get_db),
 ) -> ModelOut:
     row = await _row_or_404(db, provider_id)
-    s = get_settings()
     try:
         model = registry.validate_model_name(body.model.strip())
-        if registry.is_openrouter(row):
-            validate_openrouter_model(model, s.openrouter_allow_paid)
     except ValueError as exc:
         raise _422(str(exc)) from exc
     if any(m.model == model for m in row.models):
         raise HTTPException(status.HTTP_409_CONFLICT, "Model already configured")
     m = LlmModel(provider_id=row.id, model=model)
+    if registry.is_openrouter(row):
+        # Best effort: take the price from OpenRouter's own model list so the worst-case check knows it.
+        # Skipped without a key (the provider cannot be used then anyway; "Sync prices" fills it later).
+        key, _ = await registry.resolve_key(db, row)
+        price = None
+        if key:
+            try:
+                price = (await registry.openrouter_prices(row, key)).get(model)
+            except (registry.ProviderConfigError, BlockedDestination):
+                price = None
+        if price is not None:
+            m.input_usd_per_mtok, m.output_usd_per_mtok = price
+            m.price_source = "openrouter"
     db.add(m)
     audit(
-        db, "admin.provider.model.add", user_id=auth.user.id, resource=f"provider:{row.slug}", details={"model": model}
+        db,
+        "admin.provider.model.add",
+        user_id=auth.user.id,
+        resource=f"provider:{row.slug}",
+        details={"model": model, "price_usd_per_mtok": [m.input_usd_per_mtok, m.output_usd_per_mtok]},
     )
     await db.flush()
-    out = ModelOut(
-        id=m.id, model_id=f"{row.slug}:{model}", model=model, enabled=True, env_managed=False, is_default=False
-    )
+    out = await _model_out(db, row.slug, m)
     await _changed(db)
     return out
 
@@ -475,28 +579,132 @@ async def update_model(
     auth: AuthContext = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> ModelOut:
+    fields = body.model_fields_set
+    if fields & {*MODEL_LIMITS, *MODEL_PRICES} and not recently_authenticated(auth.session):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, STEP_UP_REQUIRED)
     m = await _model_or_404(db, provider_id, model_id)
-    if not body.enabled and m.is_default:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This is the default model; choose another default first")
-    m.enabled = body.enabled
     slug = m.provider.slug
-    audit(
-        db,
-        "admin.provider.model.update",
-        user_id=auth.user.id,
-        resource=f"provider:{slug}",
-        details={"model": m.model, "enabled": body.enabled},
-    )
-    out = ModelOut(
-        id=m.id,
-        model_id=f"{slug}:{m.model}",
-        model=m.model,
-        enabled=m.enabled,
-        env_managed=m.env_managed,
-        is_default=m.is_default,
-    )
+    if "enabled" in fields and body.enabled is not None and body.enabled != m.enabled:
+        if not body.enabled and m.is_default:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This is the default model; choose another default first")
+        m.enabled = body.enabled
+        audit(
+            db,
+            "admin.provider.model.update",
+            user_id=auth.user.id,
+            resource=f"provider:{slug}",
+            details={"model": m.model, "enabled": body.enabled},
+        )
+    limit_changes = {
+        n: {"from": getattr(m, n), "to": getattr(body, n)}
+        for n in MODEL_LIMITS
+        if n in fields and getattr(body, n) != getattr(m, n)
+    }
+    price_changes = {
+        n: {"from": getattr(m, n), "to": getattr(body, n)}
+        for n in MODEL_PRICES
+        if n in fields and getattr(body, n) != getattr(m, n)
+    }
+    for n, change in {**limit_changes, **price_changes}.items():
+        setattr(m, n, change["to"])
+    if limit_changes:
+        audit(
+            db,
+            "admin.limits.model",
+            user_id=auth.user.id,
+            resource=f"model:{slug}:{m.model}",
+            details={"changes": limit_changes},
+        )
+    if price_changes:
+        m.price_source = "admin" if m.input_usd_per_mtok is not None or m.output_usd_per_mtok is not None else None
+        audit(
+            db,
+            "admin.price.update",
+            user_id=auth.user.id,
+            resource=f"model:{slug}:{m.model}",
+            details={"changes": price_changes, "source": m.price_source},
+        )
+    await db.flush()
+    out = await _model_out(db, slug, m)
     await _changed(db)
     return out
+
+
+@router.post("/providers/{provider_id}/prices/sync")
+async def sync_prices(
+    provider_id: uuid.UUID, auth: AuthContext = Depends(require_step_up), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """OpenRouter: fill the prices of the configured models from its model list (`pricing`, USD per token).
+    Other providers do not publish prices in a standard form: enter them by hand."""
+    row = await _row_or_404(db, provider_id)
+    if not registry.is_openrouter(row):
+        raise _422("Only OpenRouter publishes prices in its model list; enter prices by hand for this provider")
+    key, _ = await registry.resolve_key(db, row)
+    try:
+        prices = await registry.openrouter_prices(row, key)
+    except (registry.ProviderConfigError, BlockedDestination) as exc:
+        await db.commit()
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Price list failed: {exc}") from exc
+    updated: dict[str, Any] = {}
+    missing: list[str] = []
+    for m in row.models:
+        price = prices.get(m.model)
+        if price is None:
+            missing.append(m.model)
+            continue
+        if (m.input_usd_per_mtok, m.output_usd_per_mtok) != price:
+            updated[m.model] = {"from": [m.input_usd_per_mtok, m.output_usd_per_mtok], "to": list(price)}
+        m.input_usd_per_mtok, m.output_usd_per_mtok = price
+        m.price_source = "openrouter"
+    audit(
+        db,
+        "admin.price.sync",
+        user_id=auth.user.id,
+        resource=f"provider:{row.slug}",
+        details={"changes": updated, "not_listed": missing},
+    )
+    await _changed(db)
+    return {"updated": updated, "not_listed": missing}
+
+
+@router.get("/providers/{provider_id}/usage/daily")
+async def provider_daily_usage(
+    provider_id: uuid.UUID,
+    days: int = 30,
+    _: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Requests, tokens and cost per UTC day for the last `days` days (figures only)."""
+    row = await _row_or_404(db, provider_id)
+    return await usage.daily_series(db, provider=row.slug, days=max(1, min(days, 90)))
+
+
+@router.get("/limits/history")
+async def limits_history(
+    limit: int = 100, _: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> list[dict[str, Any]]:
+    """Every change of a limit, price or quota (from the audit log), newest first. A compromised admin session
+    could raise budgets: this is where to look (ADR 0026)."""
+    from app.models import AuditLog, User
+
+    rows = (
+        await db.execute(
+            select(AuditLog, User.email)
+            .outerjoin(User, User.id == AuditLog.user_id)
+            .where(
+                AuditLog.action.like("admin.limits.%")
+                | AuditLog.action.like("admin.price.%")
+                | AuditLog.action.like("admin.quota.%")
+                | AuditLog.action.like("admin.router.%")
+            )
+            .order_by(AuditLog.ts.desc())
+            .limit(max(1, min(limit, 500)))
+        )
+    ).all()
+    return [
+        {"ts": a.ts.isoformat(), "who": email, "action": a.action, "resource": a.resource, "details": a.details}
+        for a, email in rows
+    ]
 
 
 @router.delete("/providers/{provider_id}/models/{model_id}", status_code=204)

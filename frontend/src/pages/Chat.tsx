@@ -34,6 +34,7 @@ interface UiMessage {
   tools: ToolStep[];
   refusal?: string;
   error?: string;
+  errorCode?: string;
   pending?: boolean;
 }
 
@@ -167,7 +168,7 @@ export default function ChatPage() {
           patch((m) => ({ ...m, refusal: e.reason, classification: e.classification }));
           break;
         case "error":
-          patch((m) => ({ ...m, error: e.message }));
+          patch((m) => ({ ...m, error: e.message, errorCode: e.code }));
           break;
         case "done":
           patch((m) => ({ ...m, content: e.answer, model: e.model, classification: e.classification, pending: false }));
@@ -263,7 +264,15 @@ export default function ChatPage() {
                 ) : (
                   <AnswerText text={m.content} citations={m.citations} onCite={openCitation} />
                 )}
-                {m.error && <p className="mt-2 text-sm text-red-600">{m.error}</p>}
+                {m.error &&
+                  (m.errorCode === "quota_exceeded" || m.errorCode === "limit_reached" ? (
+                    <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900" data-testid="limit-message">
+                      {m.error}
+                      {m.errorCode === "quota_exceeded" && " See Account for your usage."}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-sm text-red-600">{m.error}</p>
+                  ))}
                 {m.citations.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1 border-t border-border pt-2">
                     {m.citations.map((c) => (

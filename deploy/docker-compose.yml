@@ -20,11 +20,14 @@ x-app-env: &app-env
   # `erag secrets set openrouter_api_key --from-env ERAG_OPENROUTER_API_KEY`), remove it from here.
   ERAG_OPENROUTER_API_KEY: ${ERAG_OPENROUTER_API_KEY:-}
   ERAG_OPENROUTER_MODEL: ${ERAG_OPENROUTER_MODEL:-meta-llama/llama-3.3-8b-instruct:free}
-  ERAG_OPENROUTER_ALLOW_PAID: ${ERAG_OPENROUTER_ALLOW_PAID:-false}
+  # Removed in v0.3 (ADR 0028): passed through only so that a leftover value is reported with a warning.
+  ERAG_OPENROUTER_ALLOW_PAID: ${ERAG_OPENROUTER_ALLOW_PAID:-}
   ERAG_OPENROUTER_MONTHLY_BUDGET_USD: ${ERAG_OPENROUTER_MONTHLY_BUDGET_USD:-0.01}
-  # Admin-added providers (ADR 0024): monthly ceiling (USD) and daily request cap; the UI can only lower them.
+  # Metered providers (ADR 0024, 0026): initial defaults for the monthly ceiling (USD), the daily request cap and
+  # the maximum output tokens per request. Admins may lower or raise them per provider (step-up, audited).
   ERAG_PROVIDER_MONTHLY_BUDGET_USD: ${ERAG_PROVIDER_MONTHLY_BUDGET_USD:-0.01}
   ERAG_PROVIDER_DAILY_REQUEST_CAP: ${ERAG_PROVIDER_DAILY_REQUEST_CAP:-100}
+  ERAG_PROVIDER_MAX_OUTPUT_TOKENS: ${ERAG_PROVIDER_MAX_OUTPUT_TOKENS:-2048}
   ERAG_CLOUD_MAX_CLASSIFICATION: ${ERAG_CLOUD_MAX_CLASSIFICATION:-internal}
   ERAG_COOKIE_SECURE: ${ERAG_COOKIE_SECURE:-false}
   ERAG_BLOB_DIR: /data/blobs

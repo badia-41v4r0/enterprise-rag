@@ -34,6 +34,7 @@ from app.core.netguard import (
 from app.llm.providers.base import LLMProvider
 from app.llm.providers.openai_compat import OpenAICompatProvider
 from app.models import AppSetting, Classification, LlmModel, LlmProvider
+from app.services.usage import ModelLimits
 
 log = logging.getLogger(__name__)
 
@@ -110,25 +111,49 @@ def metered(row: LlmProvider, locality: str) -> bool:
 
 
 def budget_cap(row: LlmProvider, s: Settings) -> float:
+    """The environment default for the monthly ceiling (an initial default, not a hard ceiling: ADR 0026)."""
     return s.openrouter_monthly_budget_usd if is_openrouter(row) else s.provider_monthly_budget_usd
 
 
 def effective_budget(row: LlmProvider, s: Settings) -> float:
-    cap = budget_cap(row, s)
-    value = cap if row.monthly_budget_usd is None else min(row.monthly_budget_usd, cap)
+    """The admin's value when set (it may be lower or higher than the environment default), else the default."""
+    value = budget_cap(row, s) if row.monthly_budget_usd is None else row.monthly_budget_usd
     return max(0.0, value)
 
 
 def daily_cap_env(row: LlmProvider, s: Settings) -> int | None:
-    # OpenRouter keeps ADR 0016 exactly (no daily cap unless the admin sets one).
-    return None if is_openrouter(row) else s.provider_daily_request_cap
+    """Default daily request cap, for every metered provider including OpenRouter since paid models are
+    allowed there (ADR 0028)."""
+    return s.provider_daily_request_cap
 
 
 def effective_daily_cap(row: LlmProvider, s: Settings) -> int | None:
-    env = daily_cap_env(row, s)
-    if row.daily_request_limit is None:
-        return env
-    return row.daily_request_limit if env is None else min(row.daily_request_limit, env)
+    return daily_cap_env(row, s) if row.daily_request_limit is None else max(0, row.daily_request_limit)
+
+
+def model_limits(row: LlmProvider, m: LlmModel, locality: str, s: Settings) -> ModelLimits:
+    """Effective limits and price of one model: model overrides, else provider values, else defaults."""
+    is_metered = metered(row, locality)
+    price_known = m.input_usd_per_mtok is not None or m.output_usd_per_mtok is not None
+    local_free = not is_metered  # a local Ollama runs on our own hardware: price 0 by default
+    return ModelLimits(
+        provider=row.slug,
+        model=m.model,
+        metered=is_metered,
+        max_output_tokens=max(1, m.max_output_tokens or row.max_output_tokens or s.provider_max_output_tokens),
+        max_input_tokens=m.max_input_tokens if m.max_input_tokens is not None else row.max_input_tokens,
+        provider_tokens_per_day=row.tokens_per_day,
+        provider_tokens_per_month=row.tokens_per_month,
+        model_tokens_per_day=m.tokens_per_day,
+        model_tokens_per_month=m.tokens_per_month,
+        provider_monthly_usd=effective_budget(row, s) if is_metered else row.monthly_budget_usd,
+        model_monthly_usd=m.monthly_budget_usd,
+        daily_requests=effective_daily_cap(row, s) if is_metered else row.daily_request_limit,
+        max_turn_tokens=row.max_turn_tokens,
+        input_usd_per_mtok=float(m.input_usd_per_mtok or 0.0),
+        output_usd_per_mtok=float(m.output_usd_per_mtok or 0.0),
+        price_known=price_known or local_free,
+    )
 
 
 async def probe(url: str, kind: str, self_hosted: bool) -> ProviderEndpoint:
@@ -253,6 +278,7 @@ class Built:
     providers: list[LLMProvider] = field(default_factory=list)
     budgets: dict[str, float] = field(default_factory=dict)
     daily_caps: dict[str, int | None] = field(default_factory=dict)
+    limits: dict[str, ModelLimits] = field(default_factory=dict)
     default_id: str | None = None
     states: dict[str, ProviderState] = field(default_factory=dict)
 
@@ -290,19 +316,20 @@ def make_provider(row: LlmProvider, model: str, locality: str, key: str | None, 
         return OpenAICompatProvider(
             **common,
             extra_headers={"HTTP-Referer": "https://badiapartners.com", "X-Title": "EnterpriseRAG"},
-            free_only=not s.openrouter_allow_paid,
             # Ask OpenRouter to report the real cost of each request in the final usage chunk.
             extra_body={"usage": {"include": True}},
         )
     if row.builtin and row.slug == OLLAMA:
-        return OpenAICompatProvider(**common, strip_think=s.local_chat_strip_think)
+        return OpenAICompatProvider(
+            **common,
+            strip_think=s.local_chat_strip_think,
+            extra_body={"stream_options": {"include_usage": True}},  # token accounting (ADR 0026)
+        )
     # Standard OpenAI streaming option: a final chunk with `usage` (and `cost` where the provider reports it).
     return OpenAICompatProvider(**common, extra_body={"stream_options": {"include_usage": True}})
 
 
 async def build_from_db(db: AsyncSession, settings: Settings | None = None) -> Built:
-    from app.llm.router import validate_openrouter_model
-
     s = settings or get_settings()
     out = Built()
     query = (
@@ -331,14 +358,9 @@ async def build_from_db(db: AsyncSession, settings: Settings | None = None) -> B
         for m in row.models:
             if not m.enabled:
                 continue
-            if is_openrouter(row):
-                try:
-                    validate_openrouter_model(m.model, s.openrouter_allow_paid)
-                except ValueError as exc:
-                    log.error("OpenRouter model skipped: %s", exc)
-                    continue
             p = make_provider(row, m.model, locality, key, s)
             out.providers.append(p)
+            out.limits[p.model_id] = model_limits(row, m, locality, s)
             if m.is_default:
                 out.default_id = p.model_id
         if metered(row, locality):
@@ -410,3 +432,36 @@ async def test_connection(row: LlmProvider, key: str | None) -> dict[str, Any]:
     except (ProviderConfigError, BlockedDestination) as exc:
         return {"ok": False, "locality": locality, "error": str(exc)}
     return {"ok": True, "locality": locality, "models_available": len(models), "warning": problem or None}
+
+
+def parse_openrouter_prices(data: Any) -> dict[str, tuple[float, float]]:
+    """OpenRouter's `GET /models`: `pricing.prompt` and `pricing.completion` are USD per token, as strings.
+    Returned as USD per million tokens. Models without a valid price are left out."""
+    items = data.get("data", []) if isinstance(data, dict) else []
+    out: dict[str, tuple[float, float]] = {}
+    for m in items:
+        if not isinstance(m, dict) or not isinstance(m.get("id"), str):
+            continue
+        pricing = m.get("pricing") or {}
+        try:
+            prompt = float(pricing["prompt"]) * 1_000_000
+            completion = float(pricing["completion"]) * 1_000_000
+        except (KeyError, TypeError, ValueError):
+            continue
+        if prompt < 0 or completion < 0:  # "-1" marks a variable-price router model
+            continue
+        out[m["id"]] = (round(prompt, 6), round(completion, 6))
+    return out
+
+
+async def openrouter_prices(row: LlmProvider, key: str | None) -> dict[str, tuple[float, float]]:
+    """The price list from OpenRouter's model list, through the same egress guard as chat."""
+    locality, problem = await current_endpoint(row)
+    if locality == "blocked":
+        raise BlockedDestination(problem)
+    async with _client(row, locality) as client:
+        try:
+            data = await _get_json(client, f"{row.base_url.rstrip('/')}/models", key)
+        except httpx.HTTPError as exc:
+            raise ProviderConfigError(f"cannot reach the provider: {type(exc).__name__}") from exc
+    return parse_openrouter_prices(data)

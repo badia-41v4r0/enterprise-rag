@@ -118,7 +118,7 @@ try {
   await admin.getByRole("button", { name: "Roles", exact: true }).click();
   await admin.getByPlaceholder("role name").fill(role);
   await admin.getByRole("button", { name: "Create role" }).click();
-  await admin.getByText(role).waitFor();
+  await admin.getByRole("cell", { name: role, exact: true }).waitFor();
   step(`role created: ${role}`);
 
   await admin.getByRole("button", { name: "Containers", exact: true }).click();
@@ -313,6 +313,54 @@ try {
   if (!picker.includes(`default: ${apiSlug}:${QWEN}`) || !picker.includes("- default")) throw new Error(`model picker: ${picker}`);
   step(`new user got a cited answer from the default model ${apiSlug}:${QWEN}: ${JSON.stringify(answer.slice(0, 200))}`);
   await user.screenshot({ path: `${OUT}/ui-chat.png`, fullPage: true });
+
+  // v0.3 R6: price and limits on the default model's provider (raised above the env default with step-up),
+  // usage bars, the change history, a role quota and the user-facing "allowance used up" message.
+  await admin.getByRole("button", { name: "Providers", exact: true }).click();
+  const limCard = admin.locator(`[data-provider="${apiSlug}"]`);
+  const usageBox = limCard.getByTestId(`usage-${apiSlug}`);
+  await usageBox.getByText("Tokens today").waitFor({ timeout: 30_000 });
+  await admin.getByRole("button", { name: "Refresh" }).click();
+  // The chat above went to this provider: its token bar must show what the real model reported.
+  await admin.waitForFunction(
+    (slug) => !/^Tokens today\s*0\s/.test(document.querySelector(`[data-testid="usage-${slug}"] [data-usage="Tokens today"]`)?.innerText ?? ""),
+    apiSlug,
+    { timeout: 30_000 },
+  );
+  const tokensToday = await usageBox.locator('[data-usage="Tokens today"]').innerText();
+  await limCard.getByLabel(`limits of ${apiSlug}:${QWEN}`).click();
+  await limCard.getByLabel(`Input USD / 1M tokens of ${apiSlug}:${QWEN}`).fill("0.5");
+  await limCard.getByLabel(`Output USD / 1M tokens of ${apiSlug}:${QWEN}`).fill("1.5");
+  await limCard.getByRole("button", { name: "Save model limits" }).click();
+  await confirmIfAsked(admin);
+  await limCard.locator(`tr[data-model="${apiSlug}:${QWEN}"]`).getByText("(admin)").waitFor({ timeout: 15_000 });
+  await limCard.getByRole("button", { name: "Edit and limits" }).click();
+  await limCard.getByLabel(`monthly ceiling of ${apiSlug}`).fill("0.5"); // above the 0.01 default (D2)
+  await limCard.getByLabel(`tokens per day of ${apiSlug}`).fill("1000000");
+  await limCard.getByRole("button", { name: "Save changes" }).click();
+  await confirmIfAsked(admin);
+  await usageBox.locator('[data-usage="USD this month"]').getByText("of $0.5000").waitFor({ timeout: 15_000 });
+  await admin.getByTestId("limits-history").getByText("admin.limits.provider").first().waitFor({ timeout: 15_000 });
+  await admin.getByTestId("limits-history").getByText("admin.price.update").first().waitFor();
+  await admin.screenshot({ path: `${OUT}/ui-limits.png`, fullPage: true });
+  step(`limits: ${tokensToday.replace(/\s+/g, " ")}; price 0.5/1.5 USD per 1M set, monthly ceiling raised to 0.5 USD and 1M tokens/day with step-up; both in the change history`);
+
+  await admin.getByRole("button", { name: "Roles", exact: true }).click();
+  await admin.getByLabel("quota role").selectOption({ label: role });
+  await admin.getByLabel("quota kind").selectOption("standard");
+  await admin.getByLabel("new quota Tokens / day").fill("1");
+  await admin.getByRole("button", { name: "Add quota" }).click();
+  await confirmIfAsked(admin);
+  await admin.locator(`tr[data-quota="${role}:standard:all"]`).waitFor({ timeout: 15_000 });
+  await user.getByPlaceholder("Ask a question (Enter to send)").fill("Where do employees park?");
+  await user.getByRole("button", { name: "Send" }).click();
+  const limitMsg = await user.getByTestId("limit-message").last();
+  await limitMsg.getByText("Your daily allowance is used up; it resets at 00:00 UTC.").waitFor({ timeout: 60_000 });
+  await user.getByRole("button", { name: "Account" }).click();
+  await user.getByTestId("usage-summary").getByText("limit reached").first().waitFor({ timeout: 15_000 });
+  await user.screenshot({ path: `${OUT}/ui-quota.png`, fullPage: true });
+  step(`quota: standard cap of 1 token/day on ${role}; the user's next question shows "Your daily allowance is used up" and the Account page shows the limit reached`);
+  await user.getByRole("button", { name: "Chat" }).click();
 
   // R2: the user enrols in MFA and logs in again with a TOTP code.
   await user.getByRole("button", { name: "Account" }).click();

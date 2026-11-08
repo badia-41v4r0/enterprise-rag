@@ -27,7 +27,8 @@ from app.models import Classification, Conversation, Message, User
 from app.rag.context_builder import BuiltContext, build_context
 from app.rag.retrieval import RetrievalResult, Retriever
 from app.services.audit import audit
-from app.services.spend import cost_from_usage, ensure_budget, record_spend, reserve_request
+from app.services.spend import BudgetExceeded, record_spend, reserve_request
+from app.services.usage import charge_pools, measure, preflight, preventive_input_tokens, record_usage
 
 log = logging.getLogger(__name__)
 
@@ -222,25 +223,32 @@ class ChatOrchestrator:
             yield {"type": "route", "model": provider.model_id, "classification": classification.value}
             messages = list(prep.messages)
             max_iter = self.settings.tool_max_iterations
+            turn_tokens = 0
             try:
                 for iteration in range(max_iter + 1):
                     offer_tools = prep.tools if (self.tools and iteration < max_iter) else None
                     calls: list[ToolCall] = []
                     step_text = ""
-                    metered = self.router.is_metered(provider)
-                    if metered:
-                        # Hard monthly ceiling and daily request cap, checked before anything leaves the
-                        # process (ADR 0016, ADR 0024). The request is counted even if it then fails.
-                        await ensure_budget(
-                            self.db,
-                            provider.provider,
-                            self.router.budgets.get(provider.provider, self.settings.openrouter_monthly_budget_usd),
-                        )
-                        await reserve_request(self.db, provider.provider, self.router.daily_caps.get(provider.provider))
+                    lim = self.router.limits_for(provider)
+                    # Preventive checks before anything leaves the process (ADR 0026, ADR 0027): request size,
+                    # per-turn cap, provider/model budgets on the worst case of this request, then the user's
+                    # quotas; then the daily request counter (counted even if the request then fails).
+                    pre = await preflight(
+                        self.db,
+                        lim,
+                        user_id=user.id,
+                        role_ids=perms.role_ids,
+                        input_tokens=preventive_input_tokens(messages, offer_tools),
+                        turn_tokens=turn_tokens,
+                    )
+                    if lim.metered or lim.daily_requests is not None:
+                        await reserve_request(self.db, provider.provider, lim.daily_requests)
                     await self._audit_egress(user, provider, classification, prep, iteration)
                     models_used.append(provider.model_id)
                     usage: dict[str, Any] = {}
-                    async for ev in provider.stream_chat(messages, tools=offer_tools, classification=classification):
+                    async for ev in provider.stream_chat(
+                        messages, tools=offer_tools, classification=classification, max_tokens=lim.max_output_tokens
+                    ):
                         if isinstance(ev, TextDelta):
                             step_text += ev.text
                             yield {"type": "delta", "text": ev.text}
@@ -248,8 +256,16 @@ class ChatOrchestrator:
                             calls = ev.calls
                         elif isinstance(ev, Done):
                             usage = ev.usage
-                    if metered:
-                        await record_spend(self.db, provider.provider, cost_from_usage(usage))
+                    out_chars = len(step_text) + sum(len(c.name) + len(c.arguments) for c in calls)
+                    used = measure(usage, lim, messages, offer_tools, out_chars)
+                    await record_usage(
+                        self.db, provider=provider.provider, model=provider.model, user_id=user.id, measured=used
+                    )
+                    if lim.metered or lim.provider_monthly_usd is not None:
+                        await record_spend(self.db, provider.provider, used.cost_usd)
+                    await charge_pools(self.db, pre.caps, used.tokens, used.cost_usd)
+                    await self.db.commit()
+                    turn_tokens += used.tokens
                     answer += step_text
                     if not calls or self.tools is None:
                         break
@@ -290,6 +306,10 @@ class ChatOrchestrator:
                         yield {"type": "route", "model": provider.model_id, "classification": classification.value}
             except RoutingRefused as exc:
                 refusal = exc.reason
+            except BudgetExceeded as exc:
+                # A limit or quota: nothing was sent for this step. Shown as such, not as a model failure.
+                await self.db.commit()  # keep the refused attempt in the daily request counter
+                yield {"type": "error", "code": getattr(exc, "code", "limit_reached"), "message": str(exc)}
             except ProviderError as exc:
                 log.warning("provider error", extra={"error": str(exc)})
                 yield {"type": "error", "message": f"The model failed to answer: {exc}"}

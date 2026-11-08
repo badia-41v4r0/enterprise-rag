@@ -1,6 +1,6 @@
 # 0024. Per-provider spend ceiling and daily request cap
 
-**Status:** Accepted (2026-11-10) — **Owner review** (default values)
+**Status:** Accepted (2026-11-10) — **Owner review** (default values). Amended by [ADR 0026](0026-cost-limits-token-accounting-preventive-check.md): the environment values are now defaults that an admin may also raise (step-up, audited), and OpenRouter gets the default daily cap since [ADR 0028](0028-remove-openrouter-free-only-rule.md).
 
 ## Context
 ADR 0016 bounds OpenRouter spend with two barriers: free models only, and a monthly ceiling fed by the cost OpenRouter reports in `usage.cost`. Admin-added OpenAI-compatible providers are usually paid, there is no general way to tell a free model from a paid one, and most providers (OpenAI, Groq, vLLM, LM Studio, Ollama) do not report the cost of a request at all. A provider whose cost is unknown must still not be able to spend unbounded money.

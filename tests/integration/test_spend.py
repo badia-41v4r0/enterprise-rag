@@ -1,4 +1,4 @@
-"""Spend ceiling and free-only guard (ADR 0016). Real Postgres; no model is involved."""
+"""Spend ceiling and daily request cap (ADR 0016, 0024, 0026, 0028). Real Postgres; no model is involved."""
 
 from __future__ import annotations
 
@@ -7,11 +7,10 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import Settings
+from app.core.config import Settings, warn_removed_settings
 from app.llm import registry
-from app.llm.providers.base import ProviderError
 from app.llm.providers.openai_compat import OpenAICompatProvider
-from app.llm.router import build_providers, validate_openrouter_model
+from app.llm.router import build_providers
 from app.models import Classification, LlmProvider
 from app.services.spend import (
     BudgetExceeded,
@@ -64,22 +63,12 @@ async def test_budget_is_per_month_and_per_provider(db: AsyncSession) -> None:
     await ensure_budget(db, "someone-else", 0.01, JAN)  # other provider unaffected
 
 
-def test_paid_openrouter_model_is_rejected_by_default() -> None:
-    validate_openrouter_model("meta-llama/llama-3.3-8b-instruct:free", allow_paid=False)
-    with pytest.raises(ValueError):
-        validate_openrouter_model("openai/gpt-4o", allow_paid=False)
-    validate_openrouter_model("openai/gpt-4o", allow_paid=True)
-
-
-def test_build_providers_refuses_a_paid_model() -> None:
+def test_paid_openrouter_models_are_allowed_and_the_old_switch_warns(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """ADR 0028 supersedes the free-only rule of ADR 0016: spend is bounded by budgets, not by the model id."""
     s = Settings(openrouter_api_key="k", openrouter_model="openai/gpt-4o")  # type: ignore[arg-type]
-    with pytest.raises(ValueError):
-        build_providers(s)
-    ok = Settings(openrouter_api_key="k", openrouter_model="x/y:free")  # type: ignore[arg-type]
-    assert any(p.provider == "openrouter" for p in build_providers(ok))
-
-
-async def test_provider_free_only_guard_blocks_before_any_request() -> None:
+    assert any(p.provider == "openrouter" and p.model == "openai/gpt-4o" for p in build_providers(s))
     p = OpenAICompatProvider(
         provider="openrouter",
         base_url="https://openrouter.ai/api/v1",
@@ -87,11 +76,15 @@ async def test_provider_free_only_guard_blocks_before_any_request() -> None:
         locality="cloud",
         max_classification=Classification.public,
         api_key="k",
-        free_only=True,
     )
-    with pytest.raises(ProviderError, match="not a free model"):
-        async for _ in p.stream_chat([{"role": "user", "content": "hi"}], classification=Classification.public):
-            pass
+    assert not hasattr(p, "free_only")
+    assert p.build_payload([], None, 64)["max_tokens"] == 64
+    monkeypatch.setenv("ERAG_OPENROUTER_ALLOW_PAID", "false")
+    with caplog.at_level("WARNING", logger="app.config"):
+        assert warn_removed_settings() == ["ERAG_OPENROUTER_ALLOW_PAID"]
+    assert "ERAG_OPENROUTER_ALLOW_PAID is ignored" in caplog.text
+    monkeypatch.setenv("ERAG_OPENROUTER_ALLOW_PAID", "")
+    assert warn_removed_settings() == []
 
 
 # --- Daily request cap and per-provider ceilings (ADR 0024) ------------------------------------------------
@@ -117,16 +110,20 @@ async def test_daily_request_cap_counts_before_sending_and_resets_per_day(db: As
         await reserve_request(db, "blocked", 0, DAY1)
 
 
-def test_effective_limits_can_only_be_lowered() -> None:
+def test_environment_values_are_defaults_and_the_admin_value_wins() -> None:
+    """D2 / ADR 0026: the environment gives the initial default; an admin may lower or raise it."""
     s = Settings(provider_monthly_budget_usd=0.01, provider_daily_request_cap=100, openrouter_monthly_budget_usd=0.02)
     api = LlmProvider(slug="acme", kind="api", builtin=False, monthly_budget_usd=None, daily_request_limit=None)
     assert registry.effective_budget(api, s) == 0.01 and registry.effective_daily_cap(api, s) == 100
-    api.monthly_budget_usd, api.daily_request_limit = 5.0, 10_000  # tampered above the env: capped
-    assert registry.effective_budget(api, s) == 0.01 and registry.effective_daily_cap(api, s) == 100
+    api.monthly_budget_usd, api.daily_request_limit = 5.0, 10_000  # raised by an admin (step-up, audited)
+    assert registry.effective_budget(api, s) == 5.0 and registry.effective_daily_cap(api, s) == 10_000
     api.monthly_budget_usd, api.daily_request_limit = 0.001, 3
     assert registry.effective_budget(api, s) == 0.001 and registry.effective_daily_cap(api, s) == 3
+    api.monthly_budget_usd, api.daily_request_limit = -1.0, -5  # nonsense is clamped to "blocked"
+    assert registry.effective_budget(api, s) == 0.0 and registry.effective_daily_cap(api, s) == 0
     router = LlmProvider(slug="openrouter", kind="api", builtin=True, monthly_budget_usd=None, daily_request_limit=None)
-    assert registry.effective_budget(router, s) == 0.02 and registry.effective_daily_cap(router, s) is None
+    # OpenRouter: its own default ceiling, and now the default daily cap too (paid models are allowed).
+    assert registry.effective_budget(router, s) == 0.02 and registry.effective_daily_cap(router, s) == 100
     router.daily_request_limit = 7
     assert registry.effective_daily_cap(router, s) == 7
     # Metering: every API provider (even self-hosted, it may proxy a paid API) and any non-local Ollama.

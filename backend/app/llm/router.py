@@ -14,6 +14,7 @@ from app.llm.providers.base import LLMProvider
 from app.llm.providers.claude_code import ClaudeCodeProvider
 from app.llm.providers.openai_compat import OpenAICompatProvider
 from app.models import Classification
+from app.services.usage import ModelLimits
 
 
 class RoutingRefused(Exception):
@@ -40,6 +41,7 @@ class ModelRouter:
         default_id: str | None = None,
         budgets: dict[str, float] | None = None,
         daily_caps: dict[str, int | None] | None = None,
+        limits: dict[str, ModelLimits] | None = None,
     ) -> None:
         self.providers = providers
         # The admin's default (a provider:model id); used only when it is cleared for the request.
@@ -49,6 +51,8 @@ class ModelRouter:
         self.daily_caps = daily_caps or {}
         # Per provider slug: evaluated locality, clearance and availability (registry.ProviderState).
         self.states: dict[str, Any] = {}
+        # Per model id: effective limits and price (ADR 0026). Missing entries get defaults (limits_for).
+        self.limits: dict[str, ModelLimits] = dict(limits or {})
 
     def models(self) -> list[ModelInfo]:
         return [
@@ -88,14 +92,23 @@ class ModelRouter:
     def is_metered(self, provider: LLMProvider) -> bool:
         return provider.provider in self.budgets or provider.locality == "cloud"
 
-
-def validate_openrouter_model(model: str, allow_paid: bool) -> None:
-    """Fail loudly at startup when a paid OpenRouter model is configured but paid models are not allowed."""
-    if not allow_paid and not model.endswith(":free"):
-        raise ValueError(
-            f"ERAG_OPENROUTER_MODEL={model!r} is not a free model (id must end in ':free'). "
-            "Set ERAG_OPENROUTER_ALLOW_PAID=true to allow paid models (spend is capped by "
-            "ERAG_OPENROUTER_MONTHLY_BUDGET_USD)."
+    def limits_for(self, provider: LLMProvider) -> ModelLimits:
+        """Limits of a model built from the registry, or defaults for one built by hand (dev, tests)."""
+        lim = self.limits.get(provider.model_id)
+        if lim is not None:
+            return lim
+        s = get_settings()
+        metered = self.is_metered(provider)
+        return ModelLimits(
+            provider=provider.provider,
+            model=provider.model,
+            metered=metered,
+            max_output_tokens=s.provider_max_output_tokens,
+            provider_monthly_usd=self.budgets.get(provider.provider, s.openrouter_monthly_budget_usd)
+            if metered
+            else None,
+            daily_requests=self.daily_caps.get(provider.provider),
+            price_known=not metered,
         )
 
 
@@ -134,7 +147,6 @@ def build_providers(settings: Settings | None = None, openrouter: OpenRouterConf
         )
     ]
     if orc.enabled and orc.api_key:
-        validate_openrouter_model(orc.model, s.openrouter_allow_paid)
         providers.append(
             OpenAICompatProvider(
                 provider="openrouter",
@@ -144,7 +156,6 @@ def build_providers(settings: Settings | None = None, openrouter: OpenRouterConf
                 max_classification=Classification(s.cloud_max_classification),
                 api_key=orc.api_key,
                 extra_headers={"HTTP-Referer": "https://badiapartners.com", "X-Title": "EnterpriseRAG"},
-                free_only=not s.openrouter_allow_paid,
                 # Ask OpenRouter to report the real cost of each request in the final usage chunk.
                 extra_body={"usage": {"include": True}},
             )
@@ -185,7 +196,7 @@ async def resolve_openrouter(
 ) -> OpenRouterConfig:
     """The built-in OpenRouter row: vault key first, then ERAG_OPENROUTER_API_KEY.
 
-    The UI ceiling can only lower the env one."""
+    The environment ceiling is the default; the admin's value wins (ADR 0026)."""
     from app.llm import registry
     from app.models import LlmProvider
 
@@ -223,7 +234,9 @@ async def load_router(db: AsyncSession, settings: Settings | None = None) -> Mod
     if s.claude_code_enabled and not s.is_prod:
         # Dev-only, env-gated, never stored in the database.
         providers.append(ClaudeCodeProvider(binary=s.claude_code_bin))
-    router = ModelRouter(providers, default_id=built.default_id, budgets=built.budgets, daily_caps=built.daily_caps)
+    router = ModelRouter(
+        providers, default_id=built.default_id, budgets=built.budgets, daily_caps=built.daily_caps, limits=built.limits
+    )
     router.states = dict(built.states)
     _cache["router"] = (await _fingerprint(db, s), router)
     return router

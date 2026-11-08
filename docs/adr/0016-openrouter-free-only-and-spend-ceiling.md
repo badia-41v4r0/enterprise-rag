@@ -1,6 +1,8 @@
 # 0016. OpenRouter: free models only and a hard monthly spend ceiling
 
-**Status:** Accepted (2026-11-08)
+**Status:** Superseded in part by [ADR 0028](0028-remove-openrouter-free-only-rule.md) (2026-11-11): the free-only barrier was removed; the monthly ceiling remains (and became an admin-adjustable default, ADR 0026). Kept as history.
+
+Originally accepted 2026-11-08.
 
 ## Context
 The project budget is a few euros in total. OpenRouter is the only cloud provider. A wrong model id or a runaway loop must not be able to spend real money.

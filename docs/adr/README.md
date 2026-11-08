@@ -20,7 +20,7 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0013](0013-result-validator-heuristics.md) | Result validator: size cap, classification floor, injection heuristics | Accepted, Owner review |
 | [0014](0014-frontend.md) | Frontend: small React SPA with vendored shadcn-style components | Accepted |
 | [0015](0015-demo-bootstrap-and-hardening.md) | One-command seeded demo and MVP hardening | Accepted, Owner review |
-| [0016](0016-openrouter-free-only-and-spend-ceiling.md) | OpenRouter: free models only and a hard monthly spend ceiling | Accepted |
+| [0016](0016-openrouter-free-only-and-spend-ceiling.md) | OpenRouter: free models only and a hard monthly spend ceiling | Superseded in part by 0028 |
 | [0017](0017-delegated-content-management.md) | Delegated content management: `contribute` and `manage` on containers | Accepted |
 | [0018](0018-credential-store.md) | Credential store: AES-256-GCM, master key outside the database, OpenRouter key in the vault | Accepted |
 | [0019](0019-mfa-and-step-up.md) | Optional TOTP MFA and step-up re-authentication | Accepted |
@@ -28,5 +28,8 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0021](0021-mcp-registry-and-clearance.md) | MCP registry for remote servers and the clearance model | Accepted |
 | [0022](0022-isolated-mcp-runner.md) | Isolated runner for MCP containers (network `none`, Unix-socket transport) | Accepted |
 | [0023](0023-llm-provider-registry-and-default-model.md) | LLM provider registry: Ollama and OpenAI-compatible APIs, locality from the address, a default model | Accepted, Owner review |
-| [0024](0024-per-provider-spend-ceiling-and-daily-request-cap.md) | Per-provider spend ceiling and daily request cap | Accepted, Owner review |
+| [0024](0024-per-provider-spend-ceiling-and-daily-request-cap.md) | Per-provider spend ceiling and daily request cap | Accepted, Owner review, amended by 0026 |
 | [0025](0025-model-endpoint-egress-guard.md) | Egress guard for model endpoints: address classes, request-time re-validation, no redirects | Accepted |
+| [0026](0026-cost-limits-token-accounting-preventive-check.md) | Cost limits, token accounting, prices and a preventive worst-case check; admins may raise limits | Accepted |
+| [0027](0027-quotas-per-user-and-role.md) | Quotas per user and per role: standard caps, collective pools, overrides | Accepted, Owner review |
+| [0028](0028-remove-openrouter-free-only-rule.md) | Remove the OpenRouter free-only rule | Accepted |

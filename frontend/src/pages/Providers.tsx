@@ -1,12 +1,21 @@
 // Admin: LLM providers (ADR 0023). Add Ollama instances and OpenAI-compatible APIs, discover models, pick the default.
 // Keys are write-only: the screen only ever shows where a key comes from (credential store / environment).
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlugZap, RefreshCw, Search, Star, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { BarChart3, DollarSign, PlugZap, RefreshCw, Search, SlidersHorizontal, Star, Trash2 } from "lucide-react";
+import { Fragment, useState } from "react";
 import { Badge, Card, ClassBadge, Table, Th } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
-import { api, json, type Classification, type ProviderRow, type ProvidersList, type ProviderTest } from "@/lib/api";
+import {
+  api,
+  json,
+  type Classification,
+  type HistoryRow,
+  type ProviderModel,
+  type ProviderRow,
+  type ProvidersList,
+  type ProviderTest,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const CLASSES: Classification[] = ["public", "internal", "confidential"];
@@ -27,6 +36,7 @@ function useRun() {
       setBusy(false);
       await qc.invalidateQueries({ queryKey: ["providers"] });
       await qc.invalidateQueries({ queryKey: ["models"] });
+      await qc.invalidateQueries({ queryKey: ["limits-history"] });
     }
   };
   return { run, error, busy };
@@ -42,6 +52,105 @@ function LocalityBadge({ value }: { value: string }) {
 
 function money(v: number | null | undefined) {
   return v == null ? "-" : `$${v.toFixed(4)}`;
+}
+
+// A usage bar: amber from 80 percent, red with "limit reached" at 100 percent. No limit: just the figure.
+export function UsageBar({ label, used, limit, fmt = String }: { label: string; used: number; limit: number | null; fmt?: (v: number) => string }) {
+  const pct = limit == null ? 0 : limit <= 0 ? 100 : Math.min(100, (used / limit) * 100);
+  const state = limit == null ? "none" : pct >= 100 ? "reached" : pct >= 80 ? "warn" : "ok";
+  return (
+    <div className="text-xs" data-usage={label} data-state={state}>
+      <div className="flex justify-between gap-2">
+        <span>{label}</span>
+        <span className={cn(state === "reached" ? "font-medium text-red-600" : state === "warn" ? "text-amber-700" : "text-muted-foreground")}>
+          {fmt(used)}
+          {limit != null ? ` of ${fmt(limit)}` : " (no limit)"}
+          {state === "reached" ? " - limit reached" : state === "warn" ? " - over 80%" : ""}
+        </span>
+      </div>
+      {limit != null && (
+        <div className="mt-0.5 h-1.5 w-full rounded bg-muted">
+          <div
+            className={cn("h-1.5 rounded", state === "reached" ? "bg-red-500" : state === "warn" ? "bg-amber-500" : "bg-emerald-500")}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const tokens = (v: number) => v.toLocaleString("en-US");
+
+// Optional number field: "" means "not set" (null), so a limit can be reset to its default.
+const num = (v: string) => (v.trim() === "" ? null : Number(v));
+const str = (v: number | null | undefined) => (v == null ? "" : String(v));
+
+function Usage30({ p }: { p: ProviderRow }) {
+  const q = useQuery({
+    queryKey: ["provider-daily", p.id],
+    queryFn: () => api<{ day: string; requests: number; tokens: number; cost_usd: number }[]>(`/api/admin/providers/${p.id}/usage/daily?days=30`),
+  });
+  if (!q.data) return <p className="text-xs text-muted-foreground">Loading...</p>;
+  const max = Math.max(1, ...q.data.map((d) => d.tokens));
+  return (
+    <div className="mt-2" data-testid={`chart-${p.slug}`}>
+      <p className="mb-1 text-xs font-medium">Tokens per day, last 30 days (UTC)</p>
+      <div className="flex h-16 items-end gap-[2px]">
+        {q.data.map((d) => (
+          <div
+            key={d.day}
+            title={`${d.day}: ${tokens(d.tokens)} tokens, ${d.requests} requests, ${money(d.cost_usd)}`}
+            className="flex-1 rounded-t bg-brand/60"
+            style={{ height: `${Math.max(d.tokens > 0 ? 4 : 1, (d.tokens / max) * 100)}%` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ModelLimits({ p, m, onDone }: { p: ProviderRow; m: ProviderModel; onDone: () => void }) {
+  const { run, error, busy } = useRun();
+  const [f, setF] = useState({
+    input_usd_per_mtok: str(m.input_usd_per_mtok),
+    output_usd_per_mtok: str(m.output_usd_per_mtok),
+    max_output_tokens: str(m.max_output_tokens),
+    max_input_tokens: str(m.max_input_tokens),
+    tokens_per_day: str(m.tokens_per_day),
+    tokens_per_month: str(m.tokens_per_month),
+    monthly_budget_usd: str(m.monthly_budget_usd),
+  });
+  const save = () =>
+    run(async () => {
+      const body: Record<string, number | null> = {};
+      for (const [k, v] of Object.entries(f)) if (num(v) !== (m as unknown as Record<string, number | null>)[k]) body[k] = num(v);
+      if (Object.keys(body).length) await api(`/api/admin/providers/${p.id}/models/${m.id}`, { method: "PATCH", body: json(body) });
+      onDone();
+    });
+  const field = (k: keyof typeof f, label: string, placeholder: string) => (
+    <div>
+      <Label>{label}</Label>
+      <Input value={f[k]} placeholder={placeholder} onChange={(e) => setF({ ...f, [k]: e.target.value })} aria-label={`${label} of ${m.model_id}`} />
+    </div>
+  );
+  return (
+    <div className="grid grid-cols-4 gap-2 rounded-md border border-dashed border-border p-2">
+      {field("input_usd_per_mtok", "Input USD / 1M tokens", "unknown")}
+      {field("output_usd_per_mtok", "Output USD / 1M tokens", "unknown")}
+      {field("max_output_tokens", "Max output tokens", `provider (${p.max_output_tokens ?? p.default_max_output_tokens})`)}
+      {field("max_input_tokens", "Max input tokens", `provider (${p.max_input_tokens ?? "none"})`)}
+      {field("tokens_per_day", "Tokens per day (this model)", "no limit")}
+      {field("tokens_per_month", "Tokens per month (this model)", "no limit")}
+      {field("monthly_budget_usd", "USD per month (this model)", "no limit")}
+      <div className="flex items-end">
+        <Button size="sm" onClick={() => void save()} disabled={busy}>
+          Save model limits
+        </Button>
+      </div>
+      {error && <p className="col-span-4 text-sm text-red-600">{error}</p>}
+    </div>
+  );
 }
 
 function DefaultModel({ data }: { data: ProvidersList }) {
@@ -166,7 +275,7 @@ function AddProvider({ cloudMax }: { cloudMax: Classification }) {
           </Select>
         </div>
         <div>
-          <Label>Monthly ceiling USD (API only lowers the env cap)</Label>
+          <Label>Monthly ceiling USD (default from the environment)</Label>
           <Input placeholder="env default" value={f.monthly_budget_usd} onChange={(e) => set({ monthly_budget_usd: e.target.value })} aria-label="monthly ceiling" />
         </div>
         <div>
@@ -202,8 +311,15 @@ function EditProvider({ p, onDone }: { p: ProviderRow; onDone: () => void }) {
     self_hosted: p.self_hosted,
     api_key: "",
     max_classification: p.requested_classification ?? "",
-    monthly_budget_usd: "",
-    daily_request_limit: "",
+  });
+  const [lim, setLim] = useState({
+    monthly_budget_usd: str(p.metered ? p.monthly_budget_usd : null),
+    daily_request_limit: str(p.metered ? p.daily_request_limit : null),
+    max_output_tokens: str(p.max_output_tokens),
+    max_input_tokens: str(p.max_input_tokens),
+    tokens_per_day: str(p.tokens_per_day),
+    tokens_per_month: str(p.tokens_per_month),
+    max_turn_tokens: str(p.max_turn_tokens),
   });
   const save = () =>
     run(async () => {
@@ -213,8 +329,17 @@ function EditProvider({ p, onDone }: { p: ProviderRow; onDone: () => void }) {
       if (!p.builtin && p.kind === "api" && f.self_hosted !== p.self_hosted) body.self_hosted = f.self_hosted;
       if (f.api_key) body.api_key = f.api_key;
       if ((f.max_classification || null) !== p.requested_classification) body.max_classification = f.max_classification || null;
-      if (f.monthly_budget_usd) body.monthly_budget_usd = Number(f.monthly_budget_usd);
-      if (f.daily_request_limit) body.daily_request_limit = Number(f.daily_request_limit);
+      const current: Record<string, number | null> = {
+        monthly_budget_usd: p.metered ? p.monthly_budget_usd : null,
+        daily_request_limit: p.metered ? p.daily_request_limit : null,
+        max_output_tokens: p.max_output_tokens,
+        max_input_tokens: p.max_input_tokens,
+        tokens_per_day: p.tokens_per_day,
+        tokens_per_month: p.tokens_per_month,
+        max_turn_tokens: p.max_turn_tokens,
+      };
+      // Limits may be raised as well as lowered (step-up; every change is in the change history).
+      for (const [k, v] of Object.entries(lim)) if (num(v) !== current[k]) body[k] = num(v);
       await api(`/api/admin/providers/${p.id}`, { method: "PATCH", body: json(body) });
       onDone();
     });
@@ -244,18 +369,34 @@ function EditProvider({ p, onDone }: { p: ProviderRow; onDone: () => void }) {
         <Label>Replace API key</Label>
         <Input type="password" autoComplete="new-password" value={f.api_key} onChange={(e) => setF({ ...f, api_key: e.target.value })} aria-label={`new API key of ${p.slug}`} />
       </div>
-      {p.metered && (
-        <>
-          <div>
-            <Label>Monthly ceiling USD (max {p.budget_cap_usd})</Label>
-            <Input placeholder={String(p.monthly_budget_usd ?? "")} value={f.monthly_budget_usd} onChange={(e) => setF({ ...f, monthly_budget_usd: e.target.value })} />
-          </div>
-          <div>
-            <Label>Daily requests {p.daily_cap_env != null ? `(max ${p.daily_cap_env})` : ""}</Label>
-            <Input placeholder={String(p.daily_request_limit ?? "none")} value={f.daily_request_limit} onChange={(e) => setF({ ...f, daily_request_limit: e.target.value })} />
-          </div>
-        </>
-      )}
+      <div>
+        <Label>Monthly ceiling USD{p.metered ? ` (default ${p.budget_cap_usd})` : ""}</Label>
+        <Input placeholder={p.metered ? `default ${p.budget_cap_usd}` : "no limit"} value={lim.monthly_budget_usd} onChange={(e) => setLim({ ...lim, monthly_budget_usd: e.target.value })} aria-label={`monthly ceiling of ${p.slug}`} />
+      </div>
+      <div>
+        <Label>Requests per day{p.daily_cap_env != null && p.metered ? ` (default ${p.daily_cap_env})` : ""}</Label>
+        <Input placeholder={p.metered ? `default ${p.daily_cap_env}` : "no limit"} value={lim.daily_request_limit} onChange={(e) => setLim({ ...lim, daily_request_limit: e.target.value })} aria-label={`daily requests of ${p.slug}`} />
+      </div>
+      <div>
+        <Label>Max output tokens per request</Label>
+        <Input placeholder={`default ${p.default_max_output_tokens}`} value={lim.max_output_tokens} onChange={(e) => setLim({ ...lim, max_output_tokens: e.target.value })} aria-label={`max output tokens of ${p.slug}`} />
+      </div>
+      <div>
+        <Label>Max input tokens per request</Label>
+        <Input placeholder="no limit" value={lim.max_input_tokens} onChange={(e) => setLim({ ...lim, max_input_tokens: e.target.value })} aria-label={`max input tokens of ${p.slug}`} />
+      </div>
+      <div>
+        <Label>Tokens per day</Label>
+        <Input placeholder="no limit" value={lim.tokens_per_day} onChange={(e) => setLim({ ...lim, tokens_per_day: e.target.value })} aria-label={`tokens per day of ${p.slug}`} />
+      </div>
+      <div>
+        <Label>Tokens per month</Label>
+        <Input placeholder="no limit" value={lim.tokens_per_month} onChange={(e) => setLim({ ...lim, tokens_per_month: e.target.value })} aria-label={`tokens per month of ${p.slug}`} />
+      </div>
+      <div>
+        <Label>Per-turn token cap (tool loop)</Label>
+        <Input placeholder="no limit" value={lim.max_turn_tokens} onChange={(e) => setLim({ ...lim, max_turn_tokens: e.target.value })} aria-label={`per-turn cap of ${p.slug}`} />
+      </div>
       <div className="flex items-end gap-2">
         {!p.builtin && p.kind === "api" && (
           <label className="flex items-center gap-1 text-xs">
@@ -287,6 +428,9 @@ function ProviderCard({ p }: { p: ProviderRow }) {
   const [test, setTest] = useState<ProviderTest | null>(null);
   const [found, setFound] = useState<{ model: string; configured: boolean }[] | null>(null);
   const [manual, setManual] = useState("");
+  const [chart, setChart] = useState(false);
+  const [limitsOf, setLimitsOf] = useState<string | null>(null);
+  const [synced, setSynced] = useState<string>("");
   const base = `/api/admin/providers/${p.id}`;
   const addModel = (model: string) =>
     run(async () => {
@@ -320,8 +464,26 @@ function ProviderCard({ p }: { p: ProviderRow }) {
             <Search className="h-3.5 w-3.5" /> Discover models
           </Button>
           <Button size="sm" variant="outline" onClick={() => setEditing(!editing)}>
-            Edit
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Edit and limits
           </Button>
+          <Button size="sm" variant="outline" onClick={() => setChart(!chart)} aria-label={`usage chart of ${p.slug}`}>
+            <BarChart3 className="h-3.5 w-3.5" />
+          </Button>
+          {p.slug === "openrouter" && p.builtin && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  const r = await api<{ updated: Record<string, unknown>; not_listed: string[] }>(`${base}/prices/sync`, { method: "POST" });
+                  setSynced(`Prices synced: ${Object.keys(r.updated).length} changed${r.not_listed.length ? `, not listed: ${r.not_listed.join(", ")}` : ""}`);
+                })
+              }
+            >
+              <DollarSign className="h-3.5 w-3.5" /> Sync prices
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={() => run(() => api(base, { method: "PATCH", body: json({ enabled: !p.enabled }) }))}>
             {p.enabled ? "Disable" : "Enable"}
           </Button>
@@ -345,38 +507,37 @@ function ProviderCard({ p }: { p: ProviderRow }) {
         <li>
           API key: {p.key_source === "vault" ? "configured (credential store)" : p.key_source === "env" ? "configured (environment variable)" : "not set"}
         </li>
-        {p.metered ? (
-          <>
-            <li>
-              Spent this month: {money(p.spent_this_month_usd)} of {money(p.monthly_budget_usd)} (env cap {money(p.budget_cap_usd)})
-            </li>
-            <li>
-              Requests today: {p.requests_today}
-              {p.daily_request_limit != null ? ` of ${p.daily_request_limit}` : " (no daily cap)"}
-            </li>
-          </>
-        ) : (
-          <li>Not metered (local Ollama)</li>
-        )}
-        {p.free_only && <li>Free models only (ids ending in :free)</li>}
+        {!p.metered && <li>Not metered (local Ollama); token limits and quotas still apply</li>}
+        <li>Max output tokens per request: {p.max_output_tokens ?? `${p.default_max_output_tokens} (default)`}</li>
       </ul>
+      <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1" data-testid={`usage-${p.slug}`}>
+        <UsageBar label="Requests today" used={p.requests_today} limit={p.metered ? p.daily_request_limit : null} />
+        <UsageBar label="USD this month" used={p.spent_this_month_usd} limit={p.metered ? p.monthly_budget_usd : null} fmt={money} />
+        <UsageBar label="Tokens today" used={p.today.tokens} limit={p.tokens_per_day} fmt={tokens} />
+        <UsageBar label="Tokens this month" used={p.month.tokens} limit={p.tokens_per_month} fmt={tokens} />
+      </div>
       {test && (
         <p className={cn("mt-2 text-xs", test.ok ? "text-emerald-700" : "text-red-600")} data-testid={`test-${p.slug}`}>
           {test.ok ? `Connection OK (${test.locality}, ${test.models_available} models available)` : `Connection failed: ${test.error}`}
         </p>
       )}
+      {synced && <p className="mt-1 text-xs text-muted-foreground">{synced}</p>}
+      {chart && <Usage30 p={p} />}
       {editing && <EditProvider p={p} onDone={() => setEditing(false)} />}
       <Table className="mt-2">
         <thead>
           <tr>
             <Th>Model</Th>
+            <Th>Price (USD per 1M in / out)</Th>
+            <Th>Tokens today / month</Th>
             <Th>Enabled</Th>
             <Th />
           </tr>
         </thead>
         <tbody>
           {p.models.map((m) => (
-            <tr key={m.id} className="border-t border-border" data-model={m.model_id}>
+            <Fragment key={m.id}>
+            <tr className="border-t border-border" data-model={m.model_id}>
               <td className="font-mono text-xs">
                 {m.model_id}
                 {m.is_default && (
@@ -385,6 +546,26 @@ function ProviderCard({ p }: { p: ProviderRow }) {
                   </Badge>
                 )}
                 {m.env_managed && <span className="ml-2 font-sans text-muted-foreground">(from the environment)</span>}
+              </td>
+              <td className="text-xs">
+                {m.input_usd_per_mtok == null && m.output_usd_per_mtok == null ? (
+                  p.metered ? (
+                    <span className="text-amber-700" title="Unknown price: the worst-case check counts it as 0; only the reported cost and the request cap bound it">
+                      unknown
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">0 (local)</span>
+                  )
+                ) : (
+                  <span>
+                    {m.input_usd_per_mtok ?? 0} / {m.output_usd_per_mtok ?? 0}
+                    <span className="ml-1 text-muted-foreground">({m.price_source})</span>
+                  </span>
+                )}
+              </td>
+              <td className="text-xs">
+                {tokens(m.today.tokens)} / {tokens(m.month.tokens)}
+                {m.month.cost_usd > 0 && <span className="ml-1 text-muted-foreground">{money(m.month.cost_usd)}</span>}
               </td>
               <td>
                 <input
@@ -405,6 +586,9 @@ function ProviderCard({ p }: { p: ProviderRow }) {
                     Make default
                   </Button>
                 )}
+                <Button size="sm" variant="ghost" aria-label={`limits of ${m.model_id}`} onClick={() => setLimitsOf(limitsOf === m.id ? null : m.id)}>
+                  Price and limits
+                </Button>
                 {!m.env_managed && !m.is_default && (
                   <Button
                     size="sm"
@@ -417,6 +601,14 @@ function ProviderCard({ p }: { p: ProviderRow }) {
                 )}
               </td>
             </tr>
+            {limitsOf === m.id && (
+              <tr>
+                <td colSpan={5}>
+                  <ModelLimits p={p} m={m} onDone={() => setLimitsOf(null)} />
+                </td>
+              </tr>
+            )}
+            </Fragment>
           ))}
         </tbody>
       </Table>
@@ -474,6 +666,43 @@ export default function Providers() {
       {list.data.providers.map((p) => (
         <ProviderCard key={p.id} p={p} />
       ))}
+      <ChangeHistory />
     </div>
+  );
+}
+
+export function ChangeHistory() {
+  const q = useQuery({ queryKey: ["limits-history"], queryFn: () => api<HistoryRow[]>("/api/admin/limits/history?limit=50") });
+  return (
+    <Card className="p-4" data-testid="limits-history">
+      <h3 className="mb-1 text-sm font-semibold">Change history: limits, prices, quotas and the model router</h3>
+      <p className="mb-2 text-xs text-muted-foreground">
+        Limits can be raised as well as lowered, so a compromised admin session could raise budgets: check this list, and also set a credit limit
+        on each provider's own key.
+      </p>
+      <Table>
+        <thead>
+          <tr>
+            <Th>When (UTC)</Th>
+            <Th>Who</Th>
+            <Th>What</Th>
+            <Th>Change</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {(q.data ?? []).map((h, i) => (
+            <tr key={i} className="border-t border-border align-top text-xs">
+              <td className="whitespace-nowrap">{h.ts.slice(0, 19).replace("T", " ")}</td>
+              <td>{h.who ?? "-"}</td>
+              <td>
+                {h.action} <span className="font-mono text-muted-foreground">{h.resource}</span>
+              </td>
+              <td className="max-w-md break-all font-mono">{JSON.stringify(h.details.changes ?? h.details)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+      {q.data && q.data.length === 0 && <p className="text-xs text-muted-foreground">No changes yet.</p>}
+    </Card>
   );
 }

@@ -83,6 +83,7 @@ class LLMProvider(Protocol):
         *,
         tools: list[ToolSpec] | None = None,
         classification: Classification,
+        max_tokens: int | None = None,
     ) -> AsyncIterator[StreamEvent]: ...
 
 
