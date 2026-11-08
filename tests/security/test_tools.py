@@ -284,3 +284,28 @@ def test_reroute_after_confidential_tool_result() -> None:
     assert reroute(router, cloud, Classification.confidential) is local
     with pytest.raises(RoutingRefused):
         reroute(ModelRouter([cloud]), cloud, Classification.confidential)
+
+
+def test_reroute_away_from_a_cloud_default_after_confidential_tool_result() -> None:
+    """An admin-chosen cloud default is used while it is cleared and abandoned the moment it is not."""
+    cloud = OpenAICompatProvider(
+        provider="acme-cloud",
+        base_url="https://1.1.1.1/v1",
+        model="large",
+        locality="cloud",
+        max_classification=Classification.confidential,  # asked for confidential: capped to internal
+        allow_private=False,
+    )
+    local = OpenAICompatProvider(
+        provider="ollama",
+        base_url="http://127.0.0.1:11434/v1",
+        model="qwen3:4b",
+        locality="local",
+        max_classification=Classification.confidential,
+    )
+    router = ModelRouter([local, cloud], default_id="acme-cloud:large")
+    current = router.choose(Classification.internal)
+    assert current is cloud and cloud.max_classification == Classification.internal
+    assert reroute(router, current, Classification.confidential) is local
+    with pytest.raises(RoutingRefused):
+        reroute(ModelRouter([cloud], default_id="acme-cloud:large"), current, Classification.confidential)

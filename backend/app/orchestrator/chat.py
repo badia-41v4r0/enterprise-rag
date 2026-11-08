@@ -27,7 +27,7 @@ from app.models import Classification, Conversation, Message, User
 from app.rag.context_builder import BuiltContext, build_context
 from app.rag.retrieval import RetrievalResult, Retriever
 from app.services.audit import audit
-from app.services.spend import cost_from_usage, ensure_budget, record_spend
+from app.services.spend import cost_from_usage, ensure_budget, record_spend, reserve_request
 
 log = logging.getLogger(__name__)
 
@@ -227,13 +227,16 @@ class ChatOrchestrator:
                     offer_tools = prep.tools if (self.tools and iteration < max_iter) else None
                     calls: list[ToolCall] = []
                     step_text = ""
-                    if provider.locality == "cloud":
-                        # Hard monthly ceiling, checked before anything leaves the process (ADR 0016).
+                    metered = self.router.is_metered(provider)
+                    if metered:
+                        # Hard monthly ceiling and daily request cap, checked before anything leaves the
+                        # process (ADR 0016, ADR 0024). The request is counted even if it then fails.
                         await ensure_budget(
                             self.db,
                             provider.provider,
                             self.router.budgets.get(provider.provider, self.settings.openrouter_monthly_budget_usd),
                         )
+                        await reserve_request(self.db, provider.provider, self.router.daily_caps.get(provider.provider))
                     await self._audit_egress(user, provider, classification, prep, iteration)
                     models_used.append(provider.model_id)
                     usage: dict[str, Any] = {}
@@ -245,7 +248,7 @@ class ChatOrchestrator:
                             calls = ev.calls
                         elif isinstance(ev, Done):
                             usage = ev.usage
-                    if provider.locality == "cloud":
+                    if metered:
                         await record_spend(self.db, provider.provider, cost_from_usage(usage))
                     answer += step_text
                     if not calls or self.tools is None:

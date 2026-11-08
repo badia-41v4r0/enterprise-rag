@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -29,24 +30,40 @@ class ModelInfo:
     model: str
     locality: str
     max_classification: Classification
+    is_default: bool = False
 
 
 class ModelRouter:
     def __init__(
-        self, providers: list[LLMProvider], default_id: str | None = None, budgets: dict[str, float] | None = None
+        self,
+        providers: list[LLMProvider],
+        default_id: str | None = None,
+        budgets: dict[str, float] | None = None,
+        daily_caps: dict[str, int | None] | None = None,
     ) -> None:
         self.providers = providers
+        # The admin's default (a provider:model id); used only when it is cleared for the request.
         self.default_id = default_id
-        # Monthly spend ceiling per cloud provider (USD); see ADR 0016.
+        # Monthly spend ceiling (USD) and daily request cap per metered provider; see ADR 0016 and 0024.
         self.budgets = budgets or {}
+        self.daily_caps = daily_caps or {}
+        # Per provider slug: evaluated locality, clearance and availability (registry.ProviderState).
+        self.states: dict[str, Any] = {}
 
     def models(self) -> list[ModelInfo]:
-        return [ModelInfo(p.model_id, p.provider, p.model, p.locality, p.max_classification) for p in self.providers]
+        return [
+            ModelInfo(p.model_id, p.provider, p.model, p.locality, p.max_classification, p.model_id == self.default_id)
+            for p in self.providers
+        ]
 
     def permitted(self, classification: Classification) -> list[LLMProvider]:
         return [p for p in self.providers if classification.rank <= p.max_classification.rank]
 
     def choose(self, classification: Classification, requested: str | None = None) -> LLMProvider:
+        """Requested model if cleared, else the default if cleared, else a cleared model (local first).
+
+        Clearance always wins: neither the user's choice nor the admin's default can send data to a
+        model that is not cleared for it (ADR 0003, ADR 0023)."""
         allowed = self.permitted(classification)
         if not allowed:
             raise RoutingRefused(
@@ -67,6 +84,9 @@ class ModelRouter:
 
     def get(self, model_id: str) -> LLMProvider | None:
         return next((p for p in self.providers if p.model_id == model_id), None)
+
+    def is_metered(self, provider: LLMProvider) -> bool:
+        return provider.provider in self.budgets or provider.locality == "cloud"
 
 
 def validate_openrouter_model(model: str, allow_paid: bool) -> None:
@@ -140,67 +160,72 @@ def get_router() -> ModelRouter:
     return ModelRouter(build_providers(s), budgets={"openrouter": s.openrouter_monthly_budget_usd})
 
 
-# --- Runtime configuration (Providers screen, ADR 0018) -----------------------------------------
+# --- Runtime configuration (Providers screen, ADR 0018 and 0023) ----------------------------------
 
-_cache: dict[str, tuple[tuple[object, ...], ModelRouter, OpenRouterConfig]] = {}
+_cache: dict[str, tuple[tuple[object, ...], ModelRouter]] = {}
 log = logging.getLogger(__name__)
 
 
-async def _fingerprint(db: AsyncSession) -> tuple[object, ...]:
-    from app.models import AppSetting, Secret
+async def _fingerprint(db: AsyncSession, s: Settings) -> tuple[object, ...]:
+    """Cheap summary of everything the router depends on; any change rebuilds it (no restart)."""
+    from app.models import AppSetting, LlmModel, LlmProvider, Secret
     from app.services.settings_store import OPENROUTER_KEY
-    from app.services.vault import OPENROUTER_SECRET
 
+    prov = (await db.execute(select(func.count(LlmProvider.id), func.max(LlmProvider.updated_at)))).one()
+    mods = (await db.execute(select(func.count(LlmModel.id), func.max(LlmModel.updated_at)))).one()
+    secs = (
+        await db.execute(select(func.count(Secret.id), func.max(Secret.updated_at), func.sum(Secret.version)))
+    ).one()
     setting = await db.scalar(select(AppSetting.updated_at).where(AppSetting.key == OPENROUTER_KEY))
-    secret = (
-        await db.execute(
-            select(Secret.version, Secret.updated_at, Secret.key_id).where(Secret.name == OPENROUTER_SECRET)
-        )
-    ).first()
-    return (setting, tuple(secret) if secret else None)
+    return (id(s), tuple(prov), tuple(mods), tuple(secs), setting)
 
 
 async def resolve_openrouter(
     db: AsyncSession, settings: Settings | None = None, *, reveal: bool = True
 ) -> OpenRouterConfig:
-    """Vault first, then ERAG_OPENROUTER_API_KEY. The UI ceiling can only lower the env ceiling."""
-    from app.services import vault
-    from app.services.settings_store import OPENROUTER_KEY, get_setting
+    """The built-in OpenRouter row: vault key first, then ERAG_OPENROUTER_API_KEY.
+
+    The UI ceiling can only lower the env one."""
+    from app.llm import registry
+    from app.models import LlmProvider
 
     s = settings or get_settings()
-    env = env_openrouter(s)
-    conf = await get_setting(db, OPENROUTER_KEY)
-    key, source = env.api_key, env.key_source
-    if await vault.exists(db, vault.OPENROUTER_SECRET):
-        # reveal=False: status only (no decryption, no audit noise); the key is replaced by a marker.
-        key = await vault.reveal(db, vault.OPENROUTER_SECRET, consumer="provider:openrouter") if reveal else "<vault>"
-        source = "vault"
-    budget = min(float(conf.get("monthly_budget_usd", env.budget_usd)), s.openrouter_monthly_budget_usd)
+    await registry.ensure_builtin_providers(db, s)
+    row = await db.scalar(
+        select(LlmProvider)
+        .where(LlmProvider.builtin, LlmProvider.slug == registry.OPENROUTER)
+        .execution_options(populate_existing=True)
+    )
+    assert row is not None
+    key, source = await registry.resolve_key(db, row, s, reveal=reveal)
+    model = next((m.model for m in row.models if m.env_managed), s.openrouter_model)
     return OpenRouterConfig(
         api_key=key,
-        model=str(conf.get("model") or env.model),
-        budget_usd=max(0.0, budget),
-        enabled=bool(conf.get("enabled", True)),
+        model=model,
+        budget_usd=registry.effective_budget(row, s),
+        enabled=row.enabled,
         key_source=source,
     )
 
 
 async def load_router(db: AsyncSession, settings: Settings | None = None) -> ModelRouter:
-    """Providers rebuilt only when the OpenRouter setting or its secret changed (no restart needed)."""
+    """Router built from the provider registry; rebuilt only when providers, models, the default or a secret
+    changed. Built-in providers are (re)created from the environment first, so nothing needs an admin."""
+    from app.llm import registry
+
     s = settings or get_settings()
-    fp = await _fingerprint(db)
     cached = _cache.get("router")
-    if cached is not None and cached[0] == fp:
+    if cached is not None and cached[0] == await _fingerprint(db, s):
         return cached[1]
-    orc = await resolve_openrouter(db, s)
-    await db.commit()  # persist the audited secret use
-    try:
-        providers = build_providers(s, orc)
-    except ValueError as exc:
-        log.error("OpenRouter disabled: %s", exc)
-        providers = build_providers(s, OpenRouterConfig(None, orc.model, orc.budget_usd, False, orc.key_source))
-    router = ModelRouter(providers, budgets={"openrouter": orc.budget_usd})
-    _cache["router"] = (fp, router, orc)
+    await registry.ensure_builtin_providers(db, s)
+    built = await registry.build_from_db(db, s)
+    providers = list(built.providers)
+    if s.claude_code_enabled and not s.is_prod:
+        # Dev-only, env-gated, never stored in the database.
+        providers.append(ClaudeCodeProvider(binary=s.claude_code_bin))
+    router = ModelRouter(providers, default_id=built.default_id, budgets=built.budgets, daily_caps=built.daily_caps)
+    router.states = dict(built.states)
+    _cache["router"] = (await _fingerprint(db, s), router)
     return router
 
 

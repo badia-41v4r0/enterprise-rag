@@ -139,7 +139,15 @@ async def references(db: AsyncSession) -> dict[str, list[str]]:
 
 @register_reference_finder
 async def _provider_refs(db: AsyncSession) -> dict[str, list[str]]:
-    return {OPENROUTER_SECRET: ["provider: OpenRouter"]}
+    from app.models import LlmProvider
+
+    out: dict[str, list[str]] = {OPENROUTER_SECRET: ["provider: OpenRouter"]}
+    for slug, name, secret in (
+        await db.execute(select(LlmProvider.slug, LlmProvider.name, LlmProvider.secret_name))
+    ).all():
+        if secret and not (slug == "openrouter" and secret == OPENROUTER_SECRET):
+            out.setdefault(secret, []).append(f"provider: {name}")
+    return out
 
 
 # --- Master key rotation -------------------------------------------------------------------------

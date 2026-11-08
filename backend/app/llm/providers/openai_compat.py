@@ -8,8 +8,10 @@ from typing import Any
 
 import httpx
 
+from app.core.netguard import BlockedDestination, PinnedTransport, provider_checker
 from app.llm.providers.base import (
     Done,
+    EgressBlocked,
     EgressRecord,
     Locality,
     ProviderError,
@@ -75,15 +77,22 @@ class OpenAICompatProvider:
         transport: httpx.AsyncBaseTransport | None = None,
         free_only: bool = False,
         extra_body: dict[str, Any] | None = None,
+        allow_private: bool | None = None,
+        cloud_cap: Classification = Classification.internal,
     ) -> None:
         self.provider = provider
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.locality: Locality = locality
         # A cloud provider can never be cleared for confidential data, whatever the config says.
-        if locality == "cloud" and max_classification == Classification.confidential:
-            max_classification = Classification.internal
+        if locality == "cloud":
+            cap = cloud_cap if cloud_cap.rank < Classification.confidential.rank else Classification.internal
+            if max_classification.rank > cap.rank:
+                max_classification = cap
         self.max_classification = max_classification
+        # Destination policy re-checked on EVERY request (ADR 0025): a local provider must still resolve to
+        # private addresses only, and private addresses are reachable only by Ollama/self-hosted providers.
+        self.allow_private = (locality == "local") if allow_private is None else allow_private
         self.api_key = api_key
         self.strip_think = strip_think
         self.extra_headers = extra_headers or {}
@@ -125,13 +134,34 @@ class OpenAICompatProvider:
 
         think = ThinkStripper(self.strip_think)
         calls: dict[int, dict[str, str]] = {}
+        transport = self.transport or PinnedTransport(
+            [], checker=provider_checker(allow_private=self.allow_private, require_private=self.locality == "local")
+        )
+        try:
+            async for ev in self._stream(transport, url, payload, headers, think, calls):
+                yield ev
+        except BlockedDestination as exc:
+            raise EgressBlocked(f"{self.model_id}: destination refused: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise ProviderError(f"{self.model_id} could not be reached: {type(exc).__name__}") from exc
+
+    async def _stream(
+        self,
+        transport: httpx.AsyncBaseTransport,
+        url: str,
+        payload: dict[str, Any],
+        headers: dict[str, str],
+        think: ThinkStripper,
+        calls: dict[int, dict[str, str]],
+    ) -> AsyncIterator[StreamEvent]:
         finish = "stop"
         usage: dict[str, Any] = {}
         async with (
-            httpx.AsyncClient(timeout=self.timeout, transport=self.transport) as client,
+            httpx.AsyncClient(timeout=self.timeout, transport=transport, follow_redirects=False) as client,
             client.stream("POST", url, json=payload, headers=headers) as resp,
         ):
-            if resp.status_code >= 400:
+            if resp.status_code >= 300:
+                # Redirects are never followed for model endpoints: a 3xx is an error like a 4xx.
                 body = (await resp.aread()).decode(errors="replace")[:500]
                 raise ProviderError(f"{self.model_id} returned HTTP {resp.status_code}: {body}")
             async for line in resp.aiter_lines():

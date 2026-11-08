@@ -65,6 +65,14 @@ class Settings(BaseSettings):
     # the cap is checked before every request and the real cost is recorded after it (ADR 0016).
     openrouter_monthly_budget_usd: float = 0.01
 
+    # Providers added from the admin panel (ADR 0023/0024). Every OpenAI-compatible API provider (and any
+    # Ollama on a public address) is metered: a monthly spend ceiling in USD, used when the response reports
+    # its cost (`usage.cost`), and a daily request cap, because many providers do not report cost at all.
+    # The admin panel can only lower these per provider, never raise them. OpenRouter keeps its own ceiling
+    # (ERAG_OPENROUTER_MONTHLY_BUDGET_USD) and has no daily cap unless the admin sets one.
+    provider_monthly_budget_usd: float = 0.01
+    provider_daily_request_cap: int = 100
+
     # Dev-only provider that shells out to `claude -p`. Never enabled in the demo/production.
     claude_code_enabled: bool = False
     claude_code_bin: str = "claude"

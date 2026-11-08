@@ -60,6 +60,7 @@ class ModelOut(BaseModel):
     model: str
     locality: str
     max_classification: Classification
+    is_default: bool = False
 
 
 @router.post("/chat")
@@ -144,7 +145,12 @@ async def delete_conversation(
 async def list_models(_: AuthContext = Depends(get_auth), db: AsyncSession = Depends(get_db)) -> list[ModelOut]:
     return [
         ModelOut(
-            id=m.id, provider=m.provider, model=m.model, locality=m.locality, max_classification=m.max_classification
+            id=m.id,
+            provider=m.provider,
+            model=m.model,
+            locality=m.locality,
+            max_classification=m.max_classification,
+            is_default=m.is_default,
         )
         for m in (await load_router(db)).models()
     ]

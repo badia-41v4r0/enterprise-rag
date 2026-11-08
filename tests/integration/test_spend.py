@@ -8,16 +8,19 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.llm import registry
 from app.llm.providers.base import ProviderError
 from app.llm.providers.openai_compat import OpenAICompatProvider
 from app.llm.router import build_providers, validate_openrouter_model
-from app.models import Classification
+from app.models import Classification, LlmProvider
 from app.services.spend import (
     BudgetExceeded,
     cost_from_usage,
     ensure_budget,
     month_spend,
     record_spend,
+    requests_today,
+    reserve_request,
 )
 
 pytestmark = pytest.mark.db
@@ -89,3 +92,43 @@ async def test_provider_free_only_guard_blocks_before_any_request() -> None:
     with pytest.raises(ProviderError, match="not a free model"):
         async for _ in p.stream_chat([{"role": "user", "content": "hi"}], classification=Classification.public):
             pass
+
+
+# --- Daily request cap and per-provider ceilings (ADR 0024) ------------------------------------------------
+
+DAY1 = datetime(2026, 1, 15, 10, tzinfo=UTC)
+DAY2 = datetime(2026, 1, 16, 10, tzinfo=UTC)
+
+
+async def test_daily_request_cap_counts_before_sending_and_resets_per_day(db: AsyncSession) -> None:
+    for _ in range(2):
+        await reserve_request(db, "acme-cloud", 2, DAY1)
+    await db.commit()
+    with pytest.raises(BudgetExceeded, match="Daily request limit"):
+        await reserve_request(db, "acme-cloud", 2, DAY1)
+    await db.commit()
+    assert await requests_today(db, "acme-cloud", DAY1) == 3  # the refused attempt is visible, not sent
+    await reserve_request(db, "acme-cloud", 2, DAY2)  # new day
+    await reserve_request(db, "other", 2, DAY1)  # other provider
+    await reserve_request(db, "unmetered", None, DAY1)  # no cap configured: nothing counted
+    assert await requests_today(db, "unmetered", DAY1) == 0
+    with pytest.raises(BudgetExceeded):
+        await reserve_request(db, "blocked", 0, DAY1)
+
+
+def test_effective_limits_can_only_be_lowered() -> None:
+    s = Settings(provider_monthly_budget_usd=0.01, provider_daily_request_cap=100, openrouter_monthly_budget_usd=0.02)
+    api = LlmProvider(slug="acme", kind="api", builtin=False, monthly_budget_usd=None, daily_request_limit=None)
+    assert registry.effective_budget(api, s) == 0.01 and registry.effective_daily_cap(api, s) == 100
+    api.monthly_budget_usd, api.daily_request_limit = 5.0, 10_000  # tampered above the env: capped
+    assert registry.effective_budget(api, s) == 0.01 and registry.effective_daily_cap(api, s) == 100
+    api.monthly_budget_usd, api.daily_request_limit = 0.001, 3
+    assert registry.effective_budget(api, s) == 0.001 and registry.effective_daily_cap(api, s) == 3
+    router = LlmProvider(slug="openrouter", kind="api", builtin=True, monthly_budget_usd=None, daily_request_limit=None)
+    assert registry.effective_budget(router, s) == 0.02 and registry.effective_daily_cap(router, s) is None
+    router.daily_request_limit = 7
+    assert registry.effective_daily_cap(router, s) == 7
+    # Metering: every API provider (even self-hosted, it may proxy a paid API) and any non-local Ollama.
+    assert registry.metered(api, "local") and registry.metered(api, "cloud")
+    ollama = LlmProvider(slug="lan", kind="ollama", builtin=False)
+    assert not registry.metered(ollama, "local") and registry.metered(ollama, "cloud")
