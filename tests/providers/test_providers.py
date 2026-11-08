@@ -115,3 +115,24 @@ async def test_claude_code_provider() -> None:
     ]
     assert isinstance(events[-1], Done)
     assert "".join(e.text for e in events if isinstance(e, TextDelta)).strip()
+
+
+@pytest.mark.db
+@pytest.mark.embeddings
+@pytest.mark.provider_ollama
+async def test_tool_scenario_end_to_end(acme: None) -> None:
+    """Finance analyst gets invoice rows through the real tool loop; the engineer never sees the tool."""
+    q = "Show me open invoices over 10k EUR."
+    fin = await _chat("finance@acme.test", q)
+    calls = [e for e in fin if e["type"] == "tool_call"]
+    results = [e for e in fin if e["type"] == "tool_result"]
+    assert calls and calls[0]["name"] == "tickets__list_invoices", [e["type"] for e in fin]
+    assert results and results[0]["ok"] and results[0]["classification"] == "confidential"
+    done = fin[-1]
+    assert done["type"] == "done" and done["classification"] == "confidential"
+    assert done["model"].startswith("ollama:")
+
+    eng = await _chat("engineer@acme.test", q)
+    assert all(e.get("name") != "tickets__list_invoices" for e in eng if e["type"] == "tool_call")
+    for secret in ("INV-2026-0914", "Litware", "64,000", "64000"):
+        assert secret not in eng[-1]["answer"]

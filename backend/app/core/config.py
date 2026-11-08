@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     tool_max_iterations: int = 3
     tool_result_max_bytes: int = 16_000
     tool_rate_limit_per_minute: int = 20
-    mcp_files_root: Path = REPO_ROOT / "demo" / "acme" / "files"
+    mcp_files_root: Path = REPO_ROOT / "demo" / "acme" / "docs"
     mcp_tickets_db: Path = REPO_ROOT / "data" / "tickets.sqlite3"
 
     # Rate limiting (requests per minute)

@@ -260,8 +260,9 @@ class ChatOrchestrator:
                             }
                         )
                     # Tool results may raise the classification: re-route before anything is sent.
-                    if classification.rank > provider.max_classification.rank:
-                        provider = self.router.choose(classification)
+                    new_provider = reroute(self.router, provider, classification)
+                    if new_provider is not provider:
+                        provider = new_provider
                         yield {"type": "route", "model": provider.model_id, "classification": classification.value}
             except RoutingRefused as exc:
                 refusal = exc.reason
@@ -328,6 +329,16 @@ class ChatOrchestrator:
             },
         )
         await self.db.commit()
+
+
+def reroute(router: ModelRouter, current: LLMProvider, classification: Classification) -> LLMProvider:
+    """Keep the current model if it is cleared for the new classification, else pick one that is.
+
+    Raises RoutingRefused when no model is cleared: the higher-classified data is then never sent.
+    """
+    if classification.rank <= current.max_classification.rank:
+        return current
+    return router.choose(classification)
 
 
 def sse(event: dict[str, Any]) -> str:

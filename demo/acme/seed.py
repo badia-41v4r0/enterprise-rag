@@ -6,7 +6,6 @@ Run with `erag seed-acme` (or `python -m app.cli seed-acme`).
 
 from __future__ import annotations
 
-import importlib
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_sessionmaker
 from app.core.security import hash_password
 from app.ingestion.blobstore import get_blobstore
+from app.mcp.registry import sync_registry
 from app.models import Action, Classification, Container, Document, Grant, ResourceType, Role, User, UserRole
 from app.services.documents import upload_document
 
@@ -223,13 +223,8 @@ async def seed(password: str, ingest: bool = True) -> None:
         containers = await seed_structure(db, password)
         queued = await seed_documents(db, containers)
         tools = 0
-        try:
-            registry = importlib.import_module("app.mcp.registry")  # MCP layer (Phase 5)
-        except ImportError:
-            registry = None
-        if registry is not None:
-            await registry.sync_registry(db)
-            tools = await seed_tool_grants(db)
+        await sync_registry(db)
+        tools = await seed_tool_grants(db)
     processed = await drain() if ingest else 0
     print(
         f"ACME seeded: {len(containers)} containers, {len(PERSONAS)} personas, "

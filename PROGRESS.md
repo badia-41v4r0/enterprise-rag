@@ -10,8 +10,8 @@ Branch: `feat/mvp` (not pushed). Plan: [`docs/PLAN.md`](docs/PLAN.md). Decisions
 | 1. Identity and permissions | Done | Sessions (argon2, HttpOnly cookie, CSRF), roles, containers, grants, `can()`, admin API, audit, CLI admin |
 | 2. Ingestion | Done | Upload API, sha256 dedupe, versioning, LocalBlobStore, SKIP LOCKED worker, parsers (PDF/DOCX/XLSX/HTML/MD/TXT), chunker, bge-m3 embeddings |
 | 3. Authorized retrieval and chat | Done | Filtered pgvector search, ACL re-check, context builder, prompt builder, Ollama/OpenRouter/claude-code providers, classification router, SSE chat, conversations; **leakage suite green** |
-| 4. Frontend | Not started | |
-| 5. MCP | Not started | |
+| 4. Frontend | In progress | Done after Phase 5 (MCP first because its security tests are core) |
+| 5. MCP | Done | Registry, gateway (MCP client, stdio), signed permission context, tool authz, tool loop with re-routing, result validator, per-tool audit; `files` and `tickets` reference servers |
 | 6. ACME demo and hardening | Not started | |
 | 7. Docs, release | Not started | |
 
@@ -43,3 +43,15 @@ Branch: `feat/mvp` (not pushed). Plan: [`docs/PLAN.md`](docs/PLAN.md). Decisions
   - `tests/unit/test_prompt.py`: untrusted text cannot close `<document>`/`<context>` delimiters; dedupe/budget/citations; `</think>` stripping.
 - Real provider tests (`tests/providers/`, real `qwen3:4b`): streaming text without reasoning, a real `list_invoices` tool call, and the signature scenario end to end through `/api/chat` SSE.
 - Docker (hostnet override, port 8088), curl against `/api/chat`: HR manager -> citations from *HR Confidential*, routed to `ollama:qwen3:4b` as `confidential`, answer "58,000 to 72,000 EUR [1]" (~11 s); Engineer -> citations only from *Engineering* (career ladder), answer "I don't have information about that in the sources available to you."
+
+## Verified (Phase 5)
+
+- `uv run pytest` (138 passed, 2 skipped). `tests/security/test_tools.py` runs against the **real** reference servers over stdio (no model):
+  - visible tools per persona (engineer/new hire never see `tickets__list_invoices`); a hidden tool called by name gets the same "unknown tool" refusal as a non-existent one, audited as `deny`.
+  - same call `tickets__search_tickets` returns ENG-only rows for the engineer, HR-only for HR, FIN-only for finance, all three for the executive, with the matching classification.
+  - forged arguments (extra `department`, reserved `_permission_context`, wrong types, non-JSON, non-object) refused before the gateway.
+  - `files__read_file`: out-of-scope container, `..` traversal, absolute path, and the restricted HR case for the executive are refused; HR can read it.
+  - server-side barrier with tool_authz bypassed: a token scoped to engineering cannot read HR files or invoices; tampered, expired, wrong-audience, wrong-tool, wrong-secret and missing tokens are all rejected by the server.
+  - injection in a ticket title is dropped and flagged; oversized results refused; per-user tool rate limit; re-routing to a local model after a confidential tool result (pure function).
+- Real Ollama (`tests/providers/test_providers.py::test_tool_scenario_end_to_end`): the finance analyst's "open invoices over 10k" runs the real tool loop (`tickets__list_invoices`, result `confidential`, answer from the local model); the engineer is never offered the tool.
+- Docker (hostnet, port 8088): `/api/tools` for finance lists 4 tools, for the engineer 3; finance chat -> `tool_call tickets__list_invoices {"min_amount":10000,"status":"open"}` -> `tool_result ok confidential` -> answer listing INV-2026-0914/0912/0911; engineer -> "I don't have information about that ...".

@@ -27,7 +27,9 @@ chat_limiter = RateLimiter(get_settings().chat_rate_limit_per_minute)
 
 
 def get_tool_runtime() -> ToolRuntime | None:
-    return None  # MCP tools arrive in Phase 5
+    from app.mcp.tool_loop import McpToolRuntime
+
+    return McpToolRuntime()
 
 
 class ChatIn(BaseModel):

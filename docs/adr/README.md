@@ -16,3 +16,5 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0009](0009-admin-is-not-data-access.md) | Admin is a management privilege, not a data-access privilege | Accepted, Owner review |
 | [0010](0010-mcp-stdio-and-permission-context.md) | MCP over stdio with a signed permission context in `_meta` | Accepted |
 | [0011](0011-own-openai-compatible-client.md) | Own minimal OpenAI-compatible client over httpx | Accepted |
+| [0012](0012-tool-scope-from-container-permissions.md) | Tool data scope derived from container permissions | Accepted |
+| [0013](0013-result-validator-heuristics.md) | Result validator: size cap, classification floor, injection heuristics | Accepted, Owner review |
