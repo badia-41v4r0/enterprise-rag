@@ -121,10 +121,26 @@ function ModelLimits({ p, m, onDone }: { p: ProviderRow; m: ProviderModel; onDon
     tokens_per_month: str(m.tokens_per_month),
     monthly_budget_usd: str(m.monthly_budget_usd),
   });
+  const [cls, setCls] = useState<string>(m.requested_classification ?? "");
+  const [tools, setTools] = useState(m.supports_tools);
+  const [jev, setJev] = useState({
+    cost_tier: m.jev_router.cost_tier ?? "",
+    allowed_models: (m.jev_router.allowed_models ?? []).join(", "),
+    excluded_models: (m.jev_router.excluded_models ?? []).join(", "),
+  });
+  const list = (v: string) => v.split(",").map((x) => x.trim()).filter(Boolean);
   const save = () =>
     run(async () => {
-      const body: Record<string, number | null> = {};
+      const body: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(f)) if (num(v) !== (m as unknown as Record<string, number | null>)[k]) body[k] = num(v);
+      if ((cls || null) !== m.requested_classification) body.max_classification = cls || null;
+      if (tools !== m.supports_tools) body.supports_tools = tools;
+      if (m.is_jev_router)
+        body.jev_router = {
+          ...(jev.cost_tier ? { cost_tier: jev.cost_tier } : {}),
+          ...(list(jev.allowed_models).length ? { allowed_models: list(jev.allowed_models) } : {}),
+          ...(list(jev.excluded_models).length ? { excluded_models: list(jev.excluded_models) } : {}),
+        };
       if (Object.keys(body).length) await api(`/api/admin/providers/${p.id}/models/${m.id}`, { method: "PATCH", body: json(body) });
       onDone();
     });
@@ -143,6 +159,47 @@ function ModelLimits({ p, m, onDone }: { p: ProviderRow; m: ProviderModel; onDon
       {field("tokens_per_day", "Tokens per day (this model)", "no limit")}
       {field("tokens_per_month", "Tokens per month (this model)", "no limit")}
       {field("monthly_budget_usd", "USD per month (this model)", "no limit")}
+      <div>
+        <Label>Clearance of this model (only lower)</Label>
+        <Select value={cls} onChange={(e) => setCls(e.target.value)} aria-label={`clearance of ${m.model_id}`}>
+          <option value="">{m.is_jev_router ? "default (public)" : `provider's (${p.max_classification})`}</option>
+          {CLASSES.filter((c) => RANK[c] <= RANK[p.max_classification]).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <label className="flex items-end gap-1 pb-2 text-xs">
+        <input type="checkbox" checked={tools} onChange={(e) => setTools(e.target.checked)} aria-label={`tools for ${m.model_id}`} />
+        may be offered tools
+      </label>
+      {m.is_jev_router && (
+        <div className="col-span-4 grid grid-cols-3 gap-2 rounded-md bg-muted/40 p-2">
+          <p className="col-span-3 text-xs text-muted-foreground">
+            OpenRouter Jev Router: OpenRouter's router picks and serves a model from its catalog and sees the whole conversation (public data
+            only by default). A cost tier is a preference, not a price cap: the budgets above enforce the real limit, and an unknown price
+            counts as 0 in the worst-case check, so keep the monthly ceiling low and prefer an allowed list of models whose price you know.
+          </p>
+          <div>
+            <Label>Cost tier</Label>
+            <Select value={jev.cost_tier} onChange={(e) => setJev({ ...jev, cost_tier: e.target.value })} aria-label="jev router cost tier">
+              <option value="">Jev's default</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </Select>
+          </div>
+          <div>
+            <Label>Allowed models (patterns, comma-separated)</Label>
+            <Input value={jev.allowed_models} onChange={(e) => setJev({ ...jev, allowed_models: e.target.value })} placeholder="e.g. meta-llama/*:free" aria-label="jev router allowed models" />
+          </div>
+          <div>
+            <Label>Excluded models (always enforced)</Label>
+            <Input value={jev.excluded_models} onChange={(e) => setJev({ ...jev, excluded_models: e.target.value })} placeholder="e.g. anthropic/claude-opus*" aria-label="jev router excluded models" />
+          </div>
+        </div>
+      )}
       <div className="flex items-end">
         <Button size="sm" onClick={() => void save()} disabled={busy}>
           Save model limits

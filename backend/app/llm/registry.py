@@ -301,8 +301,60 @@ async def current_endpoint(row: LlmProvider) -> tuple[str, str]:
     return ep.locality, ""
 
 
-def make_provider(row: LlmProvider, model: str, locality: str, key: str | None, s: Settings) -> OpenAICompatProvider:
+JEV_ROUTER_MODEL = "typesafe/jev-router"  # OpenRouter's Jev Router, a virtual model (ADR 0032)
+JEV_ROUTER_TIERS = ("low", "medium", "high")
+
+
+def is_jev_router(row: LlmProvider, model: str) -> bool:
+    return is_openrouter(row) and model == JEV_ROUTER_MODEL
+
+
+def model_clearance(row: LlmProvider, m: LlmModel, locality: str, s: Settings) -> Classification:
+    """The provider's clearance, lowered by the model's own (the Jev Router sees the whole conversation and
+    defaults to public, as a hosted decider would)."""
     clearance = effective_clearance(row.max_classification, locality, s)
+    own = m.max_classification
+    if own is None and is_jev_router(row, m.model):
+        own = Classification.public
+    return own if own is not None and own.rank < clearance.rank else clearance
+
+
+def validate_jev_router_options(raw: Any) -> dict[str, Any]:
+    """Plugin options as documented by OpenRouter (routing/routers/jev-router): cost_tier low|medium|high (or
+    absent for Jev's default policy), allowed_models and excluded_models as lists of patterns (at most 1,024
+    patterns of 1,024 characters, 65,536 characters in total per list). Unknown fields are refused, as
+    OpenRouter refuses them with HTTP 400."""
+    if not isinstance(raw, dict):
+        raise ProviderConfigError("jev_router options must be an object")
+    unknown = set(raw) - {"cost_tier", "allowed_models", "excluded_models"}
+    if unknown:
+        raise ProviderConfigError(f"unknown Jev Router option(s): {', '.join(sorted(unknown))}")
+    out: dict[str, Any] = {}
+    tier = raw.get("cost_tier")
+    if tier is not None:
+        if tier not in JEV_ROUTER_TIERS:
+            raise ProviderConfigError("cost_tier must be low, medium or high")
+        out["cost_tier"] = tier
+    for key in ("allowed_models", "excluded_models"):
+        items = raw.get(key)
+        if items is None:
+            continue
+        if not isinstance(items, list) or not all(isinstance(x, str) and 0 < len(x) <= 1024 for x in items):
+            raise ProviderConfigError(f"{key} must be a list of model patterns")
+        if len(items) > 1024 or sum(len(x) for x in items) > 65_536:
+            raise ProviderConfigError(f"{key} is too long")
+        if items:
+            out[key] = list(dict.fromkeys(items))
+    return out
+
+
+def jev_router_plugin(options: dict[str, Any]) -> dict[str, Any]:
+    return {"id": "jev-router", **validate_jev_router_options(options.get("jev_router") or {})}
+
+
+def make_provider(row: LlmProvider, m: LlmModel, locality: str, key: str | None, s: Settings) -> OpenAICompatProvider:
+    model = m.model
+    clearance = model_clearance(row, m, locality, s)
     common: dict[str, Any] = {
         "provider": row.slug,
         "base_url": chat_base(row.kind, row.base_url),
@@ -314,11 +366,13 @@ def make_provider(row: LlmProvider, model: str, locality: str, key: str | None, 
         "cloud_cap": cloud_cap(s),
     }
     if is_openrouter(row):
+        body: dict[str, Any] = {"usage": {"include": True}}  # OpenRouter reports the real cost of each request
+        if model == JEV_ROUTER_MODEL:
+            body["plugins"] = [jev_router_plugin(m.options or {})]
         return OpenAICompatProvider(
             **common,
             extra_headers={"HTTP-Referer": "https://badiapartners.com", "X-Title": "EnterpriseRAG"},
-            # Ask OpenRouter to report the real cost of each request in the final usage chunk.
-            extra_body={"usage": {"include": True}},
+            extra_body=body,
         )
     if row.builtin and row.slug == OLLAMA:
         return OpenAICompatProvider(
@@ -359,7 +413,11 @@ async def build_from_db(db: AsyncSession, settings: Settings | None = None) -> B
         for m in row.models:
             if not m.enabled:
                 continue
-            p = make_provider(row, m.model, locality, key, s)
+            try:
+                p = make_provider(row, m, locality, key, s)
+            except ProviderConfigError as exc:
+                log.error("model %s:%s skipped: %s", row.slug, m.model, exc)
+                continue
             out.providers.append(p)
             out.limits[p.model_id] = model_limits(row, m, locality, s)
             if m.is_default:

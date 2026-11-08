@@ -66,6 +66,49 @@ Plan: [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md). Branch created from `main` (d615
 
 **Not done (R8)**: no GPU run of Open-Jev (6 GB Turing, no bf16, documented peak 6.9 GiB); no quality benchmark; pjev-2b not inspected.
 
+### R9: official Jev API decider and the OpenRouter Jev Router (both built from the documentation, not called for real)
+
+**What was built**
+- **Official Jev API** decider (kind `jev_official`, ADR 0032): endpoint `https://api.typesafe.ai/v1/systemone` and model `jev-latest` as editable settings, key in the credential store, default clearance `public` (configurable, never confidential), default price 0.042 USD/M input tokens and 0 output (third-party figure, flagged "unverified default" in the panel; TypeSafe's reference documents no price and no cost field), daily cap 100 and monthly budget 0.01 USD by default; **Test** button; README how-to for adding the key and testing with about EUR 1.
+- **OpenRouter Jev Router** as a virtual model `typesafe/jev-router` of the OpenRouter provider; migration **0011** adds per-model `max_classification` (only lowers the provider's; the Jev Router defaults to public) and `options` (the documented `plugins: [{"id": "jev-router", cost_tier, allowed_models, excluded_models}]`, validated, unknown fields refused); per-model "may be offered tools" toggle. UI in the model's "Price and limits" panel.
+- Docs differences recorded in ADR 0032: options go in a `plugins` array; OpenRouter exposes the Jev Router (routes and serves), not the `/v1/systemone` decision API; no published price.
+
+**Verified (R9)**: `tests/security/test_jev_router.py` (2): options validation per the documentation; through the admin API the virtual model is added (before any key, so no price lookup), options saved, invalid options 422, clearance above the provider's 422; built router: Jev Router cleared for public while the plain OpenRouter model stays internal; the payload observed at the egress hook (and blocked there) carries `usage.include` and the exact plugin object; an internal request is refused before egress; options/clearance/tools changes need step-up. **Not verified against the real services** (no key for TypeSafe; no unpriced OpenRouter calls within the budget rules). `decider_official` test written and skipped.
+
+### v0.3 final state (after R9)
+
+- `uv run pytest`: **278 passed, 4 skipped** (206 s); the 4 skips are the OpenRouter env-key test, the opt-in claude-code test and the two opt-in real-decider tests (`decider_open` passed separately against the real Open-Jev server; `decider_official` needs a key). `ruff check`, `ruff format --check` (208 files), `mypy` strict (104 files), `scripts/check_licenses.py`, `npm run build`: pass. Migrations 0009 to 0011 downgrade to 0008 and upgrade again on `erag_test`.
+- Stack rebuilt at the final commit (`Running upgrade 0010 -> 0011`); `scripts/ui_smoke.mjs` **UI SMOKE PASSED** (R6 limits/quota steps and R7 router steps included); `scripts/demo_scenarios.py` unchanged results. Afterwards the stack has only `ollama` and `openrouter`, default automatic, no quotas, no deciders or lanes, router **disabled**, no `UI*` roles, no `erag-test-*` containers. The decision log keeps the rows of the test runs (no question text in them).
+- Spike leftovers outside the repo: `~/.cache/erag-open-jev` (venv, Open-Jev clone and adapter, about 1 GB) and the Qwen3.5-2B weights in `~/.cache/huggingface` (4.5 GB). Nothing is running; delete them if the open decider is not wanted.
+- No money spent: no OpenRouter call was made tonight (not even a price sync), no TypeSafe call.
+
+**Exact commands**
+```bash
+cd ~/Desktop/enterprise-rag && git checkout feat/v0.3
+ERAG_OPENROUTER_API_KEY= ERAG_LOCAL_CHAT_MODEL=qwen3:4b-instruct-2507-q4_K_M APP_PORT=8088 \
+  docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.hostnet.yml up -d --build app worker
+uv run pytest                                   # 278 passed, 4 skipped (~3.5 min)
+uv run pytest tests/security/test_quotas_and_limits.py tests/security/test_model_router.py tests/security/test_jev_router.py
+ERAG_TEST_OPEN_JEV_URL=http://127.0.0.1:8792 uv run pytest -m decider_open      # needs the Open-Jev server (README)
+ERAG_TEST_JEV_API_KEY=... uv run pytest -m decider_official                       # real, paid (tiny) calls
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run python scripts/check_licenses.py
+cd frontend && npm run build && cd ..
+uv run python scripts/demo_scenarios.py --base http://127.0.0.1:8088
+NODE_PATH=.scratch/e2e/node_modules CHROMIUM=/usr/bin/chromium BASE=http://127.0.0.1:8088 node scripts/ui_smoke.mjs
+```
+
+**Decisions for the owner (v0.3)**
+1. **Quota combination rule** (ADR 0027): implemented exactly as proposed in the plan (override, else highest standard cap per dimension; every collective pool charged). Users see shared pools only as "available / used up" (privacy); change if you prefer showing pool usage.
+2. **Every limit change needs step-up**, not only raises (stricter than "raising"); disabling the router does not (kill switch). Confirm.
+3. **OpenRouter now has the default daily cap of 100 requests** (it had none): paid models are allowed, so it is bounded like any metered provider.
+4. **`max_tokens` is sent on every request** (default 2048, `ERAG_PROVIDER_MAX_OUTPUT_TOKENS`): may truncate very long answers; OpenAI reasoning models want `max_completion_tokens` instead.
+5. **Unknown prices count as 0** in the worst-case check (flagged "unknown" in the panel). Press **Sync prices** on OpenRouter once (one free `GET /models`) so the built-in free model shows 0 and paid models get real prices; enter prices by hand for other APIs. Alternative: refuse metered models without a price.
+6. **`deploy/.env` still sets `ERAG_OPENROUTER_ALLOW_PAID`** (the app logs that it is ignored): remove the line.
+7. **Official Jev API**: add the key as a decider (README "Adding the official Jev key"), raise its monthly budget from 0.01 to what you want to spend, press **Test**, check the reported input tokens against your invoice and correct the default price (0.042 USD/M input, a third-party figure) if needed. Only then put it first and enable the router.
+8. **Open-Jev 2B** works here but takes about a minute per decision on CPU: keep it for evaluation/dry runs, or run it on a GPU; the prompted local decider (about 3 s) is the practical choice on this machine.
+9. **OpenRouter Jev Router**: implemented from the docs, never called (its price is unpublished). If you try it, set a low OpenRouter ceiling and an allowed list of models with known prices first.
+10. **Questions with an explicit model choice are not routed** (the user's choice wins when cleared, as before). Change if the router should also override explicit choices.
+
 ## Model providers from the admin panel, branch `feat/providers`
 
 Branch `feat/providers`, created from `fix/admin-ui-clutter` (not pushed). Work done autonomously; open questions became ADRs 0023 to 0025 and the list at the end of this section.

@@ -148,6 +148,10 @@ export interface ProviderModel {
   input_usd_per_mtok: number | null;
   output_usd_per_mtok: number | null;
   price_source: string | null;
+  supports_tools: boolean;
+  requested_classification: Classification | null;
+  is_jev_router: boolean;
+  jev_router: { cost_tier?: "low" | "medium" | "high"; allowed_models?: string[]; excluded_models?: string[] };
   today: UsageFigures;
   month: UsageFigures;
 }

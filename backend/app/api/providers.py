@@ -57,6 +57,10 @@ class ModelOut(BaseModel):
     input_usd_per_mtok: float | None = None
     output_usd_per_mtok: float | None = None
     price_source: str | None = None
+    supports_tools: bool = True
+    requested_classification: Classification | None = None  # per-model cap (lower only); null = provider's
+    is_jev_router: bool = False
+    jev_router: dict[str, Any] = Field(default_factory=dict)
     today: UsageFigures = Field(default_factory=UsageFigures)
     month: UsageFigures = Field(default_factory=UsageFigures)
 
@@ -157,6 +161,9 @@ class ModelPatch(BaseModel):
     monthly_budget_usd: float | None = Field(default=None, ge=0)
     input_usd_per_mtok: float | None = Field(default=None, ge=0, le=100_000)
     output_usd_per_mtok: float | None = Field(default=None, ge=0, le=100_000)
+    supports_tools: bool | None = None
+    max_classification: Classification | None = None  # null = the provider's clearance
+    jev_router: dict[str, Any] | None = None  # OpenRouter Jev Router options (cost_tier, allowed/excluded)
 
 
 PROVIDER_LIMITS = (
@@ -285,6 +292,10 @@ async def _model_out(db: AsyncSession, slug: str, m: LlmModel) -> ModelOut:
         input_usd_per_mtok=m.input_usd_per_mtok,
         output_usd_per_mtok=m.output_usd_per_mtok,
         price_source=m.price_source,
+        supports_tools=m.supports_tools,
+        requested_classification=m.max_classification,
+        is_jev_router=m.model == registry.JEV_ROUTER_MODEL and slug == registry.OPENROUTER,
+        jev_router=dict((m.options or {}).get("jev_router") or {}),
         today=_figures(await usage.totals(db, provider=slug, model=m.model, day=day_key())),
         month=_figures(await usage.totals(db, provider=slug, model=m.model, month=month_key())),
     )
@@ -580,10 +591,39 @@ async def update_model(
     db: AsyncSession = Depends(get_db),
 ) -> ModelOut:
     fields = body.model_fields_set
-    if fields & {*MODEL_LIMITS, *MODEL_PRICES} and not recently_authenticated(auth.session):
+    sensitive = {*MODEL_LIMITS, *MODEL_PRICES, "max_classification", "jev_router", "supports_tools"}
+    if fields & sensitive and not recently_authenticated(auth.session):
         raise HTTPException(status.HTTP_403_FORBIDDEN, STEP_UP_REQUIRED)
     m = await _model_or_404(db, provider_id, model_id)
     slug = m.provider.slug
+    s = get_settings()
+    other: dict[str, Any] = {}
+    if "max_classification" in fields and body.max_classification != m.max_classification:
+        cap = registry.effective_clearance(m.provider.max_classification, m.provider.locality, s)
+        if body.max_classification is not None and body.max_classification.rank > cap.rank:
+            raise _422(f"A model can only lower its provider's clearance ({cap.value})")
+        other["max_classification"] = {"from": m.max_classification, "to": body.max_classification}
+        m.max_classification = body.max_classification
+    if "supports_tools" in fields and body.supports_tools is not None and body.supports_tools != m.supports_tools:
+        other["supports_tools"] = {"from": m.supports_tools, "to": body.supports_tools}
+        m.supports_tools = body.supports_tools
+    if "jev_router" in fields:
+        if not (registry.is_openrouter(m.provider) and m.model == registry.JEV_ROUTER_MODEL):
+            raise _422(f"Jev Router options only apply to openrouter:{registry.JEV_ROUTER_MODEL}")
+        try:
+            options = registry.validate_jev_router_options(body.jev_router or {})
+        except registry.ProviderConfigError as exc:
+            raise _422(str(exc)) from exc
+        other["jev_router"] = {"from": (m.options or {}).get("jev_router"), "to": options}
+        m.options = {**(m.options or {}), "jev_router": options}
+    if other:
+        audit(
+            db,
+            "admin.limits.model",
+            user_id=auth.user.id,
+            resource=f"model:{slug}:{m.model}",
+            details={"changes": other},
+        )
     if "enabled" in fields and body.enabled is not None and body.enabled != m.enabled:
         if not body.enabled and m.is_default:
             raise HTTPException(status.HTTP_409_CONFLICT, "This is the default model; choose another default first")

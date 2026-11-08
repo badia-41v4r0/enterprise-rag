@@ -491,6 +491,12 @@ class LlmModel(TimestampMixin, Base):
     price_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # The model router only picks tool-capable models when tools are offered (PLAN-v0.3 R7).
     supports_tools: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # Per-model clearance: can only LOWER the provider's (NULL = the provider's; the OpenRouter Jev Router
+    # virtual model defaults to public). Per-model request options, e.g. {"jev_router": {...}} (ADR 0032).
+    max_classification: Mapped[Classification | None] = mapped_column(
+        _enum(Classification, "classification"), nullable=True
+    )
+    options: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=text("'{}'::jsonb"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     provider: Mapped[LlmProvider] = relationship(back_populates="models", lazy="selectin")
 

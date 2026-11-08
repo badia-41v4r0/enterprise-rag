@@ -140,6 +140,12 @@ Then in Admin > Model router add a decider of kind **Open Jev-style server**, UR
 3. Put the decider first in the order, add a default lane, use **Dry run** with sample text, then **Enable router**. Every call is audited (`router.decider.request`) and counted against the decider's budget; the decision log shows each decision's cost.
 4. Optional automated check: `ERAG_TEST_JEV_API_KEY=... uv run pytest -m decider_official` (a handful of real calls, skipped without the variable).
 
+The official API was built from TypeSafe's reference and has not yet been called for real ([ADR 0032](docs/adr/0032-official-jev-api-and-openrouter-jev-router.md)); if the first **Test** fails, the error shows TypeSafe's message and the router keeps working with the next decider.
+
+#### OpenRouter Jev Router (optional)
+
+OpenRouter also offers the Jev Router as a model that both routes and serves (`typesafe/jev-router`). Add it by typing `typesafe/jev-router` in **Add model** on the OpenRouter card, then **Price and limits** to set its options (cost tier `low`/`medium`/`high`, allowed and excluded model patterns, sent as OpenRouter's `jev-router` plugin). It sees the whole conversation, so it is cleared for **public** data only by default (a model can only lower its provider's clearance). A cost tier is a preference, not a price cap: OpenRouter's monthly ceiling, the request cap and quotas bound it, and since its price is not published the worst-case check cannot price it, so keep the ceiling low and prefer an allowed list of models whose prices you know. Not called for real in this release.
+
 ## Configuration reference (new in v0.2)
 
 All settings use the `ERAG_` prefix (full list in [`backend/app/core/config.py`](backend/app/core/config.py)).

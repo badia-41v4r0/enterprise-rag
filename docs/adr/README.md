@@ -36,3 +36,4 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0029](0029-model-router.md) | Model router: permitted set first, deciders and lanes second, an instant kill switch | Accepted |
 | [0030](0030-decision-protocol-and-decider-clearance.md) | One decision protocol for the official and open deciders; decider clearance and egress | Accepted |
 | [0031](0031-open-decider-spike.md) | Open decider spike: Open-Jev 2B runs on this machine's CPU (about 1 minute per decision) | Accepted, Owner review |
+| [0032](0032-official-jev-api-and-openrouter-jev-router.md) | Official Jev API decider and the OpenRouter Jev Router as a virtual model | Accepted, Owner review |
