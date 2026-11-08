@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -373,8 +374,6 @@ async def _get_json(client: httpx.AsyncClient, url: str, key: str | None) -> Any
             body += chunk
             if len(body) > MAX_DISCOVERY_BYTES:
                 raise ProviderConfigError("model list too large")
-    import json
-
     return json.loads(body)
 
 
@@ -394,6 +393,8 @@ async def discover_models(row: LlmProvider, key: str | None) -> list[str]:
                 names = [str(m.get("id")) for m in items if isinstance(m, dict) and m.get("id")]
         except httpx.HTTPError as exc:
             raise ProviderConfigError(f"cannot reach the provider: {type(exc).__name__}") from exc
+        except (ProviderConfigError, BlockedDestination):
+            raise
         except (ValueError, AttributeError, TypeError) as exc:
             raise ProviderConfigError("the provider returned an unexpected model list") from exc
     return sorted({n for n in names if n and n != "None" and MODEL_RE.match(n)})

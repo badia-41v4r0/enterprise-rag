@@ -110,8 +110,9 @@ async def test_daily_request_cap_counts_before_sending_and_resets_per_day(db: As
     assert await requests_today(db, "acme-cloud", DAY1) == 3  # the refused attempt is visible, not sent
     await reserve_request(db, "acme-cloud", 2, DAY2)  # new day
     await reserve_request(db, "other", 2, DAY1)  # other provider
-    await reserve_request(db, "unmetered", None, DAY1)  # no cap configured: nothing counted
-    assert await requests_today(db, "unmetered", DAY1) == 0
+    for _ in range(3):
+        await reserve_request(db, "uncapped", None, DAY1)  # no cap configured: counted, never refused
+    assert await requests_today(db, "uncapped", DAY1) == 3
     with pytest.raises(BudgetExceeded):
         await reserve_request(db, "blocked", 0, DAY1)
 

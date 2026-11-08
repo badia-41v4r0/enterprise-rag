@@ -77,10 +77,9 @@ async def requests_today(db: AsyncSession, provider: str, now: datetime | None =
 
 async def reserve_request(db: AsyncSession, provider: str, cap: int | None, now: datetime | None = None) -> None:
     """Count one request against today's cap BEFORE it is sent (atomic upsert), so that even requests that
-    fail or report no cost are bounded. Refuses once the cap is reached. The caller commits."""
-    if cap is None:
-        return
-    if cap <= 0:
+    fail or report no cost are bounded. Refuses once the cap is reached; `cap=None` only counts.
+    The caller commits."""
+    if cap is not None and cap <= 0:
         raise BudgetExceeded(f"Daily request limit for {provider} is 0; no requests are sent to it.")
     ins = pg_insert(ProviderDailyUsage).values(provider=provider, day=day_key(now), requests=1)
     stmt = ins.on_conflict_do_update(
@@ -88,7 +87,7 @@ async def reserve_request(db: AsyncSession, provider: str, cap: int | None, now:
         set_={"requests": ProviderDailyUsage.requests + 1},
     ).returning(ProviderDailyUsage.requests)
     count = int((await db.execute(stmt)).scalar_one())
-    if count > cap:
+    if cap is not None and count > cap:
         raise BudgetExceeded(
             f"Daily request limit for {provider} reached ({cap} requests today); no more requests are sent to it today."
         )

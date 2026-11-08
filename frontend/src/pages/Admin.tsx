@@ -15,7 +15,6 @@ import {
   type EffectivePermissions,
   type GrantRow,
   type JobRow,
-  type OpenRouterSettings,
   type SecretRow,
   type RoleRow,
   type ToolRow,
@@ -23,6 +22,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import Connectors from "@/pages/Connectors";
+import Providers from "@/pages/Providers";
 import Registry from "@/pages/Registry";
 import { ContainerContent } from "@/pages/Content";
 
@@ -896,76 +896,6 @@ function Secrets() {
         </div>
       </Card>
     </div>
-  );
-}
-
-function Providers() {
-  const inv = useInvalidate();
-  const or = useQuery({ queryKey: ["openrouter"], queryFn: () => api<OpenRouterSettings>("/api/admin/providers/openrouter") });
-  const [model, setModel] = useState("");
-  const [budget, setBudget] = useState("");
-  const [key, setKey] = useState("");
-  const save = useMutation({
-    mutationFn: (body: object) => api("/api/admin/providers/openrouter", { method: "PUT", body: json(body) }),
-    onSuccess: () => {
-      setKey("");
-      inv("openrouter", "models");
-    },
-  });
-  const d = or.data;
-  return (
-    <Card className="max-w-2xl space-y-3 p-4">
-      <h3 className="text-sm font-semibold">OpenRouter (cloud models)</h3>
-      {d && (
-        <ul className="text-sm" data-testid="openrouter-status">
-          <li>
-            API key: {d.configured ? `configured (${d.key_source === "vault" ? "credential store" : "environment variable"})` : "not set"}
-          </li>
-          <li>Model: {d.model}</li>
-          <li>Enabled: {d.enabled ? "yes" : "no"}</li>
-          <li>
-            Monthly ceiling: ${d.monthly_budget_usd} (hard cap from the environment: ${d.budget_cap_usd}); spent this month: $
-            {d.spent_this_month_usd.toFixed(4)}
-          </li>
-          <li>Free models only: {d.allow_paid ? "no (paid models allowed)" : "yes"}. Cloud may receive data up to: {d.cloud_max_classification}</li>
-        </ul>
-      )}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label>Model (must end in :free)</Label>
-          <Input placeholder={d?.model} value={model} onChange={(e) => setModel(e.target.value)} />
-        </div>
-        <div>
-          <Label>Monthly ceiling (USD)</Label>
-          <Input placeholder={String(d?.monthly_budget_usd ?? "")} value={budget} onChange={(e) => setBudget(e.target.value)} />
-        </div>
-        <div className="col-span-2">
-          <Label>API key (stored encrypted, never shown again)</Label>
-          <Input type="password" autoComplete="new-password" value={key} onChange={(e) => setKey(e.target.value)} />
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          onClick={() =>
-            save.mutate({
-              ...(model ? { model } : {}),
-              ...(budget ? { monthly_budget_usd: Number(budget) } : {}),
-              ...(key ? { api_key: key } : {}),
-            })
-          }
-          disabled={!model && !budget && !key}
-        >
-          Save
-        </Button>
-        {d && (
-          <Button size="sm" variant="outline" onClick={() => save.mutate({ enabled: !d.enabled })}>
-            {d.enabled ? "Disable" : "Enable"} OpenRouter
-          </Button>
-        )}
-      </div>
-      <ErrorLine error={save.error} />
-    </Card>
   );
 }
 

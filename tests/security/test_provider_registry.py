@@ -565,3 +565,35 @@ async def test_openrouter_ceiling_still_only_lowers(db: AsyncSession, client: ht
     assert r.status_code == 200 and r.json()["monthly_budget_usd"] == cap / 2
     # The legacy endpoint and the registry agree.
     assert (await client.get("/api/admin/providers/openrouter")).json()["monthly_budget_usd"] == cap / 2
+
+
+async def test_discovery_reports_http_errors_and_never_follows_redirects(listener: CountingSocket) -> None:
+    """Real local servers: a 401 is reported as such; a redirect towards another socket is not followed."""
+    target = listener.port
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path.startswith("/denied"):
+                self.send_response(401)
+            else:
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{target}/v1/models")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+    try:
+        denied = LlmProvider(slug="s1", kind="api", self_hosted=True, base_url=f"http://127.0.0.1:{port}/denied/v1")
+        with pytest.raises(registry.ProviderConfigError, match="HTTP 401"):
+            await registry.discover_models(denied, "k")
+        moved = LlmProvider(slug="s2", kind="api", self_hosted=True, base_url=f"http://127.0.0.1:{port}/v1")
+        result = await registry.test_connection(moved, None)
+        assert result["ok"] is False and "HTTP 302" in result["error"]
+    finally:
+        server.shutdown()
+    assert listener.accepted == 0

@@ -152,9 +152,21 @@ def _ensure_dev_key_file() -> None:
         print(f"Generated a new credential-store master key at {s.secrets_key_file}")
 
 
+async def _ensure_builtin_providers() -> None:
+    """Built-in `ollama` and `openrouter` providers from the environment (idempotent, ADR 0023)."""
+    from app.core.db import dispose_engine, get_sessionmaker
+    from app.llm.registry import ensure_builtin_providers
+
+    async with get_sessionmaker()() as db:
+        await ensure_builtin_providers(db)
+    await dispose_engine()
+    print("Built-in LLM providers ensured (ollama, openrouter).")
+
+
 def _cmd_bootstrap(_: argparse.Namespace) -> int:
     """Container start-up hook: seed the ACME demo when ERAG_SEED_DEMO=true (documents go to the worker)."""
     _ensure_dev_key_file()
+    asyncio.run(_ensure_builtin_providers())
     if os.environ.get("ERAG_SEED_DEMO", "false").lower() != "true":
         return 0
     from demo.acme.seed import seed
