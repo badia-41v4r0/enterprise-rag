@@ -1,117 +1,140 @@
-# EnterpriseRAG v0.3: cost limits, paid models and a model router
+# EnterpriseRAG v0.3: cost limits and quotas, paid models, and a model router
 
 > Planning document. No code yet. Builds on [`PLAN-v0.2.md`](PLAN-v0.2.md) and the provider registry (ADRs 0023 to 0025).
-> Status: draft for owner review (2026-11-10).
+> Status: draft for owner review, revised 2026-11-10 after the owner's answers.
 
-## 0. Interpretations to confirm
+## 0. Decisions already taken
 
-1. You wrote that the README should stop saying **Ollama** is free-only. Ollama has no free or paid models (it is local), so I read this as the **OpenRouter free-models-only rule** (ADR 0016), which is what the README and the app actually say. If you meant something else, tell me.
-2. **Jev** is TypeSafe's decision model. It is a classifier, not a text generator: it answers typed questions about an input (choice, score and yes/no with probabilities). Its hosted form is available on OpenRouter as the **Jev Router** (`typesafe/jev-router`): it picks a model and a reasoning effort for each request, and the chosen model answers. I could **not confirm an official open-weights Jev**; some write-ups describe community "open Jev" clones and one webinar mentions an open-weight version, but I found no model card or license. The plan therefore supports Jev through OpenRouter and is built so an open Jev (or any other local decision model) plugs in later once its weights and license are confirmed.
+| # | Decision |
+|---|---|
+| D1 | The "free models only" rule is **OpenRouter's** (ADR 0016) and is removed from the README and the app. Free models stay as a default for tests and the demo, not as a rule. |
+| D2 | Admins can **raise** limits (with step-up re-authentication). The environment values become the initial defaults, not hard ceilings. |
+| D3 | Default budgets stay as they are: 0.01 USD per month and 100 requests per day per provider. |
+| D4 | Quotas **per user** and **per role**. A role quota can be a standard cap for each member and/or a collective cap shared by everyone with that role (section 3). |
+| D5 | A **model router** that looks at the query and chooses the most suitable model. It can be enabled or disabled in the settings and works with the **official Jev API** and with **open-source Jev-style models**. |
+| D6 | A hosted Jev only receives `public` data by default, configurable. Open models running locally may be cleared for `internal` and `confidential`. |
+| D7 | The router lives in a new admin tab (I name it **Model router**, like "MCP registry"). |
 
 ## 1. Goals
 
-1. Limit **cost in tokens and money** per provider and per model, from the Providers panel, and make the limits *preventive* (refuse a request that could overshoot) and not only reactive.
-2. **Remove the free-models-only rule** from the README and the app, now that real budget controls replace it. Free models remain a default for tests and the demo, not a rule.
-3. A new **Admin > Model router** panel where the system chooses which model answers each request: by deterministic rules, by a local decision model, or by Jev through OpenRouter.
+1. Limit cost in tokens and money per provider, per model, per user and per role, from the admin panel, with **preventive** checks.
+2. Remove the free-only rule (D1), safe once the budget controls exist.
+3. A model router that chooses among the models a request is **allowed** to use, and can be switched off at any time.
 
 ## 2. Cost limits (tokens and money)
 
 ### What exists today
-A monthly USD ceiling per provider (enforced only when the provider reports `usage.cost`), a daily request cap, and the context token budget used by the context builder. Not implemented: token accounting, prices, `max_tokens` per request, preventive checks.
+A monthly USD ceiling per provider (enforced only when the provider reports `usage.cost`), a daily request cap, and the context token budget. Not implemented: token accounting, prices, `max_tokens` per request, preventive checks, quotas.
 
 ### Design
-- **Usage table** generalizing `provider_spend` and `provider_daily_usage`: provider, model, period (day and month), requests, prompt tokens, completion tokens, cost in USD, and a flag when tokens were estimated. Tokens come from the provider's `usage` (requested with `stream_options.include_usage`, already used for Ollama); when absent they are estimated (characters / 4) and flagged.
-- **Price table** per model, in USD per million input and output tokens. OpenRouter prices are filled from its model list; Ollama and self-hosted models default to 0; other APIs are entered by the admin. Actual cost is `usage.cost` when reported, otherwise tokens × price.
-- **Limits** (per provider, optionally overridden per model), all editable in the Providers panel:
-  - maximum output tokens per request (sent as `max_tokens` / `max_completion_tokens`),
-  - maximum input tokens per request (refuse, or trim the retrieved context, which already has its own budget),
-  - tokens per day and per month,
-  - USD per month (existing), requests per day (existing),
-  - a per-turn token cap across the whole tool loop (every iteration counts).
-- **Preventive check.** Before sending, compute the worst case: `input_tokens × input_price + max_output_tokens × output_price`, and refuse when it would exceed what remains of the budget. This closes the gap where one large request overshoots a ceiling that is only checked beforehand.
-- **Order of checks in the orchestrator:** clearance, provider enabled, budgets (requests, tokens, projected USD), egress hook, send, record after the stream. A refusal tells the user which limit was hit, without leaking numbers about other users.
-- **Optional quotas per user or role** (daily tokens) so one person cannot spend the whole budget. Stage 2 of this release.
-- **Panel:** per-provider and per-model limit form, usage bars for today and this month (requests, tokens, USD), a warning at 80 percent, a "limit reached" state, a 30-day usage chart.
-- **Who may raise limits.** Today the operator's environment caps are hard ceilings and the panel can only lower them. With paid models allowed, the operator will want a generous hard ceiling and the admin to tune within it; raising requires step-up re-authentication.
-- **Tests (no fakes):** real Postgres for counters and refusals; real Ollama for token usage (a deliberately huge price on a local model proves the projected-cost refusal end to end); a handful of real calls to a free OpenRouter model to check reported tokens and cost; a pure unit test for the cost formula.
-- **Exit:** a request that could exceed the remaining budget is refused before it leaves the process, and the panel shows accurate usage for the day and the month.
-- **Effort:** about 1.5 weeks.
+- **Usage table** generalizing `provider_spend` and `provider_daily_usage`: provider, model, user, period (day and month), requests, prompt tokens, completion tokens, cost in USD, and a flag when tokens were estimated. Tokens come from the provider's `usage` (requested with `stream_options.include_usage`); when absent they are estimated (characters / 4) and flagged.
+- **Price table** per model, in USD per million input and output tokens. OpenRouter prices are filled from its model list; Ollama and self-hosted models default to 0; other APIs are entered by the admin. Actual cost is `usage.cost` when reported, otherwise tokens times price.
+- **Limits** per provider (optionally overridden per model), editable in the Providers panel: maximum output tokens per request (sent as `max_tokens`), maximum input tokens per request, tokens per day and per month, USD per month, requests per day, and a per-turn cap across the tool loop.
+- **Preventive check.** Before sending, compute the worst case `input_tokens x input_price + max_output_tokens x output_price` and refuse the request when it would exceed what remains of any applicable budget.
+- **Order of checks:** clearance, provider enabled, provider limits, user and role quotas, egress hook, send, record after the stream. A refusal names the limit that was hit without revealing other users' usage.
+- **Raising limits (D2):** an admin may raise any limit, with step-up re-authentication and an audit entry. Because a compromised admin session could raise budgets, the panel shows a change history, and the documentation recommends also setting a credit limit on the provider's own key.
+- **Panel:** limits per provider and per model, usage bars for today and this month (requests, tokens, USD), a warning at 80 percent, a "limit reached" state, a 30-day chart.
 
-## 3. Remove the free-only rule
+## 3. Quotas per user and per role
 
-- **Where it lives today:** ADR 0016 (free-only and monthly ceiling), `validate_openrouter_model` and `free_only` in the router and the OpenAI-compatible client, `ERAG_OPENROUTER_ALLOW_PAID` in the settings, compose file and `.env.example`, the `free_only` and `allow_paid` fields in the Providers API and screen, the README section titled "OpenRouter (free models only)" and the sentence about OpenRouter keeping its free-only rule, `architecture.md` ("OpenRouter, free models"), the hardening table in white paper 7.3, and mentions in ADR 0024 and the threat model (T34).
-- **Plan:** a new ADR supersedes 0016 (kept as history, marked superseded). Remove the guard, the setting and the UI field. `ERAG_OPENROUTER_ALLOW_PAID` is ignored with a warning for one release. The default OpenRouter model stays a free one so tests and the demo cost nothing, but only as a default value. Tests that asserted the rule are replaced by the budget tests of section 2.
-- **Order:** do it **after** the preventive budget checks exist, not before; the rule is only safe to drop once something else bounds the bill. Your own €5 limit is then enforced by your configuration (a low monthly ceiling) and by the credit limit on the OpenRouter key.
-- **Effort:** about 0.5 week, delivered together with section 2.
+- **What is limited:** tokens (input plus output) and estimated USD, per day and per month, optionally restricted to one provider.
+- **Per user:** an optional override for a specific person.
+- **Per role, two forms:**
+  - a **standard cap per member**: every person with that role gets the same allowance, counted separately;
+  - a **collective cap**: one shared pool for everyone with that role.
+- **How they combine (proposal, to confirm):** a person's standard allowance is their per-user override if one exists, otherwise the highest standard cap among their roles. Every collective pool of every role they hold is charged for each request, and the request is refused if any applicable cap is exhausted. So a pool on the broad "Employee" role is effectively a company-wide pool.
+- **Panel:** a quotas screen under Roles (standard and collective caps, overrides on the user), a usage view per role and per user, and what the user sees when blocked ("your daily allowance is used up; it resets at 00:00 UTC").
+- **Privacy of usage:** a user sees only their own usage; admins see aggregates and per-user figures but never prompts or answers.
 
-## 4. Model router (Admin > Model router)
+## 4. Remove the free-only rule (D1)
+
+- **Where it lives today:** ADR 0016, `validate_openrouter_model` and `free_only` in the router and the OpenAI-compatible client, `ERAG_OPENROUTER_ALLOW_PAID` in the settings, compose file and `.env.example`, the `free_only` and `allow_paid` fields in the Providers API and screen, the README section "OpenRouter (free models only)" and the sentence about OpenRouter keeping its free-only rule, `architecture.md` ("OpenRouter, free models"), the hardening table in white paper 7.3, and mentions in ADR 0024 and the threat model (T34).
+- **Plan:** a new ADR supersedes 0016 (kept as history, marked superseded). Remove the guard, the setting and the UI field; `ERAG_OPENROUTER_ALLOW_PAID` is ignored with a warning for one release. The default OpenRouter model stays a free one so tests and the demo cost nothing. Tests that asserted the rule are replaced by the budget tests of section 2.
+- **Order:** after the preventive checks exist. Your own EUR 5 limit is then enforced by your configuration (a low monthly ceiling) and by the credit limit on the OpenRouter key.
+
+## 5. Model router (Admin > Model router)
 
 ### Principle
 **Classification first, optimization second.** The router never widens what a request may use:
 1. Retrieval and the effective classification are computed as today (ADR 0003).
-2. The set of **permitted** models (cleared for that classification, enabled, within budget, tool-capable when tools are offered) is computed by existing code.
-3. The router chooses **only among the permitted set**. If it fails, times out or returns garbage, the system falls back to the default model and then to the existing rules.
+2. The set of **permitted** models (cleared for that classification, enabled, within budget and quotas, tool-capable when tools are offered) is computed by existing code.
+3. The router chooses **only among the permitted set**. If it is disabled, fails, times out or returns garbage, the system falls back to the default model and then to the existing rules.
 
-### Selectors (pluggable backends)
-| Selector | Where it runs | Sees | Notes |
+### One protocol for the official and the open deciders
+Both the official Jev API and the open Jev-style models speak the same **decision protocol**: a `POST` to `/v1/systemone` with a `state` (the text to judge) and typed `questions` (choice, score and yes/no), answered with probabilities. The router therefore needs one client and many configured **deciders**:
+
+| Decider | Where it runs | Default clearance | Notes |
 |---|---|---|---|
-| **Rules** | In the app | Question length, number of chunks, tools offered, classification | Deterministic, free, instant. First thing to build. |
-| **Local decision model** | A local model through the provider registry | The request (it is local, so it may see confidential data) | Implements Jev's choice / score / yes-no pattern with any local model: task type (choice), difficulty 1 to 5 (score), needs tools (yes/no). Strict JSON, temperature 0, timeout, fallback to rules. |
-| **Jev through OpenRouter** | OpenRouter and TypeSafe | The whole conversation, including retrieved chunks | A cloud recipient, so its clearance is capped like any cloud provider (never confidential). |
-| **Open Jev (later)** | Local | Same as the local selector | Added as an adapter when official weights and a compatible license are confirmed. |
+| **Official Jev API** | TypeSafe (`https://api.typesafe.ai/v1/systemone`) | `public` | Early access with a key from their console (a waitlist applies). Third-party sources report $0.042 per million input tokens and free output; unverified, read `usage` on the first call. Also reachable through OpenRouter. |
+| **Open Jev-style model** | Local, or any server you run | up to `confidential` when local (same locality rule as the provider registry) | Needs the model's own server; see the table below. |
+| **Prompted LLM decider** | Any model from the provider registry (for example a small local Ollama model) | that of the chosen provider | No special model: the router asks the same three question types in a strict-JSON prompt. The practical choice on modest hardware. |
+| **Rules** | In the app | n/a | Deterministic (question length, number of chunks, tools offered, classification). Always available as the last fallback. |
+| **OpenRouter Jev Router** (optional) | OpenRouter and TypeSafe | `public` | Different mechanism: it routes **and serves**, picking among OpenRouter's catalog (`typesafe/jev-router`, options `cost_tier`, `allowed_models`, `excluded_models`). It appears as a virtual model of the OpenRouter provider. A cost tier is a preference, not a price cap, so the budgets of section 2 enforce the real limit. |
 
-### Jev through OpenRouter, as documented
-- Called by setting `model` to `typesafe/jev-router`. Plugin options: `id: "jev-router"`, `cost_tier` (`low`, `medium`, `high`), `models` / `allowed_models` (preferences with fallback), `excluded_models` (hard exclusions), plus an optional `reasoning.effort` hint. Patterns can be exact slugs, wildcards or `~author/family-latest` aliases.
-- It **routes and also serves**: the chosen model generates the answer, and the response's `model` field says which one. With the header `X-OpenRouter-Metadata: enabled` the response carries the candidates, effort, tier, estimated cost and reason, which we store in the decision log.
-- **Limits that shape our design:** a cost tier is "a routing preference, not a fixed model, guaranteed score, or per-request price cap" (so our budgets from section 2 must enforce the real cap, using the most expensive allowed model as the worst case); effort hints are not guaranteed; the catalog is OpenRouter's, so `allowed_models` must be limited to what the admin approved; global data region only; the pages do not describe data retention, so treat it as an untrusted cloud recipient; it cannot be combined with another router model; pricing of the router itself is not stated, so the first real call must read `usage.cost` before we rely on it.
-- In our system it appears as a **virtual model of the OpenRouter provider** (`typesafe/jev-router`) with its own clearance, price assumptions and limits.
+### What the decider sees
+By default the decider receives **only the user's question** plus metadata (classification label, whether tools are offered, size of the retrieved context), **not the retrieved chunks**. That is far less than the OpenRouter Jev Router sees (the whole conversation). A setting lets *local* deciders also see the context. A cloud decider is only called when the request's effective classification is within its clearance; otherwise a local decider or the rules decide.
+
+### Questions the router asks
+Task type (choice: question answering, summarization, extraction, code, tool use, chit-chat), difficulty (score, 1 to 5), needs tools (yes/no), needs long context (yes/no). The answers, with their confidence, are mapped to **lanes**.
 
 ### Panel
-- **Mode:** off (current behavior) | rules | local decision model | Jev (OpenRouter). A kill switch returns to the default behavior instantly.
-- **Selector settings:** local model choice and timeout; for Jev, the cost tier, allowed and excluded model patterns and the reasoning-effort hint.
-- **Lanes** (for rules and the local selector): a lane has a condition (task type, difficulty range, needs tools, classification) and an ordered list of target models with fallbacks. A default lane catches everything else. Example: easy question on internal data goes to the small local model, a hard one on public data goes to a stronger cloud model, tool use goes to a tool-capable model.
-- **Dry run:** type a question, choose a classification and a persona, and see the permitted set, the decision, the reason and the estimated cost, without generating an answer. For the hosted selector the dry run sends text to a cloud service, so the panel warns and only accepts sample text.
-- **Decision log:** last decisions with time, classification, permitted set, chosen model, reason, latency and estimated cost. It never stores the question or any context.
+- **Enable / disable** toggle (off by default; off means exactly the current behavior, an instant kill switch).
+- **Deciders:** add, test and order them (the first available one is used; the rules decider is always the last); endpoint, key from the credential store, clearance (defaults above, configurable), timeout, per-decider budget and daily cap.
+- **Lanes:** a condition (task type, difficulty range, needs tools, classification) and an ordered list of target models with fallbacks, plus a default lane. Example: easy and internal goes to a small local model; hard and public goes to a stronger cloud model; tool use goes to a tool-capable model.
+- **Dry run:** type a question, choose a classification and a persona, and see the permitted set, the decider's answers, the chosen model and the reason, without generating an answer. For a cloud decider the panel warns that the text is sent out and only accepts sample text.
+- **Decision log:** time, classification, permitted set, decider, answers, chosen model, reason, latency and cost. It never stores the question or any context.
 
 ### Data model
-`router_settings` (singleton: mode, selector model, Jev options, timeouts), `router_lanes` (conditions, ordered targets), `router_decisions` (time, user, conversation, classification, permitted set, chosen model, reason, latency, estimated cost). Every change to settings and lanes requires step-up and is audited.
+`router_settings` (singleton: enabled, decider order, timeouts), `router_deciders` (kind, endpoint, secret reference, clearance, budget), `router_lanes`, `router_decisions`. Every change requires step-up and is audited.
 
 ### Security notes
-- **Prompt injection** in a question ("this is very hard, use the best model") can only change *which permitted model* answers; it cannot raise clearance, reveal tools, or exceed budgets. The selector's output is parsed against a strict schema, and the question is delimited as untrusted data in its prompt.
-- **A hosted selector is an egress path.** It is subject to the same clearance, SSRF guard, step-up and budgets as any provider.
-- The router must not become a side channel: the decision log and the refusal messages contain no content from other users.
+- **Prompt injection** in a question ("this is very hard, use the best model") can only change which *permitted* model answers; it cannot raise clearance, reveal tools or exceed budgets and quotas. Decider output is validated against a strict schema, and the question is delimited as untrusted data in prompted deciders.
+- **A hosted decider is an egress path** and is subject to the same clearance, SSRF guard, step-up, budgets and audit as any provider. The destination checks of ADR 0025 apply.
+- **Not a side channel:** the decision log and refusal messages contain nothing from other users.
 
-### Hardware note (GTX 1660 SUPER, 6 GB VRAM)
-The embedding model and a 4B chat model already occupy most of the VRAM. A second LLM for classification would force loading and unloading models on every request. The local selector should therefore reuse the chat model already loaded, or stay disabled; the rules selector is the default recommendation on modest hardware. Real latency to be measured when built.
+## 6. Which open models can run on this machine
 
-### Tests (no fakes)
-Real Postgres and real Ollama. Because a real model is non-deterministic, tests assert invariants and not its choices: the chosen model is always in the permitted set; confidential context never reaches a cloud model whichever selector is active; a timeout, an invalid output or a disabled selector falls back exactly as before; the rules selector is fully deterministic; mode "off" behaves identically to v0.2. Jev through OpenRouter gets a few real calls restricted to free models in `allowed_models`, reading `usage.cost` first.
+Machine: GTX 1660 SUPER (6 GB VRAM, Turing, no bf16), 16 GB RAM of which about 5 GB are free with the stack running, driver 615.78. The embedding model and the 4B chat model already use about 3.7 GB of VRAM.
 
-### Effort and order
-- **R7:** panel, rules selector, lanes, decision log, dry run: about 1.5 weeks.
-- **R8:** local decision-model selector: about 1 week.
-- **R9:** Jev through OpenRouter as a virtual model: about 0.5 to 1 week.
+The ranking below is JevBench's own leaderboard ("Capability Score", higher is better; the top open system is a 27B model at 85.2). I read it from the site and have not reproduced the numbers.
 
-## 5. Order and effort
+| Model | Size and weights | License | Capability | Fits here? |
+|---|---|---|---|---|
+| **Open-Jev 2B** (ZefanCai) | LoRA adapter plus decision head on Qwen3.5-2B; own server `python -m jev.server`, protocol `/v1/systemone`; needs Transformers 5.10.2 and PEFT, sizes not stated | Adapter Apache-2.0, code MIT, base model separate | 47.7 | **Yes, for tests**, on CPU or after unloading the chat model; the 2B base in fp16 is about 4 to 5 GB. To validate in a spike. |
+| **DecisionNode Edge Mini 0.9.2** (Bynn) | 0.85B, 8-bit GGUF of 0.8 GB, official runtime runs on CPU (OpenVINO or llama.cpp), also vLLM | **AGPL-3.0** (commercial license available) | 47.6 | **Yes**, the lightest. The AGPL conflicts with the project's no-copyleft-dependency rule, so it could only be used as a separate, unmodified service reached over HTTP, never bundled. Owner decision. |
+| pjev-2b (Kailune AI) | 2B on MiniCPM5-2B, letter-logit readout | not checked | 56.5 | Probably, same class as Open-Jev 2B. Not inspected. |
+| **Torchcast Decision 4B** | 5B parameters in BF16, serving package with vLLM or SGLang | Apache-2.0 | 77.5 | **No** on this machine: 9 GB or more of weights and BF16 on a GPU without bf16. Its card warns that llama.cpp and similar runtimes give different probabilities. Good for a production GPU. |
+| **H2O-Lightning-4B** | 9.3 GB safetensors, vLLM shim recommended; a community GGUF exists | Apache-2.0 | 75.0 | **No** for the same reasons. |
+
+**What this means for the tests:** the open deciders that fit here score about 48 to 57 on that leaderboard, against 75 to 85 for the 4B to 27B systems, so decisions from a test model will be much weaker than a real Jev. That is fine for validating the pipeline (protocol, fallbacks, clearance, budgets); quality is judged on a stronger machine or with the official API. The **prompted LLM decider** on a small local chat model is the only option that needs no extra install.
+
+**First step of that release is a spike:** run one open decider here, confirm the exact request and response format (including the yes/no question type, which the cards spell "noul", and the official API's own docs), measure latency and RAM, and only then fix the adapter.
+
+## 7. Tests (no fakes)
+
+Real Postgres, real Ollama. Because real models are non-deterministic, router tests assert invariants and not choices: the chosen model is always in the permitted set; confidential context never reaches a cloud model whichever decider is active; a timeout, invalid output or disabled router falls back exactly as before; the rules decider is fully deterministic; a router that is off behaves identically to v0.2. Quota tests use real counters (per user, per role standard cap, collective pool, several roles at once, reset at day and month change). Open deciders are tested against the real server when it is installed (marker `decider_open`); the official API only when a key exists (marker `decider_official`); the OpenRouter Jev Router only with free models in `allowed_models` after a first call reads `usage.cost`.
+
+## 8. Order and effort
 
 | Release | Contents | Estimate (full-time) |
 |---|---|---|
-| R6 | Cost limits (section 2) and removal of the free-only rule (section 3) | ~2 weeks |
-| R7 | Model router panel, rules selector, lanes, decision log | ~1.5 weeks |
-| R8 | Local decision-model selector | ~1 week |
-| R9 | Jev through OpenRouter | ~0.5 to 1 week |
-| **Total** | | **about 5 to 5.5 weeks (roughly 2.5 months part-time)** |
+| R6 | Cost limits, quotas per user and role, removal of the free-only rule | ~2.5 weeks |
+| R7 | Model router core: panel, enable/disable, rules decider, lanes, dry run, decision log | ~1.5 weeks |
+| R8 | Spike, decision protocol client, prompted LLM decider and an open Jev-style decider | ~1.5 weeks |
+| R9 | Official Jev API decider, OpenRouter Jev Router as a virtual model | ~1 week |
+| **Total** | | **about 6.5 weeks (roughly 3 months part-time)** |
 
-## 6. Decisions for the owner
+## 9. Still open
 
-1. Confirm the two interpretations in section 0.
-2. **Who may raise limits:** keep "the environment sets hard ceilings, the panel can only lower them", or let the admin raise within an operator ceiling with step-up? I recommend the second once paid models are allowed.
-3. **Default budgets after the free-only rule goes:** today 0.01 USD a month and 100 requests a day per provider. They protect you but block real paid use until raised.
-4. Include **per-user and per-role quotas** in R6?
-5. A hosted Jev sees the full conversation, so it would be cleared for `public` data only by default. Is that acceptable, or do you only want it for the demo?
-6. Whether to wait for an official open-weights Jev, or build the local decision model with an existing small model now (recommended).
+1. **AGPL decider.** May the DecisionNode Edge Mini be offered as an optional, separately installed service (never bundled), or do you want only Apache and MIT models?
+2. **Quota combination rule** in section 3 (highest standard cap among roles, all collective pools charged). Confirm or change.
+3. **Official Jev API access.** It is early access with a waitlist: do you already have a key? Without one, its tests are skipped and it is built from the documentation only.
+4. The tab name (**Model router**).
 
 ## Sources
 
-- OpenRouter documentation for the Jev Router: https://openrouter.ai/docs/guides/routing/routers/jev-router
-- Jev description (choice, score and yes/no questions; open clones): https://www.mindstudio.ai/blog/how-to-build-model-router-with-jev
+- Jev Router on OpenRouter: https://openrouter.ai/docs/guides/routing/routers/jev-router
+- Jev decision model (choice, score and yes/no questions): https://www.mindstudio.ai/blog/how-to-build-model-router-with-jev
+- JevBench leaderboard of open decision models: https://benchmarkheaven.com/jev-models
+- Model cards: https://huggingface.co/ZefanCai/Open-Jev-2B, https://huggingface.co/bynn-intelligence-com/decisionnode-edge-mini, https://huggingface.co/torchcast-ai/torchcast-decision-4b, https://huggingface.co/h2oai/h2o-lightning-4b
+- Official API endpoint and pricing (third-party reports, not verified against TypeSafe's own docs): https://docs.typesafe.ai/api
