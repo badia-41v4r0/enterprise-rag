@@ -12,7 +12,7 @@ services:
     environment:
       ERAG_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-erag}:${POSTGRES_PASSWORD:-erag}@127.0.0.1:${POSTGRES_HOST_PORT:-55432}/${POSTGRES_DB:-erag}
       ERAG_OLLAMA_BASE_URL: http://127.0.0.1:11434
-    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 127.0.0.1 --port ${APP_PORT:-8000}"]
+    command: ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && uvicorn app.main:app --host 127.0.0.1 --port ${APP_PORT:-8000}"]
   worker:
     network_mode: host
     extra_hosts: !reset []

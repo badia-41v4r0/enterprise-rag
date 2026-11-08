@@ -19,3 +19,4 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0012](0012-tool-scope-from-container-permissions.md) | Tool data scope derived from container permissions | Accepted |
 | [0013](0013-result-validator-heuristics.md) | Result validator: size cap, classification floor, injection heuristics | Accepted, Owner review |
 | [0014](0014-frontend.md) | Frontend: small React SPA with vendored shadcn-style components | Accepted |
+| [0015](0015-demo-bootstrap-and-hardening.md) | One-command seeded demo and MVP hardening | Accepted, Owner review |

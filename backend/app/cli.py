@@ -35,6 +35,16 @@ def _cmd_seed_acme(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_bootstrap(_: argparse.Namespace) -> int:
+    """Container start-up hook: seed the ACME demo when ERAG_SEED_DEMO=true (documents go to the worker)."""
+    if os.environ.get("ERAG_SEED_DEMO", "false").lower() != "true":
+        return 0
+    from demo.acme.seed import seed
+
+    asyncio.run(seed(password=os.environ.get("ERAG_DEMO_PASSWORD", "acme-demo-password"), ingest=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erag")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -52,6 +62,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--password", default=os.environ.get("ERAG_DEMO_PASSWORD", "acme-demo-password"))
     p.add_argument("--no-ingest", action="store_true", help="queue documents but leave them to the worker")
     p.set_defaults(func=_cmd_seed_acme)
+
+    p = sub.add_parser("bootstrap", help="start-up hook (seeds the demo when ERAG_SEED_DEMO=true)")
+    p.set_defaults(func=_cmd_bootstrap)
 
     args = parser.parse_args(argv)
     result: int = args.func(args)

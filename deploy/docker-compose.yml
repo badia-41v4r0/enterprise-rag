@@ -18,6 +18,9 @@ x-app-env: &app-env
   ERAG_COOKIE_SECURE: ${ERAG_COOKIE_SECURE:-false}
   ERAG_BLOB_DIR: /data/blobs
   ERAG_MCP_TICKETS_DB: /data/tickets.sqlite3
+  # Demo: seed ACME Corp on startup (idempotent). Set to false for a real installation.
+  ERAG_SEED_DEMO: ${ERAG_SEED_DEMO:-true}
+  ERAG_DEMO_PASSWORD: ${ERAG_DEMO_PASSWORD:-acme-demo-password}
 
 services:
   postgres:
@@ -43,7 +46,7 @@ services:
       dockerfile: Dockerfile
     image: enterprise-rag:dev
     environment: *app-env
-    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
+    command: ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
     extra_hosts:

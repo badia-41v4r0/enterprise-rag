@@ -14,6 +14,7 @@ from app.api import admin, auth, chat, documents, health, tools
 from app.core.config import get_settings
 from app.core.db import dispose_engine
 from app.core.logging import configure_logging
+from app.core.middleware import SecurityHeadersMiddleware
 
 
 @asynccontextmanager
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
     configure_logging(settings.log_level, settings.log_json)
 
     app = FastAPI(title="EnterpriseRAG", version="0.1.0.dev0", lifespan=lifespan)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(admin.router)
