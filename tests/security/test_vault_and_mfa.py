@@ -134,6 +134,8 @@ async def test_sensitive_actions_need_recent_reauthentication(db: AsyncSession, 
         await client.patch(f"/api/admin/users/{target}", json={"is_admin": True}),
         await client.post("/api/admin/users", json={"email": "new@acme.test", "password": "x" * 12, "is_admin": True}),
         await client.post(f"/api/admin/users/{target}/reset-mfa"),
+        await client.post("/api/admin/providers", json={"name": "P", "kind": "api", "base_url": "https://1.1.1.1/v1"}),
+        await client.put("/api/admin/models/default", json={"model_id": None}),
     ):
         assert r.status_code == 403 and r.json()["detail"] == "step_up_required", r.text
     # Non-sensitive admin work still works without step-up.

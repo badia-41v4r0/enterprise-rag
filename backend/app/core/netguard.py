@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import socket
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
@@ -30,12 +30,18 @@ class BlockedDestination(ValueError):
     pass
 
 
+class UnresolvableHost(BlockedDestination):
+    """The name does not resolve (yet): refused, but not a policy violation."""
+
+
 @dataclass(frozen=True)
 class Target:
     scheme: str
     host: str
     port: int
     ip: str
+    # Every checked address, in resolver order; the transport tries them in turn (all passed the check).
+    ips: tuple[str, ...] = ()
 
 
 def _is_public(ip: IPAddress) -> bool:
@@ -70,11 +76,11 @@ async def resolve(host: str, port: int) -> list[IPAddress]:
     try:
         infos = await loop.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
-        raise BlockedDestination(f"cannot resolve {host}") from exc
+        raise UnresolvableHost(f"cannot resolve {host}") from exc
     return [ipaddress.ip_address(str(info[4][0]).split("%")[0]) for info in infos]
 
 
-async def check_url(url: str, allowlist: Sequence[str]) -> Target:
+def _parse(url: str) -> tuple[str, str, int]:
     parts = urlsplit(url)
     scheme = parts.scheme.lower()
     if scheme not in ("http", "https"):
@@ -88,6 +94,11 @@ async def check_url(url: str, allowlist: Sequence[str]) -> Target:
         port = parts.port or (443 if scheme == "https" else 80)
     except ValueError as exc:
         raise BlockedDestination("invalid port") from exc
+    return scheme, host, port
+
+
+async def check_url(url: str, allowlist: Sequence[str]) -> Target:
+    scheme, host, port = _parse(url)
     ips = await resolve(host, port)
     if not ips:
         raise BlockedDestination(f"{host} has no addresses")
@@ -96,25 +107,120 @@ async def check_url(url: str, allowlist: Sequence[str]) -> Target:
             raise BlockedDestination(
                 f"{host} resolves to {ip}, a non-public address (add it to ERAG_SSRF_ALLOWLIST to allow it)"
             )
-    return Target(scheme, host, port, str(ips[0]))
+    return Target(scheme, host, port, str(ips[0]), tuple(dict.fromkeys(str(i) for i in ips)))
+
+
+# --- LLM provider endpoints (ADR 0025) -------------------------------------------------------------
+#
+# Model providers are a different kind of destination: an Ollama instance on the LAN is legitimate,
+# but only because an admin created it with step-up, and its address decides its locality.
+# Addresses fall into three classes: public, private (loopback, RFC 1918, link-local, CGNAT, ULA)
+# and never (unspecified, multicast, reserved, cloud metadata endpoints).
+
+METADATA_IPS = {ipaddress.ip_address("169.254.169.254"), ipaddress.ip_address("fd00:ec2::254")}
+CGNAT = ipaddress.ip_network("100.64.0.0/10")
+THIS_NETWORK = ipaddress.ip_network("0.0.0.0/8")
+
+AddressClass = str  # "public" | "private" | "never"
+
+
+def classify_ip(ip: IPAddress) -> AddressClass:
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        return classify_ip(ip.ipv4_mapped)
+    if ip in METADATA_IPS or ip.is_unspecified or ip.is_multicast:
+        return "never"
+    if _is_public(ip):
+        return "public"
+    if ip.is_loopback or ip.is_link_local:  # before `reserved`: ::1 sits in a reserved IPv6 block
+        return "private"
+    if ip.is_reserved or (isinstance(ip, ipaddress.IPv4Address) and ip in THIS_NETWORK):
+        return "never"
+    if ip.is_private or (isinstance(ip, ipaddress.IPv4Address) and ip in CGNAT):
+        return "private"
+    return "never"  # other special-purpose ranges
+
+
+@dataclass(frozen=True)
+class ProviderEndpoint:
+    """Result of checking a provider URL: where it connects and which locality that implies."""
+
+    target: Target
+    classes: frozenset[AddressClass]
+
+    @property
+    def locality(self) -> str:
+        # Local only if EVERY address is private; one public address makes it a cloud endpoint.
+        return "local" if self.classes == {"private"} else "cloud"
+
+
+async def check_provider_url(url: str, *, allow_private: bool, require_private: bool = False) -> ProviderEndpoint:
+    """Validate a model endpoint. `allow_private` only for Ollama or self-hosted providers; `require_private`
+    when the provider is treated as local (a local provider must never end up on a public address)."""
+    scheme, host, port = _parse(url)
+    ips = await resolve(host, port)
+    if not ips:
+        raise BlockedDestination(f"{host} has no addresses")
+    classes = {classify_ip(ip) for ip in ips}
+    for ip in ips:
+        cls = classify_ip(ip)
+        if cls == "never":
+            raise BlockedDestination(f"{host} resolves to {ip}, which is never allowed as a model endpoint")
+        if cls == "private" and not allow_private:
+            raise BlockedDestination(
+                f"{host} resolves to {ip}, a private address: only Ollama or self-hosted providers may use one"
+            )
+        if cls == "public" and require_private:
+            raise BlockedDestination(
+                f"{host} resolves to {ip}, a public address, but the provider is cleared as local; "
+                "it must be re-saved so its locality is re-evaluated"
+            )
+    ordered = tuple(dict.fromkeys(str(i) for i in ips))
+    return ProviderEndpoint(Target(scheme, host, port, str(ips[0]), ordered), frozenset(classes))
+
+
+Checker = Callable[[str], Awaitable[Target]]
+
+
+def provider_checker(*, allow_private: bool, require_private: bool) -> Checker:
+    async def check(url: str) -> Target:
+        return (await check_provider_url(url, allow_private=allow_private, require_private=require_private)).target
+
+    return check
 
 
 class PinnedTransport(httpx.AsyncBaseTransport):
     """Checks each request's destination and connects to the checked IP (Host header and SNI kept)."""
 
-    def __init__(self, allowlist: Sequence[str], inner: httpx.AsyncBaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        allowlist: Sequence[str],
+        inner: httpx.AsyncBaseTransport | None = None,
+        checker: Checker | None = None,
+    ) -> None:
         self.allowlist = list(allowlist)
         self.inner = inner or httpx.AsyncHTTPTransport(verify=True, retries=0)
+        self.checker = checker
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        target = await check_url(str(request.url), self.allowlist)
-        ip_host = f"[{target.ip}]" if ":" in target.ip else target.ip
-        request.url = request.url.copy_with(host=ip_host)
+        if self.checker is not None:
+            target = await self.checker(str(request.url))
+        else:
+            target = await check_url(str(request.url), self.allowlist)
         default_port = 443 if target.scheme == "https" else 80
         request.headers["Host"] = target.host if target.port == default_port else f"{target.host}:{target.port}"
         if target.scheme == "https":
             request.extensions = {**request.extensions, "sni_hostname": target.host}
-        return await self.inner.handle_async_request(request)
+        original = request.url
+        candidates = target.ips or (target.ip,)
+        for i, ip in enumerate(candidates):
+            # e.g. `localhost` -> ::1 then 127.0.0.1: try each CHECKED address, never re-resolve.
+            request.url = original.copy_with(host=f"[{ip}]" if ":" in ip else ip)
+            try:
+                return await self.inner.handle_async_request(request)
+            except httpx.ConnectError:
+                if i == len(candidates) - 1:
+                    raise
+        raise httpx.ConnectError("no address to connect to")  # pragma: no cover - candidates is never empty
 
     async def aclose(self) -> None:
         await self.inner.aclose()

@@ -27,3 +27,6 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0020](0020-connectors-and-ssrf.md) | Connectors: container-inherited permissions, folder roots, SSRF guard | Accepted |
 | [0021](0021-mcp-registry-and-clearance.md) | MCP registry for remote servers and the clearance model | Accepted |
 | [0022](0022-isolated-mcp-runner.md) | Isolated runner for MCP containers (network `none`, Unix-socket transport) | Accepted |
+| [0023](0023-llm-provider-registry-and-default-model.md) | LLM provider registry: Ollama and OpenAI-compatible APIs, locality from the address, a default model | Accepted, Owner review |
+| [0024](0024-per-provider-spend-ceiling-and-daily-request-cap.md) | Per-provider spend ceiling and daily request cap | Accepted, Owner review |
+| [0025](0025-model-endpoint-egress-guard.md) | Egress guard for model endpoints: address classes, request-time re-validation, no redirects | Accepted |

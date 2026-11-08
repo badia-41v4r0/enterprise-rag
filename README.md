@@ -20,12 +20,13 @@ Most enterprise RAG and agent setups let the model see (or reach) more than the 
 - **Identity and permissions:** server-side sessions (HttpOnly cookie + CSRF), roles, containers classified `public / internal / confidential`, allow-only grants, restricted documents, per-tool `execute` grants, audit log. Admin is a management privilege, not data access.
 - **Roles and delegated management:** role templates (Reader, Contributor, Manager), rename, clone, bulk membership, a grants matrix and an effective-permissions preview. A department head with `manage` on their container uploads, replaces and deletes its documents; `contribute` uploads and replaces only. Neither can change who has access or the classification.
 - **Uploads UI:** drag and drop, per-file status, version history, replace, retry failed ingestion, delete.
-- **Credential store:** connector, MCP and OpenRouter secrets encrypted at rest (AES-256-GCM, master key outside the database), write-only, every use audited.
-- **MFA and step-up:** optional TOTP for every user with recovery codes; re-authentication within 5 minutes for sensitive admin actions (secrets, providers, connectors, MCP registration, admin promotion, MFA resets).
+- **Credential store:** connector, MCP and model-provider secrets encrypted at rest (AES-256-GCM, master key outside the database), write-only, every use audited.
+- **MFA and step-up:** optional TOTP for every user with recovery codes; re-authentication within 5 minutes for sensitive admin actions (secrets, providers and the default model, connectors, MCP registration, admin promotion, MFA resets).
 - **Connectors:** `folder` (below allowed roots, no symlink escapes) and `web` (URLs or a sitemap, SSRF-guarded) sync into one container and inherit its permissions; scheduled or manual, with dry-run preview and run history.
 - **Ingestion:** PDF, DOCX, XLSX, HTML, Markdown and text; SHA-256 dedupe, versioning, a Postgres-backed job queue, local `bge-m3` embeddings.
 - **Authorized retrieval:** the user's permissions are resolved from PostgreSQL on every request and pushed into the pgvector query as a filter, then re-checked. Revocation is immediate.
-- **Classification routing:** after retrieval (and after every tool result) the effective classification decides which models may answer. Confidential data only ever goes to local models (Ollama). OpenRouter is optional, free models only, with a hard monthly ceiling.
+- **Classification routing:** after retrieval (and after every tool result) the effective classification decides which models may answer. Confidential data only ever goes to local models. OpenRouter is optional, free models only, with a hard monthly ceiling.
+- **Model providers from the admin panel:** add Ollama instances and any OpenAI-compatible API (OpenAI, Together, Groq, vLLM, LM Studio, ...), test the connection, discover models, and choose the default model for the chat. Locality is derived from the address (only private networks are local), clearance is capped by locality, keys live in the credential store, every provider is re-checked on every request, and paid APIs have a monthly ceiling and a daily request cap.
 - **MCP:** a gateway with tool authorization, a signed permission context for the built-in servers, a result validator; a **registry** for remote MCP servers (tools discovered disabled, approved one by one, per-role grants, argument constraints, rug-pull detection, a clearance per server and a label on everything it returns); and an **isolated runner** that runs approved MCP images with no network, a read-only filesystem and no capabilities.
 - **Frontend:** React chat with streaming answers and clickable citations, a Content page for managers, an Account page (MFA), and an admin panel.
 - **ACME Corp demo** and a security test suite (canary leakage matrix, revocation, routing, tools, delegation, vault/MFA, connectors/SSRF, MCP registry, runner confinement). See [`demo/acme/README.md`](demo/acme/README.md).
@@ -65,6 +66,24 @@ Set `APP_PORT` if port 8000 is taken. A bundled Ollama container exists behind `
 
 Set the key in **Admin > Providers**: it is stored encrypted in the credential store and can be changed without a restart. `ERAG_OPENROUTER_API_KEY` (in `deploy/.env` for Docker Compose, or `.env` at the repo root) is only a bootstrap fallback used while the store has no key; to move an existing key into the store run `erag secrets set openrouter_api_key --from-env ERAG_OPENROUTER_API_KEY` and then remove the variable. Only models whose id ends in `:free` are accepted, and a hard monthly spend ceiling (`ERAG_OPENROUTER_MONTHLY_BUDGET_USD`, default `0.01`; the UI can only lower it) is enforced before every request ([ADR 0016](docs/adr/0016-openrouter-free-only-and-spend-ceiling.md), [ADR 0018](docs/adr/0018-credential-store.md)). Confidential data never goes to the cloud; what else may go is controlled by `ERAG_CLOUD_MAX_CLASSIFICATION`.
 
+### Model providers and the default model
+
+**Admin > Providers** lists every chat model provider with its locality, clearance, status, where its key comes from (credential store or environment, never the key itself), spend this month and requests today. The built-in `ollama` and `openrouter` providers are created from the environment on start-up, so an existing installation keeps working with no admin action.
+
+To add a provider (requires re-entering your password, or a TOTP code with MFA):
+
+1. Choose the kind. **Ollama**: the base URL of an Ollama instance (for example `http://192.168.1.20:11434`). **API**: the base URL of any OpenAI-compatible endpoint including its version path (for example `https://api.groq.com/openai/v1`, `https://api.together.xyz/v1`, or a self-hosted vLLM/LM Studio at `http://10.0.0.5:8000/v1` with **self-hosted** ticked). Native Anthropic or Gemini APIs are not supported (use them through an OpenAI-compatible gateway).
+2. Optionally enter an API key: it is stored encrypted in the credential store as `provider.<slug>.api_key` and is never shown again.
+3. Save, then **Test** (a read-only request for the model list) and **Discover models** (`/api/tags` for Ollama, `/models` for APIs), and add the models you want; you can also type a model id by hand. Model ids are `<provider slug>:<model>`.
+
+What the software decides for you (ADR 0023 to 0025):
+
+- **Locality** comes from the address the URL resolves to: loopback, private, link-local or CGNAT addresses are *local*; any public address is *cloud* (also for Ollama). Private addresses are only accepted for Ollama or self-hosted API providers; cloud metadata and other special addresses are always refused; public endpoints must use HTTPS. The address is checked again on every request and the connection is pinned to the checked address.
+- **Clearance**: local providers may receive up to confidential data; cloud providers at most `ERAG_CLOUD_MAX_CLASSIFICATION` (default `internal`, never confidential). New cloud providers start cleared for `public` data only; you may raise them up to that cap.
+- **Spend**: every API provider and any non-local Ollama has a monthly ceiling (`ERAG_PROVIDER_MONTHLY_BUDGET_USD`, default 0.01 USD, enforced when the provider reports cost) and a daily request cap (`ERAG_PROVIDER_DAILY_REQUEST_CAP`, default 100), checked before each request. The panel can only lower them. OpenRouter keeps its free-only rule and its own ceiling.
+
+**Default model.** In *Default model* (or *Make default* next to a model) choose the model the chat uses when the user picks none. It is used only when it is cleared for the request: a question grounded in confidential documents is still answered by a local model even if the default is a cloud model. *Automatic* keeps the previous behaviour (prefer local models). The default model and its provider cannot be deleted or disabled until another default is chosen. The chat model picker marks the default and shows each model's locality and clearance.
+
 ## Configuration reference (new in v0.2)
 
 All settings use the `ERAG_` prefix (full list in [`backend/app/core/config.py`](backend/app/core/config.py)).
@@ -73,6 +92,9 @@ All settings use the `ERAG_` prefix (full list in [`backend/app/core/config.py`]
 |---|---|---|
 | `ERAG_SECRETS_KEY` / `ERAG_SECRETS_KEY_FILE` | dev: derived from `ERAG_SECRET_KEY`; Compose: `/data/secrets.key` (generated on first start) | Credential store master key (32 random bytes, base64). Create with `erag secrets init [--file F]`. **Required in prod.** Back it up outside the database: losing it loses all secrets and MFA enrolments. Rotate with `erag secrets rotate-master --new-key-file F`. |
 | `ERAG_STEP_UP_SECONDS` | `300` | How recent a re-authentication must be for sensitive admin actions. |
+| `ERAG_PROVIDER_MONTHLY_BUDGET_USD` | `0.01` | Monthly spend ceiling per admin-added provider (USD), enforced when the provider reports cost. The panel can only lower it. |
+| `ERAG_PROVIDER_DAILY_REQUEST_CAP` | `100` | Requests per day per admin-added API provider (and non-local Ollama), counted before sending. The panel can only lower it. |
+| `ERAG_CLOUD_MAX_CLASSIFICATION` | `internal` | Highest classification any cloud model may receive (`public` or `internal`; confidential never). |
 | `ERAG_MFA_ISSUER`, `ERAG_MFA_MAX_ATTEMPTS` | `EnterpriseRAG`, `5` | TOTP issuer shown in authenticator apps; codes per pending login. |
 | `ERAG_CONNECTOR_ROOTS` | none (Compose: `/connectors`) | Comma-separated folders that `folder` connectors may read below (mount them read-only into app and worker). |
 | `ERAG_CONNECTOR_MAX_ITEMS`, `ERAG_CONNECTOR_MAX_ITEM_MB`, `ERAG_CONNECTOR_SCHEDULER_SECONDS` | `1000`, `25`, `30` | Connector limits and how often the worker checks schedules. |
@@ -98,6 +120,8 @@ Known boundaries, documented rather than hidden:
 - **The master key sits on the same host as the app.** The credential store protects against database and backup leaks, not against compromise of that host.
 - **Admin account compromise remains the largest risk.** Mitigations: optional MFA, step-up for sensitive actions, audit, the runner's confinement. The audit log lives in the same database (no tamper evidence).
 - **Container isolation is not a VM**; runner MCPs get network `none` only (allowlisted egress is not implemented).
+- **Admin-added cloud providers are trusted with what their clearance allows.** The software does not verify their retention or training policies, and a public endpoint can never be declared local.
+- **Providers that do not report cost are bounded by requests, not money** (the daily cap); per-request output limits are not set.
 - **The model can still be wrong** or repeat what it was legitimately given.
 
 ## Development

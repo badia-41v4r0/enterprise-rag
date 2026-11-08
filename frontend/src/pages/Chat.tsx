@@ -87,6 +87,7 @@ export default function ChatPage() {
 
   const conversations = useQuery({ queryKey: ["conversations"], queryFn: () => api<Conversation[]>("/api/conversations") });
   const models = useQuery({ queryKey: ["models"], queryFn: () => api<ModelInfo[]>("/api/models") });
+  const defaultModel = models.data?.find((m) => m.is_default);
   const tools = useQuery({
     queryKey: ["my-tools"],
     queryFn: () => api<{ name: string; description: string }[]>("/api/tools"),
@@ -298,10 +299,13 @@ export default function ChatPage() {
             />
             <div className="flex flex-col gap-2">
               <Select value={model} onChange={(e) => setModel(e.target.value)} className="w-56" aria-label="Model">
-                <option value="">Model: automatic</option>
+                <option value="">
+                  Model: automatic{defaultModel ? ` (default: ${defaultModel.id})` : " (local first)"}
+                </option>
                 {models.data?.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.id} ({m.locality}, up to {m.max_classification})
+                    {m.is_default ? "★ " : ""}
+                    {m.id} ({m.locality}, up to {m.max_classification}){m.is_default ? " - default" : ""}
                   </option>
                 ))}
               </Select>

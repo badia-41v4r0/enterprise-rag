@@ -20,6 +20,10 @@ const sfx = Date.now().toString().slice(-6);
 const role = `UI Tester ${sfx}`;
 const container = `UI Facilities ${sfx}`;
 const email = `ui.tester.${sfx}@acme.test`;
+const QWEN = process.env.UI_MODEL ?? "qwen3:4b-instruct-2507-q4_K_M";
+const ollamaSlug = `ui-ollama-${sfx}`;
+const apiSlug = `ui-api-${sfx}`;
+const apiKey = `ui-key-${sfx}-not-real`;
 const pw = "ui-tester-password-1";
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s), to log in with MFA like an authenticator app would.
@@ -63,16 +67,36 @@ async function cleanup() {
         body: body ? JSON.stringify(body) : undefined,
       });
     const list = async (p) => (await api("GET", p)).json();
+    // Providers added by this run (and leftovers of interrupted runs): reset the default first if it is
+    // one of theirs, then delete them (their stored API keys go with them).
+    const ours = (slug) => /^ui-(ollama|api)-\d{6}$/.test(slug);
+    const prov = await list("/api/admin/providers");
+    if (prov.default_model_id && ours(prov.default_model_id.split(":")[0]))
+      await api("PUT", "/api/admin/models/default", { model_id: null });
+    for (const p of prov.providers.filter((x) => ours(x.slug))) await api("DELETE", `/api/admin/providers/${p.id}`);
     const user = (await list("/api/admin/users")).find((u) => u.email === email);
     if (user) await api("PATCH", `/api/admin/users/${user.id}`, { role_ids: [], is_active: false });
     const r = (await list("/api/admin/roles")).find((x) => x.name === role);
     if (r) await api("DELETE", `/api/admin/roles/${r.id}`);
     const c = (await list("/api/admin/containers")).find((x) => x.name === container);
     if (c) await api("DELETE", `/api/admin/containers/${c.id}`);
-    console.log("cleanup: removed the test role and container, deactivated the test user");
+    console.log("cleanup: removed the test providers, role and container, reset the default model, deactivated the test user");
   } catch (err) {
     console.error("cleanup failed (remove the 'UI Tester'/'UI Facilities' leftovers manually):", err.message);
   }
+}
+
+// Sensitive admin actions ask for the password again once the login is older than 5 minutes.
+async function confirmIfAsked(page) {
+  const dlg = page.getByRole("dialog", { name: "Confirm it is you" });
+  try {
+    await dlg.waitFor({ timeout: 2500 });
+  } catch {
+    return;
+  }
+  await dlg.getByLabel("Password").fill(ADMIN_PW);
+  await dlg.getByRole("button", { name: "Confirm" }).click();
+  await dlg.waitFor({ state: "detached" });
 }
 
 async function login(page, user, password) {
@@ -142,7 +166,42 @@ try {
   await admin.locator("td", { hasText: `ui_smoke_${sfx}` }).waitFor({ state: "detached" });
   await admin.getByRole("button", { name: "Providers", exact: true }).click();
   const orStatus = await admin.getByTestId("openrouter-status").innerText();
-  step(`secret stored (value never shown) and deleted; OpenRouter: ${orStatus.split("\n")[0]}`);
+  step(`secret stored (value never shown) and deleted; OpenRouter: ${orStatus.split("\n").find((l) => l.startsWith("API key")) ?? orStatus}`);
+
+  // Provider registry: add an Ollama instance and an OpenAI-compatible API (Ollama's real /v1), discover
+  // their models, and make the API provider's model the default for the chat.
+  const addProvider = async ({ kind, name, url, selfHosted, key }) => {
+    await admin.getByLabel("provider kind").selectOption(kind);
+    await admin.getByPlaceholder("provider name").fill(name);
+    await admin.getByLabel("base URL").fill(url);
+    if (selfHosted) await admin.getByLabel("self-hosted").check();
+    if (key) await admin.getByLabel("API key").fill(key);
+    await admin.getByRole("button", { name: "Add provider" }).click();
+    await confirmIfAsked(admin);
+  };
+  const discoverAndAdd = async (slug) => {
+    const card = admin.locator(`[data-provider="${slug}"]`);
+    await card.waitFor({ timeout: 30_000 });
+    await card.getByRole("button", { name: "Test" }).click();
+    await card.getByTestId(`test-${slug}`).getByText("Connection OK").waitFor({ timeout: 30_000 });
+    await card.getByRole("button", { name: "Discover models" }).click();
+    await card.getByLabel(`add discovered ${QWEN}`).click();
+    await card.locator(`tr[data-model="${slug}:${QWEN}"]`).waitFor();
+    return card;
+  };
+  await addProvider({ kind: "ollama", name: `UI Ollama ${sfx}`, url: "http://127.0.0.1:11434" });
+  const ollamaCard = await discoverAndAdd(ollamaSlug);
+  const ollamaInfo = await ollamaCard.locator("ul").innerText();
+  await addProvider({ kind: "api", name: `UI API ${sfx}`, url: "http://127.0.0.1:11434/v1", selfHosted: true, key: apiKey });
+  const apiCard = await discoverAndAdd(apiSlug);
+  if (!(await apiCard.innerText()).includes("configured (credential store)")) throw new Error("API key not reported as stored");
+  if ((await admin.content()).includes(apiKey)) throw new Error("provider API key visible in the page");
+  await apiCard.getByLabel(`make ${apiSlug}:${QWEN} the default`).click();
+  await confirmIfAsked(admin);
+  await admin.getByTestId("current-default").getByText(`${apiSlug}:${QWEN}`).waitFor({ timeout: 15_000 });
+  await apiCard.getByText("default", { exact: true }).waitFor();
+  await admin.screenshot({ path: `${OUT}/ui-providers.png`, fullPage: true });
+  step(`providers: added ${ollamaSlug} (${ollamaInfo.split("\n")[0]}) and ${apiSlug} (self-hosted API, key in the credential store), discovered and added ${QWEN} on both, default = ${apiSlug}:${QWEN}`);
 
   // R3: connectors. The seeded folder connector is listed; preview is a dry run; a path outside the
   // allowed roots is refused.
@@ -248,7 +307,11 @@ try {
   await cite.click();
   await user.getByText("GREEN-OTTER-77").last().waitFor();
   const answer = await user.locator("p.whitespace-pre-wrap").last().innerText();
-  step(`new user got a cited answer: ${JSON.stringify(answer.slice(0, 200))}`);
+  // The user picked no model: the answer must come from the admin's default (shown on the message).
+  await user.getByText(`${apiSlug}:${QWEN}`, { exact: true }).last().waitFor();
+  const picker = await user.getByLabel("Model").innerText();
+  if (!picker.includes(`default: ${apiSlug}:${QWEN}`) || !picker.includes("- default")) throw new Error(`model picker: ${picker}`);
+  step(`new user got a cited answer from the default model ${apiSlug}:${QWEN}: ${JSON.stringify(answer.slice(0, 200))}`);
   await user.screenshot({ path: `${OUT}/ui-chat.png`, fullPage: true });
 
   // R2: the user enrols in MFA and logs in again with a TOTP code.

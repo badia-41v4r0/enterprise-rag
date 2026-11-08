@@ -126,6 +126,54 @@ export interface ModelInfo {
   model: string;
   locality: "local" | "cloud";
   max_classification: Classification;
+  is_default: boolean;
+}
+export interface ProviderModel {
+  id: string;
+  model_id: string;
+  model: string;
+  enabled: boolean;
+  env_managed: boolean;
+  is_default: boolean;
+}
+export interface ProviderRow {
+  id: string;
+  slug: string;
+  name: string;
+  kind: "ollama" | "api";
+  builtin: boolean;
+  enabled: boolean;
+  base_url: string;
+  self_hosted: boolean;
+  locality: "local" | "cloud";
+  requested_classification: Classification | null;
+  max_classification: Classification;
+  locality_max_classification: Classification;
+  key_source: "vault" | "env" | "none";
+  secret_name: string | null;
+  metered: boolean;
+  monthly_budget_usd: number | null;
+  budget_cap_usd: number | null;
+  spent_this_month_usd: number;
+  daily_request_limit: number | null;
+  daily_cap_env: number | null;
+  requests_today: number;
+  free_only: boolean;
+  available: boolean;
+  status_reason: string;
+  models: ProviderModel[];
+}
+export interface ProvidersList {
+  providers: ProviderRow[];
+  default_model_id: string | null;
+  cloud_max_classification: Classification;
+}
+export interface ProviderTest {
+  ok: boolean;
+  locality: string;
+  models_available?: number;
+  error?: string;
+  warning?: string | null;
 }
 export interface ChunkView {
   id: string;

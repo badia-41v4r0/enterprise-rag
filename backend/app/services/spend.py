@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm.providers.base import ProviderError
-from app.models import ProviderSpend
+from app.models import ProviderDailyUsage, ProviderSpend
 
 
 class BudgetExceeded(ProviderError):
@@ -19,6 +19,10 @@ class BudgetExceeded(ProviderError):
 
 def month_key(now: datetime | None = None) -> str:
     return (now or datetime.now(UTC)).strftime("%Y-%m")
+
+
+def day_key(now: datetime | None = None) -> str:
+    return (now or datetime.now(UTC)).strftime("%Y-%m-%d")
 
 
 def cost_from_usage(usage: dict[str, Any]) -> float:
@@ -57,3 +61,33 @@ async def record_spend(db: AsyncSession, provider: str, cost_usd: float, now: da
         },
     )
     await db.execute(stmt)
+
+
+# --- Daily request cap (ADR 0024) ---------------------------------------------------------------
+
+
+async def requests_today(db: AsyncSession, provider: str, now: datetime | None = None) -> int:
+    row = await db.scalar(
+        select(ProviderDailyUsage.requests).where(
+            ProviderDailyUsage.provider == provider, ProviderDailyUsage.day == day_key(now)
+        )
+    )
+    return int(row or 0)
+
+
+async def reserve_request(db: AsyncSession, provider: str, cap: int | None, now: datetime | None = None) -> None:
+    """Count one request against today's cap BEFORE it is sent (atomic upsert), so that even requests that
+    fail or report no cost are bounded. Refuses once the cap is reached; `cap=None` only counts.
+    The caller commits."""
+    if cap is not None and cap <= 0:
+        raise BudgetExceeded(f"Daily request limit for {provider} is 0; no requests are sent to it.")
+    ins = pg_insert(ProviderDailyUsage).values(provider=provider, day=day_key(now), requests=1)
+    stmt = ins.on_conflict_do_update(
+        index_elements=[ProviderDailyUsage.provider, ProviderDailyUsage.day],
+        set_={"requests": ProviderDailyUsage.requests + 1},
+    ).returning(ProviderDailyUsage.requests)
+    count = int((await db.execute(stmt)).scalar_one())
+    if cap is not None and count > cap:
+        raise BudgetExceeded(
+            f"Daily request limit for {provider} reached ({cap} requests today); no more requests are sent to it today."
+        )

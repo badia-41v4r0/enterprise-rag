@@ -1,5 +1,71 @@
 # EnterpriseRAG: progress report
 
+## Model providers from the admin panel, branch `feat/providers`
+
+Branch `feat/providers`, created from `fix/admin-ui-clutter` (not pushed). Work done autonomously; open questions became ADRs 0023 to 0025 and the list at the end of this section.
+
+**What was built**
+- **Registry** (migration 0008): `llm_providers`, `llm_models` (one default via a partial unique index), `provider_daily_usage`. Kinds `ollama` (chat via `/v1`, discovery `GET /api/tags`) and `api` (any OpenAI-compatible endpoint, discovery `GET /models`); model ids typed by hand always allowed; ids stay `<slug>:<model>`. Native Anthropic/Gemini APIs are out of scope (limitation, ADR 0023).
+- **Built-in providers** `ollama` and `openrouter` bootstrapped from the environment on start-up (`erag bootstrap`, log line "Built-in LLM providers ensured") and lazily on the first router build; idempotent; the old OpenRouter setting (model, on/off, ceiling) is imported; the env model of each built-in follows the environment and cannot be deleted; URLs come from the environment. `PUT /api/admin/providers/openrouter` still works on top of the registry. `claude-code` stays env-only.
+- **Locality from the address** (local only if every resolved address is loopback/private/link-local/CGNAT; one public address = cloud, also for Ollama), **clearance capped by locality** on save (422), at router build and in the provider; new non-local providers start at `public`; moving a local provider to a public address resets its clearance to `public`.
+- **Destination guard on every request** (ADR 0025): every `OpenAICompatProvider` request (built-ins included) and every test/discovery request is re-resolved, classified (public/private/never), pinned to the checked addresses (tried in order) with Host/SNI kept and TLS verified; private addresses only for Ollama or self-hosted API providers; a local provider must still resolve privately; metadata/unspecified/multicast/reserved never; public endpoints need HTTPS; redirects never followed. Network errors now surface as model errors instead of an internal error.
+- **Admin API** `GET/POST /api/admin/providers`, `PATCH/DELETE /api/admin/providers/{id}`, `POST .../test`, `POST .../discover`, `POST/PATCH/DELETE .../models[/{id}]`, `PUT /api/admin/models/default`. Step-up for create, delete, URL/self-hosted/key/clearance changes and the default; audit for everything (`admin.provider.*`, `admin.model.default`), never the key.
+- **Keys** write-only in the vault as `provider.<slug>.api_key`, `secret.use` audited as `provider:<slug>`, shown under "used by", deleted with the provider. Vault first, `ERAG_OPENROUTER_API_KEY` only as the OpenRouter bootstrap fallback (unchanged).
+- **Default model**: honoured by `ModelRouter.choose` only when cleared (requested model > default > cleared model, local first); cannot be deleted/disabled (409) and cannot point at a disabled model; "automatic" = previous behaviour.
+- **Metering** (ADR 0024): every API provider and any non-local Ollama has a monthly ceiling (`ERAG_PROVIDER_MONTHLY_BUDGET_USD`, default 0.01 USD, from `usage.cost`, requested with `stream_options.include_usage`) and a daily request cap (`ERAG_PROVIDER_DAILY_REQUEST_CAP`, default 100) counted atomically before sending; the panel can only lower both. OpenRouter: free-only and its ceiling unchanged, no daily cap unless set.
+- **Hot reload**: router fingerprint extended to providers, models, all secrets and the settings object.
+- **UI**: Admin > Providers rebuilt (default model, add form for both kinds, per-provider card with locality, clearance, status, key source, spend this month, requests today, Test, Discover models, add by hand, enable/disable, edit, delete, make default). Chat model picker marks the default and shows locality/clearance.
+
+**Verified (2026-11-10)**
+- `uv run pytest`: **258 passed, 2 skipped** in 159 s (before: 209 passed, 2 skipped; the 2 skips are the OpenRouter test without an env key and the opt-in claude-code test). New/extended:
+  - `tests/security/test_provider_registry.py` (36): 24 URLs classified (API not self-hosted refuses loopback, `localhost`, RFC 1918, `::1`, IPv4-mapped loopback, CGNAT, `ftp:`, credentials, public over http; self-hosted and Ollama accept private as local; public = cloud; metadata IP, `0.0.0.0`, multicast, `240/4` always refused); clearance caps incl. `ERAG_CLOUD_MAX_CLASSIFICATION=public` and `confidential`; **real listening sockets**: a cloud-policy provider pointed at loopback and a redirect from a real local server never reach the target (0 connections); a local provider resolving to a public address is refused at request time; API create/update rules (defaults, 422s, reserved slugs, 409 duplicate, clearance lower/raise, locality change resets to public); tampered DB clearance capped at build; a tampered URL drops the provider from the router and discovery refuses it; step-up for 9 sensitive calls, none for rename/disable/lower limits; key write-only (responses, secrets list, audit, full DB dump scanned in text and hex), `secret.use` by `provider:vllm`, rotation hot-reloads, delete removes the secret; default honoured only when cleared, provider-level guard refuses confidential before egress, default undeletable/undisableable, clear default; built-ins idempotent, legacy OpenRouter setting imported, env model renamed in place, `claude-code` never stored, built-in delete/URL/env-model protections, OpenRouter free-only for added models; OpenRouter ceiling can only lower (registry and legacy endpoint agree); discovery reports HTTP 401 and does not follow a 302.
+  - `tests/providers/test_provider_registry_real.py` (1, real Ollama + real bge-m3): through the admin API, an Ollama provider (`http://127.0.0.1:11434`) and an API provider (Ollama's real `/v1`, self-hosted, key in the vault) are created, tested, discovered (`/api/tags`, `/models`), the qwen model added, the API model set as default; the new hire's chat (no model picked) is routed to `local-api:qwen3:4b-instruct-2507-q4_K_M` and answered by the real model; an explicit pick of the other provider is honoured; 1 request counted for the API provider (0 for the local Ollama), reported cost 0 recorded; lowering the daily cap to 1 makes the next chat fail with "Daily request limit" and no text.
+  - Extended: `test_routing.py` (default only when cleared; DB-backed router with a cloud default: HR salary question egresses only to Ollama as confidential, engineer's internal question goes to the cloud default with only Engineering canaries, `stream_options` present), `test_canary_matrix.py` (7 personas x 8 questions with the DB-backed router and a cloud default: confidential always local, nothing forbidden in what the cloud default would get), `test_tools.py` (reroute away from a cloud default after a confidential tool result), `test_vault_and_mfa.py` (provider create and default need step-up), `test_spend.py` (daily cap counting/refusal/reset, cap 0, uncapped counting, effective limits only lower, who is metered).
+- `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy` (strict, 95 files), `uv run python scripts/check_licenses.py` (no new dependencies), `cd frontend && npm run build`: pass.
+- Migration 0008 downgrade/upgrade round trip on `erag_test`.
+- Docker: `ERAG_OPENROUTER_API_KEY= ERAG_LOCAL_CHAT_MODEL=qwen3:4b-instruct-2507-q4_K_M APP_PORT=8088 docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.hostnet.yml up -d --build app worker`; app log "Built-in LLM providers ensured (ollama, openrouter)". **Backward compatibility with no admin action:** `GET /api/admin/providers` showed `ollama` (local, confidential, available) and `openrouter` (cloud, internal, key from the vault, model `nvidia/nemotron-3.5-lightning:free` imported from the old setting); `/api/models` unchanged ids.
+- **One real OpenRouter call** (free model, through the new pinned transport, to prove TLS/SNI pinning works against a real public HTTPS endpoint): new hire, public question, `model=openrouter:nvidia/nemotron-3.5-lightning:free` -> route to it, answer from the release notes, recorded cost 0.0 USD. No other cloud calls.
+- Live API checks on the stack: a provider on `https://api.groq.com/openai/v1` (DNS only, fake key) -> 201, cloud, clearance public, daily cap 100, ceiling 0.01; raising it to confidential -> 422; an API provider on `127.0.0.1` without self-hosted -> 422; an Ollama on `169.254.169.254` -> 422; ceiling 10 USD -> 422; Test with the fake key made one real `GET /models` to Groq and reported "returned HTTP 401" (first run showed a misleading "unexpected model list"; fixed, regression test added); deleted (its secret removed with it).
+- `scripts/ui_smoke.mjs` (extended), run twice: admin adds `UI Ollama <n>` (Ollama kind) and `UI API <n>` (API kind, self-hosted, key) from the UI, Test shows "Connection OK", Discover lists the real models, the qwen model is added on both, "Make default" (step-up when needed) sets `ui-api-<n>:qwen3:4b-instruct-2507-q4_K_M`; the key never appears in the page. The new user's question (no model picked) is answered "Employees park on level -2 [1]" and the message shows the default model id; the picker shows the default. `UI SMOKE PASSED`; cleanup resets the default and deletes both providers (and their keys); afterwards only `ollama` and `openrouter` remain and the default is automatic.
+- `scripts/demo_scenarios.py --base http://127.0.0.1:8088`: all three scenarios unchanged (HR 58,000 to 72,000 EUR from `ollama:qwen3:4b-instruct-2507-q4_K_M` as confidential; engineer and new hire "no information"; finance `tickets__list_invoices`; revocation).
+
+**Decisions:** ADR 0023 (registry, locality from the address, clearance caps, built-ins, default model, step-up scope), ADR 0024 (who is metered, daily cap counted before sending, defaults 0.01 USD / 100 requests, keyed by slug), ADR 0025 (address classes, self-hosted flag instead of the SSRF allowlist, HTTPS for public endpoints, request-time re-validation, no redirects). Smaller choices: the provider list endpoint builds the router (so built-ins exist and statuses are current); `test` is a read-only model-list request (never a chat completion, so it costs nothing); renaming, enabling/disabling, lowering limits and adding/removing models do not need step-up; a host that does not resolve at router build time is treated as cloud.
+
+**Skipped / not done**
+- Native Anthropic and Gemini APIs (out of scope by design).
+- Per-request output token limit (`max_tokens`) for paid providers: not implemented; the daily cap is the bound when cost is not reported.
+- Locality is re-evaluated when the router is rebuilt (any provider/model/secret change) and enforced per request; there is no periodic re-evaluation of the stored, displayed locality.
+- The `provider_openrouter` pytest marker still keys off the env var only (it skips when the key is only in the vault).
+
+**Known issues / notes**
+- I ran `uv run alembic upgrade head` once from the host without overriding `ERAG_DATABASE_URL`, which applied migration 0008 to the **dev database of the running stack** before its image was rebuilt (additive tables only; the old app kept working). As a result the rebuilt app's log shows no "Running upgrade 0007 -> 0008" line. Upgrade and downgrade were verified on `erag_test`.
+- The built-in Ollama is now treated as cloud if `ERAG_OLLAMA_BASE_URL` resolves to a public address (deliberate, ADR 0025). Not the case on this machine (`127.0.0.1`).
+- With an admin-chosen local default, `demo_scenarios.py` still passes (it does not set a default); the default is reset to automatic after the UI smoke run.
+- The smoke test's existing R5 step creates `office_booking_token` on every run and never deletes it (pre-existing behaviour, not changed here).
+
+**Exact commands**
+```bash
+cd ~/Desktop/enterprise-rag && git checkout feat/providers
+ERAG_OPENROUTER_API_KEY= ERAG_LOCAL_CHAT_MODEL=qwen3:4b-instruct-2507-q4_K_M APP_PORT=8088 \
+  docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.hostnet.yml up -d --build app worker
+uv run pytest                                    # 258 passed, 2 skipped (~2.5 min)
+uv run pytest tests/security/test_provider_registry.py tests/providers/test_provider_registry_real.py
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run python scripts/check_licenses.py
+cd frontend && npm run build && cd ..
+uv run python scripts/demo_scenarios.py --base http://127.0.0.1:8088
+NODE_PATH=.scratch/e2e/node_modules CHROMIUM=/usr/bin/chromium BASE=http://127.0.0.1:8088 node scripts/ui_smoke.mjs
+```
+
+**Decisions for the owner (providers)**
+1. **Default limits** for admin-added providers: 0.01 USD per month and 100 requests per day per provider (ADR 0024). For a paid model that does not report cost, 100 requests a day may cost real money; lower `ERAG_PROVIDER_DAILY_REQUEST_CAP` or decide whether a per-request `max_tokens` cap should be added.
+2. **"Self-hosted" API providers are metered** (they may proxy a paid API). Say if a self-hosted vLLM/LM Studio should be exempt like a local Ollama.
+3. **No way to declare a public endpoint "local"** (for example an EU provider under a zero-retention contract). Kept strict on purpose; a separate, explicit "trusted for confidential" decision would be needed.
+4. **Step-up scope**: enabling a provider, adding a model and lowering limits need only an admin session. Tighten if you want step-up for enabling too.
+5. **Commit attribution**: commits end with `Co-Authored-By: Claude Sonnet 5.5`, as the task instructed, although the work was done by Claude Opus 5.5.
+6. Push, PR and merge of `feat/providers` (built on `fix/admin-ui-clutter`) are left to you.
+
+---
+
 ## Post-MVP releases (PLAN-v0.2), branch `feat/admin-extensibility`
 
 Plan: [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md). Work done autonomously; every release section below lists what was verified, how, what was skipped, and open decisions. Nothing is pushed or tagged.

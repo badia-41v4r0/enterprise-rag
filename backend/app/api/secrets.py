@@ -13,8 +13,9 @@ from app.api.deps import AuthContext, require_admin, require_step_up
 from app.core.config import get_settings
 from app.core.crypto import CryptoError
 from app.core.db import get_db
+from app.llm import registry
 from app.llm.router import invalidate_router_cache, resolve_openrouter, validate_openrouter_model
-from app.models import Secret
+from app.models import LlmProvider, Secret
 from app.services import vault
 from app.services.audit import audit
 from app.services.settings_store import OPENROUTER_KEY, get_setting, put_setting
@@ -131,6 +132,14 @@ async def put_openrouter(
 ) -> OpenRouterOut:
     """Change the OpenRouter key, model, ceiling or on/off without a restart (providers are rebuilt)."""
     s = get_settings()
+    # The provider registry row is the source of truth (ADR 0023); this endpoint is kept for compatibility.
+    await registry.ensure_builtin_providers(db, s)
+    row = await db.scalar(select(LlmProvider).where(LlmProvider.builtin, LlmProvider.slug == registry.OPENROUTER))
+    assert row is not None
+    if body.enabled is False and any(m.is_default for m in row.models):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "An OpenRouter model is the default model; choose another default first"
+        )
     conf = await get_setting(db, OPENROUTER_KEY)
     if body.model is not None:
         try:
@@ -148,6 +157,10 @@ async def put_openrouter(
     if body.enabled is not None:
         conf["enabled"] = body.enabled
     await put_setting(db, OPENROUTER_KEY, conf, auth.user.id)
+    if body.enabled is not None:
+        row.enabled = body.enabled
+    if body.monthly_budget_usd is not None:
+        row.monthly_budget_usd = body.monthly_budget_usd
     if body.api_key is not None:
         await vault.set_secret(db, vault.OPENROUTER_SECRET, body.api_key, user_id=auth.user.id)
     audit(
@@ -161,5 +174,6 @@ async def put_openrouter(
         },
     )
     await db.commit()
+    await registry.ensure_builtin_providers(db, s)  # a new model replaces the env-managed one
     invalidate_router_cache()
     return await _openrouter_out(db)

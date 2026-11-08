@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policy import effective_permissions
 from app.ingestion.embedder import OllamaEmbedder
 from app.llm.prompt_builder import NO_INFO_ANSWER
-from app.llm.router import ModelRouter, build_providers
-from app.models import AuditLog, Chunk, Classification, Document
+from app.llm.router import ModelRouter, build_providers, invalidate_router_cache, load_router
+from app.models import AuditLog, Chunk, Classification, Document, LlmModel, LlmProvider
 from app.orchestrator.chat import ChatOrchestrator
 from demo.acme.seed import PERSONAS, Persona, readable_restricted, readable_slugs
 from tests.security.conftest import CANARY_BY_SLUG, DEMO_PASSWORD, RESTRICTED_CANARIES, slug_maps, user
@@ -73,6 +73,46 @@ async def test_no_leak_in_context_or_prompt(session: AsyncSession, persona: Pers
     # Routing: confidential context only ever goes to a local model.
     if prep.classification == Classification.confidential and prep.provider is not None:
         assert prep.provider.locality == "local"
+
+
+@pytest.mark.parametrize("persona", PERSONAS, ids=lambda p: p.email.split("@")[0])
+async def test_cloud_default_from_the_registry_never_gets_confidential_context(
+    session: AsyncSession, persona: Persona
+) -> None:
+    """ADR 0023: the admin's default is a cloud provider (registry, database). Confidential context still
+    routes to a local model; whatever the cloud default would get carries no forbidden canary."""
+    row = LlmProvider(
+        slug="acme-cloud",
+        name="Acme Cloud",
+        kind="api",
+        base_url="https://1.1.1.1/v1",
+        locality="cloud",
+        max_classification=Classification.internal,
+    )
+    row.models = [LlmModel(model="large", is_default=True)]
+    session.add(row)
+    await session.commit()
+    invalidate_router_cache()
+    try:
+        router = await load_router(session)
+        assert router.default_id == "acme-cloud:large"
+        u = await user(session, persona)
+        perms = await effective_permissions(session, u)
+        for question in QUESTIONS:
+            prep = await ChatOrchestrator(session, OllamaEmbedder(), router).prepare(u, perms, question)
+            if prep.provider is None:
+                continue
+            if prep.classification == Classification.confidential:
+                assert prep.provider.locality == "local", (persona.email, question)
+            elif prep.provider.provider == "acme-cloud":
+                assert prep.classification.rank <= Classification.internal.rank
+                text = prompt_text(prep.messages)
+                assert not {c for c in forbidden_canaries(persona) if c in text}
+    finally:
+        await session.rollback()
+        await session.execute(delete(LlmProvider).where(LlmProvider.slug == "acme-cloud"))
+        await session.commit()
+        invalidate_router_cache()
 
 
 async def test_positive_controls(session: AsyncSession) -> None:

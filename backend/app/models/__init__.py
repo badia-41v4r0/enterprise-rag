@@ -23,6 +23,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -341,6 +342,68 @@ class ProviderSpend(Base):
     month: Mapped[str] = mapped_column(String(7), primary_key=True)  # "YYYY-MM"
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     requests: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ProviderDailyUsage(Base):
+    """Requests sent per provider and UTC day: the request cap for providers that do not report cost (ADR 0024)."""
+
+    __tablename__ = "provider_daily_usage"
+    provider: Mapped[str] = mapped_column(String(50), primary_key=True)
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)  # "YYYY-MM-DD"
+    requests: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# --- LLM provider registry (ADR 0023) ------------------------------------------------------------
+
+
+class LlmProvider(TimestampMixin, Base):
+    """A chat model endpoint: an Ollama instance or an OpenAI-compatible HTTP API.
+
+    `slug` is the prefix of every model id (`<slug>:<model>`); the built-in `ollama` and `openrouter`
+    rows are created from the environment on start-up. `locality` is derived from the address the
+    URL resolves to (never chosen by the admin) and is re-checked on every request.
+    """
+
+    __tablename__ = "llm_providers"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    slug: Mapped[str] = mapped_column(String(40), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(20))  # "ollama" | "api"
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    base_url: Mapped[str] = mapped_column(String(1000))
+    # API kind only: an admin-declared self-hosted endpoint, which may live on a private address.
+    self_hosted: Mapped[bool] = mapped_column(Boolean, default=False)
+    locality: Mapped[str] = mapped_column(String(10), default="cloud")  # "local" | "cloud", as of the last check
+    # Requested clearance; NULL means "the most the locality allows". Capped at build and request time.
+    max_classification: Mapped[Classification | None] = mapped_column(
+        _enum(Classification, "classification"), nullable=True
+    )
+    secret_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    monthly_budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # NULL = the env ceiling
+    daily_request_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)  # NULL = the env cap
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    models: Mapped[list[LlmModel]] = relationship(
+        back_populates="provider", cascade="all, delete-orphan", order_by="LlmModel.model", lazy="selectin"
+    )
+
+
+class LlmModel(TimestampMixin, Base):
+    __tablename__ = "llm_models"
+    __table_args__ = (
+        UniqueConstraint("provider_id", "model", name="uq_llm_model_provider_model"),
+        Index("uq_llm_models_single_default", "is_default", unique=True, postgresql_where=text("is_default")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    provider_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("llm_providers.id", ondelete="CASCADE"), index=True)
+    model: Mapped[str] = mapped_column(String(200))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # The model named by ERAG_LOCAL_CHAT_MODEL / ERAG_OPENROUTER_MODEL for a built-in provider.
+    env_managed: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    provider: Mapped[LlmProvider] = relationship(back_populates="models", lazy="selectin")
 
 
 class Secret(TimestampMixin, Base):

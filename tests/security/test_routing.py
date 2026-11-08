@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import pytest
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policy import effective_permissions
@@ -21,8 +22,8 @@ from app.llm.providers.base import (
     remove_egress_hook,
 )
 from app.llm.providers.openai_compat import OpenAICompatProvider
-from app.llm.router import ModelRouter, RoutingRefused
-from app.models import Classification
+from app.llm.router import ModelRouter, RoutingRefused, invalidate_router_cache, load_router
+from app.models import Classification, LlmModel, LlmProvider
 from app.orchestrator.chat import ChatOrchestrator
 from demo.acme.seed import PERSONAS
 from tests.security.conftest import CANARY_BY_SLUG, user
@@ -206,3 +207,68 @@ async def test_internal_context_stays_local_when_the_cloud_ceiling_is_public(
     ]
     assert [r.provider for r in egress] == ["ollama"]
     assert egress[0].classification == Classification.internal
+
+
+# --- the admin's default model (provider registry, ADR 0023) ----------------------------------------------
+
+
+def test_default_is_used_only_when_cleared() -> None:
+    r = ModelRouter([local(), cloud()], default_id="openrouter:some/cloud-model")
+    assert r.choose(Classification.public).locality == "cloud"  # the default wins over "prefer local"
+    assert r.choose(Classification.internal).locality == "cloud"
+    assert r.choose(Classification.confidential).locality == "local"  # never above clearance
+    assert r.choose(Classification.public, requested="ollama:qwen3:4b").locality == "local"
+    assert [m.is_default for m in r.models()] == [False, True]
+    with pytest.raises(RoutingRefused):
+        ModelRouter([cloud()], default_id="openrouter:some/cloud-model").choose(Classification.confidential)
+
+
+@pytest.mark.db
+@pytest.mark.embeddings
+async def test_registry_cloud_default_gets_internal_but_never_confidential(
+    session: AsyncSession, egress: list[EgressRecord]
+) -> None:
+    """End to end with the DB-backed router: an admin-added cloud API provider is the default."""
+    row = LlmProvider(
+        slug="acme-cloud",
+        name="Acme Cloud",
+        kind="api",
+        base_url="https://1.1.1.1/v1",
+        locality="cloud",
+        max_classification=Classification.internal,
+    )
+    row.models = [LlmModel(model="large", is_default=True)]
+    session.add(row)
+    await session.commit()
+    invalidate_router_cache()
+    try:
+        router = await load_router(session)
+        hr = await user(session, next(p for p in PERSONAS if p.email == "hr@acme.test"))
+        _ = [
+            e
+            async for e in ChatOrchestrator(session, OllamaEmbedder(), router).run(
+                hr, await effective_permissions(session, hr), "What is the salary band for a senior engineer?"
+            )
+        ]
+        assert [r.provider for r in egress] == ["ollama"]
+        assert egress[0].classification == Classification.confidential
+
+        egress.clear()
+        eng = await user(session, next(p for p in PERSONAS if p.email == "engineer@acme.test"))
+        _ = [
+            e
+            async for e in ChatOrchestrator(session, OllamaEmbedder(), router).run(
+                eng, await effective_permissions(session, eng), "When are we allowed to deploy to production?"
+            )
+        ]
+        assert [(r.provider, r.locality) for r in egress] == [("acme-cloud", "cloud")]
+        assert egress[0].classification == Classification.internal
+        body = str(egress[0].payload)
+        assert CANARY_BY_SLUG["engineering"] in body
+        assert CANARY_BY_SLUG["hr-confidential"] not in body and CANARY_BY_SLUG["finance"] not in body
+        assert egress[0].payload.get("stream_options") == {"include_usage": True}
+    finally:
+        await session.rollback()
+        await session.execute(delete(LlmProvider).where(LlmProvider.slug == "acme-cloud"))
+        await session.commit()
+        invalidate_router_cache()

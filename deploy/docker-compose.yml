@@ -22,6 +22,10 @@ x-app-env: &app-env
   ERAG_OPENROUTER_MODEL: ${ERAG_OPENROUTER_MODEL:-meta-llama/llama-3.3-8b-instruct:free}
   ERAG_OPENROUTER_ALLOW_PAID: ${ERAG_OPENROUTER_ALLOW_PAID:-false}
   ERAG_OPENROUTER_MONTHLY_BUDGET_USD: ${ERAG_OPENROUTER_MONTHLY_BUDGET_USD:-0.01}
+  # Admin-added providers (ADR 0024): monthly ceiling (USD) and daily request cap; the UI can only lower them.
+  ERAG_PROVIDER_MONTHLY_BUDGET_USD: ${ERAG_PROVIDER_MONTHLY_BUDGET_USD:-0.01}
+  ERAG_PROVIDER_DAILY_REQUEST_CAP: ${ERAG_PROVIDER_DAILY_REQUEST_CAP:-100}
+  ERAG_CLOUD_MAX_CLASSIFICATION: ${ERAG_CLOUD_MAX_CLASSIFICATION:-internal}
   ERAG_COOKIE_SECURE: ${ERAG_COOKIE_SECURE:-false}
   ERAG_BLOB_DIR: /data/blobs
   # Folder connectors may only read below these roots (mounted read-only below). ADR 0020.
