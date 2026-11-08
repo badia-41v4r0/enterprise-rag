@@ -55,6 +55,7 @@ The same question, "What is the salary band for a senior engineer?":
 6. **Treat every retrieved document and tool result as untrusted input.**
 7. **Audit every decision**: what was retrieved, what was dropped, where each request went, which tools were allowed or refused.
 8. **Prove it with tests that do not depend on model behaviour**: assert on chunk IDs, prompts and outgoing requests.
+9. **Keep credentials out of reach of the application surface.** Encrypt them at rest, never let an API return them, audit every use, give each one the least scope and the shortest life that works, and be able to rotate them without downtime (section 7.3).
 
 ## 5. Design decisions and trade-offs
 
@@ -103,8 +104,36 @@ These limits are inherent to the current design and are documented rather than h
 
 1. **Source permissions are not mirrored.** If a shared drive or site contains files restricted to some people, importing it into a container shows them to everyone who can read that container. Connectors must only point at content whose audience matches the container's. Mirroring source ACLs is a separate, larger feature.
 2. **Third-party MCP output cannot be filtered per user.** A tool usually fetches data from a system we do not control, with its own credentials, and we do not know that system's permissions. It is controlled at tool and role level and labeled; it cannot be scoped per user unless the server cooperates (as the reference servers do with the signed permission context).
-3. **The master key sits on the same host as the application.** The credential store protects against database and backup leaks, not against compromise of that host.
+3. **The master key sits on the same host as the application.** The credential store protects against database and backup leaks, not against compromise of that host. Section 7.3 explains exactly where the protection ends and how to reduce the damage if the server is compromised.
 4. **Compromise of an administrator account remains the largest risk.** Mitigations are optional MFA, step-up re-authentication for sensitive actions, the audit trail and the confinement of MCP containers; none of them stops a determined attacker who controls an administrator session for long.
+
+### 7.3 Protecting credentials, and where that protection ends
+
+Connectors, registered MCP servers and the cloud-model provider all need credentials, and a credential is the one thing in the system that is worth more to an attacker than any document. The reference implementation treats them as follows.
+
+**What the credential store does**
+
+- Each secret is encrypted with AES-256-GCM using a fresh nonce, and the secret's name is bound into the ciphertext as authenticated data, so a ciphertext copied onto another entry fails to decrypt. A wrong master key is detected instead of producing garbage.
+- The master key is **not in the database**. It comes from an environment variable or a key file with owner-only permissions, kept in a different volume from the data.
+- The interface is **write-only**: a secret can be created, replaced or deleted, but no endpoint and no screen ever returns it. The administrator sees names, versions, last use and which component references each one.
+- **Every use is audited** (which component, when, never the value), and a component can only obtain the secrets explicitly assigned to it.
+- Changing or adding a secret requires the administrator to re-authenticate (and to present a second factor if enabled), and the master key can be rotated, re-encrypting everything in one transaction.
+- The test suite asserts that no plaintext secret is present anywhere in the database, and the same absence was checked by hand in a full database dump, in the application logs and in the environment of the running container.
+
+**What it protects against:** a leaked database dump or backup, a SQL-level read of the tables, an accidentally exposed log, and a curious administrator (who cannot read a stored value back). In each case the attacker obtains ciphertext without the key.
+
+**Where the protection ends.** If an attacker gains control of the server itself, or can run code inside the application process, the store cannot help: the application must decrypt a secret in order to use it, and the master key it needs sits next to it. No software scheme can make a secret usable by a program and unusable by whoever controls that program. The achievable goal is to limit the damage, detect the intrusion and recover quickly. The measures below do that, and the table says what the reference implementation already does.
+
+| Measure | Effect if the server is compromised | In v0.2 |
+|---|---|---|
+| **Least-scope, capped credentials.** The cloud-model key can carry its own spending cap at the provider, and the application adds a hard monthly ceiling and accepts free models only by default. | The attacker cannot spend more than the cap and cannot reach paid models. | Yes |
+| **Rotation and a recovery runbook.** Revoke at the provider, rotate the master key, re-enter the secrets. | Shortens the window in which a stolen secret is useful. | Yes (`erag secrets rotate-master`) |
+| **Audit of secret use.** Every use is logged by component. | Makes abnormal use visible; it does not prevent it. | Yes (alerting is left to the operator) |
+| **Keep the master key off the host's disk.** Hold it in a hardware or cloud key manager (an HSM, a cloud KMS, or a vault service) and let the application ask it to unwrap secrets, or unlock it manually at boot so it exists only in memory. | Stealing the disk or a backup yields nothing; access can be revoked centrally and is logged outside the host. While the attacker controls the running application they can still ask for decryption, but only for as long as the intrusion lasts and visibly. | Target architecture |
+| **Separate the component that holds secrets from the one exposed to users.** A small credential broker, with its own user and container, performs the outbound calls that need a secret, so the web application never holds the key. | A bug in the web application, the most likely entry point, no longer yields the master key or the secrets. | Target architecture (the container runner already follows this pattern for the container engine) |
+| **Short-lived and per-user credentials.** Delegated OAuth and tokens that expire in minutes instead of one long-lived shared key. | A stolen token is soon useless and is limited to one user's access. | Target architecture |
+
+In short: the credential store makes the common failures (database and backup leaks, log exposure) harmless, and the surrounding measures bound the damage of the rare catastrophic one. A company with a high-risk threat model should adopt the "key manager" and "separate broker" rows before putting the system in production; the reference implementation is structured so that they can be added without changing how the rest of the system uses secrets.
 
 ## 8. How-to: install, configure, onboard, operate, harden
 
@@ -112,7 +141,7 @@ These limits are inherent to the current design and are documented rather than h
 2. **Configure:** set strong `ERAG_SECRET_KEY` and `ERAG_MCP_CONTEXT_SECRET`, `ERAG_ENV=prod`, `ERAG_SEED_DEMO=false`, HTTPS in front with `ERAG_COOKIE_SECURE=true`. Decide `ERAG_CLOUD_MAX_CLASSIFICATION` (default `internal`; `public` keeps internal data local).
 3. **Onboard a company:** create the first admin (`erag create-admin`), then containers that mirror your data-classification policy, roles that mirror your groups, grants, and upload documents. Mark the few sensitive documents inside broad containers as restricted.
 4. **Operate:** watch the audit log (denied tool calls, ACL re-check mismatches, refusals), the ingestion jobs, and model latency.
-5. **Harden:** review container classifications regularly, keep tools minimal, register only trusted MCP servers, rotate secrets.
+5. **Harden:** review container classifications regularly, keep tools minimal, register only trusted MCP servers, rotate secrets. Back up the credential store's master key separately from the database (losing it means re-entering every secret; storing both together defeats the encryption), put credentials behind the strictest scope and spending cap their provider offers, and for high-risk environments move the master key to a key manager and run the credential broker as a separate service (section 7.3).
 
 ## 9. Consulting and implementation
 
