@@ -139,4 +139,6 @@ def list_invoices(
 
 
 def main() -> None:
-    mcp.run("stdio")
+    from mcp_servers.serve import serve
+
+    serve(mcp)

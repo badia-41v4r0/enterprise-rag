@@ -86,6 +86,26 @@ Latency on the reference workstation (GTX 1660 SUPER 6 GB, 16 GB RAM): about 10 
 
 Multi-tenancy, SSO/OIDC, delegated OAuth to SaaS systems, external connectors, deny rules, hybrid search and reranking, a spend ceiling per cloud provider, long-lived MCP sessions, tamper-evident audit, horizontal scaling. See `ROADMAP.md`.
 
+### 7.1 Extensibility without losing control (v0.2)
+
+A reference pattern is only useful if a company can grow it without reopening the holes it closes. Version 0.2 adds four extension points, each built so that it cannot widen what a model or a tool may see:
+
+- **Delegated management.** A department head can maintain their own container (upload, replace, delete) without becoming an administrator. Delegation covers content only: who may read it and how it is classified stay with the administrator, and a manager cannot use the "restricted" flag or upload deduplication to read documents they were not given.
+- **Connectors.** Folders and web sites are synchronised into one container and inherit its access and classification, so retrieval, routing and the leakage tests apply to imported content unchanged. Outbound requests are limited to public addresses (an operator allowlist opens specific internal ones) and every redirect is re-checked.
+- **Registered MCP servers.** Any MCP server can be added, but it is treated like a cloud model: an external recipient with a clearance. Data above its clearance is never sent to it (the tool is not offered and calls are refused), and everything it returns is labeled, by default as confidential, so the rest of the conversation stays on local models. Tools are discovered, not trusted: they start disabled, are approved one by one for specific roles, can be constrained argument by argument, and are disabled automatically if the server changes them after approval.
+- **Isolated execution.** MCP servers packaged as approved images run in containers with no network at all, a read-only filesystem, no Linux capabilities and resource limits. The gateway reaches them through a Unix socket; they cannot reach the database, the application, the internet or each other. The application never holds the container engine's socket.
+
+Credentials for all of this live in an encrypted, write-only credential store whose every use is audited, and every action that creates a new data-access or code-execution path requires the administrator to re-authenticate (optionally with a second factor).
+
+### 7.2 Known boundaries
+
+These limits are inherent to the current design and are documented rather than hidden:
+
+1. **Source permissions are not mirrored.** If a shared drive or site contains files restricted to some people, importing it into a container shows them to everyone who can read that container. Connectors must only point at content whose audience matches the container's. Mirroring source ACLs is a separate, larger feature.
+2. **Third-party MCP output cannot be filtered per user.** A tool usually fetches data from a system we do not control, with its own credentials, and we do not know that system's permissions. It is controlled at tool and role level and labeled; it cannot be scoped per user unless the server cooperates (as the reference servers do with the signed permission context).
+3. **The master key sits on the same host as the application.** The credential store protects against database and backup leaks, not against compromise of that host.
+4. **Compromise of an administrator account remains the largest risk.** Mitigations are optional MFA, step-up re-authentication for sensitive actions, the audit trail and the confinement of MCP containers; none of them stops a determined attacker who controls an administrator session for long.
+
 ## 8. How-to: install, configure, onboard, operate, harden
 
 1. **Install:** Docker Compose and Ollama with `bge-m3` and a local chat model; `docker compose up`. See the README.

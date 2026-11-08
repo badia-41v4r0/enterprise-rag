@@ -51,10 +51,17 @@ class ToolOutcome:
 class ToolRuntime(Protocol):
     """Implemented by the MCP layer (app.mcp.tool_loop)."""
 
-    async def visible_tools(self, db: AsyncSession, perms: EffectivePermissions) -> list[ToolSpec]: ...
+    async def visible_tools(
+        self, db: AsyncSession, perms: EffectivePermissions, classification: Classification | None = None
+    ) -> list[ToolSpec]: ...
 
     async def execute(
-        self, db: AsyncSession, user: User, perms: EffectivePermissions, call: ToolCall
+        self,
+        db: AsyncSession,
+        user: User,
+        perms: EffectivePermissions,
+        call: ToolCall,
+        classification: Classification = Classification.public,
     ) -> ToolOutcome: ...
 
 
@@ -152,9 +159,10 @@ class ChatOrchestrator:
         )
         context = build_context(retrieval.hits, self.settings.context_token_budget)
         history, history_cls, withheld = await self._history(perms, conv)
-        tools = await self.tools.visible_tools(self.db, perms) if self.tools else []
-
         classification = Classification.max(context.classification, history_cls)
+        # Tools whose server is not cleared for this classification are not offered (ADR 0021).
+        tools = await self.tools.visible_tools(self.db, perms, classification) if self.tools else []
+
         provider: LLMProvider | None = None
         refusal: str | None = None
         if context.items or tools:
@@ -221,7 +229,11 @@ class ChatOrchestrator:
                     step_text = ""
                     if provider.locality == "cloud":
                         # Hard monthly ceiling, checked before anything leaves the process (ADR 0016).
-                        await ensure_budget(self.db, provider.provider, self.settings.openrouter_monthly_budget_usd)
+                        await ensure_budget(
+                            self.db,
+                            provider.provider,
+                            self.router.budgets.get(provider.provider, self.settings.openrouter_monthly_budget_usd),
+                        )
                     await self._audit_egress(user, provider, classification, prep, iteration)
                     models_used.append(provider.model_id)
                     usage: dict[str, Any] = {}
@@ -250,7 +262,7 @@ class ChatOrchestrator:
                     )
                     for call in calls:
                         yield {"type": "tool_call", "id": call.id, "name": call.name, "arguments": call.arguments}
-                        outcome = await self.tools.execute(self.db, user, perms, call)
+                        outcome = await self.tools.execute(self.db, user, perms, call, classification)
                         await self.db.commit()
                         tool_log.append({"name": call.name, "ok": outcome.ok, **outcome.summary})
                         yield {

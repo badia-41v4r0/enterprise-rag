@@ -5,14 +5,14 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="ERAG_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="ERAG_", extra="ignore", enable_decoding=False)
 
     env: str = "dev"
     log_level: str = "INFO"
@@ -24,6 +24,16 @@ class Settings(BaseSettings):
     # Secrets. The defaults are only usable in dev; the app refuses to start with them in prod.
     secret_key: SecretStr = SecretStr("dev-insecure-secret-change-me")
     mcp_context_secret: SecretStr = SecretStr("dev-insecure-mcp-secret-change-me")
+    # Master key of the credential store (ADR 0018): 32 random bytes, base64. Generate it with
+    # `erag secrets init`. Either the value or a file holding it; required in prod. In dev, without
+    # either, a key derived from ERAG_SECRET_KEY is used (insecure, for local demos only).
+    secrets_key: SecretStr | None = None
+    secrets_key_file: Path | None = None
+
+    # MFA and step-up re-authentication (ADR 0019)
+    mfa_issuer: str = "EnterpriseRAG"
+    step_up_seconds: int = 300
+    mfa_max_attempts: int = 5
 
     # Sessions
     session_ttl_hours: int = 12
@@ -74,6 +84,37 @@ class Settings(BaseSettings):
     mcp_files_root: Path = REPO_ROOT / "demo" / "acme" / "docs"
     mcp_tickets_db: Path = REPO_ROOT / "data" / "tickets.sqlite3"
 
+    # Connectors (ADR 0020). Folder connectors may only read below these roots (comma-separated or a
+    # JSON list); mount them read-only into the app and the worker.
+    connector_roots: list[Path] = Field(default_factory=list)
+    connector_max_items: int = 1000
+    connector_max_item_mb: int = 25
+    connector_scheduler_seconds: float = 30.0
+    # Outbound destinations that are not public addresses are refused unless listed here
+    # (`host`, `host:port` or a CIDR), for web connectors and remote MCP servers alike.
+    ssrf_allowlist: list[str] = Field(default_factory=list)
+
+    @field_validator(
+        "connector_roots", "ssrf_allowlist", "allowed_hosts", "runner_images", "runner_mount_roots", mode="before"
+    )
+    @classmethod
+    def _split_csv(cls, v: object) -> object:
+        if isinstance(v, str) and not v.strip().startswith("["):
+            return [x.strip() for x in v.split(",") if x.strip()]
+        return v
+
+    # Isolated MCP runner (ADR 0022). The app talks to the runner, never to the container engine.
+    runner_url: str | None = None  # e.g. http://127.0.0.1:8790 ; unset = runner disabled
+    runner_token: SecretStr | None = None  # shared secret between app and runner
+    # Runner side: images it may start, pinned by image ID ("name=sha256:...", comma-separated).
+    runner_images: list[str] = Field(default_factory=list)
+    runner_socket_dir: Path = Path("/tmp/erag-runner-sockets")  # noqa: S108 - per-MCP subdirs, see ADR 0022
+    runner_mount_roots: list[Path] = Field(default_factory=list)  # host paths MCPs may mount read-only
+    runner_docker_socket: Path = Path("/var/run/docker.sock")
+    runner_idle_minutes: int = 15
+    runner_max_cpus: float = 2.0
+    runner_max_memory_mb: int = 2048
+
     # Rate limiting (requests per minute)
     chat_rate_limit_per_minute: int = 20
     login_rate_limit_per_minute: int = 10
@@ -99,6 +140,14 @@ class Settings(BaseSettings):
             value = getattr(self, name).get_secret_value()
             if value.startswith("dev-insecure") or len(value) < 32:
                 raise RuntimeError(f"ERAG_{name.upper()} must be set to a strong value in prod")
+        if self.runner_url and (
+            self.runner_token is None
+            or self.runner_token.get_secret_value().startswith("dev-insecure")
+            or len(self.runner_token.get_secret_value()) < 32
+        ):
+            raise RuntimeError("ERAG_RUNNER_TOKEN must be set to a strong value in prod when the runner is used")
+        if self.secrets_key is None and self.secrets_key_file is None:
+            raise RuntimeError("ERAG_SECRETS_KEY or ERAG_SECRETS_KEY_FILE is required in prod (erag secrets init)")
 
 
 @lru_cache

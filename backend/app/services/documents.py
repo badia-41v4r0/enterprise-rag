@@ -44,6 +44,8 @@ async def upload_document(
     restricted: bool | None = None,
     can_see: Callable[[uuid.UUID, bool], bool] | None = None,
     document: Document | None = None,
+    dedupe: bool = True,
+    audit_details: dict[str, str] | None = None,
 ) -> UploadResult:
     """Store a file and queue it for ingestion.
 
@@ -67,7 +69,7 @@ async def upload_document(
             )
         )
     ).all()
-    dup = next((d for d, r in rows if can_see is None or can_see(d, r)), None)
+    dup = next((d for d, r in rows if can_see is None or can_see(d, r)), None) if dedupe else None
     if dup is not None:
         audit(
             db,
@@ -115,7 +117,13 @@ async def upload_document(
         "document.upload",
         user_id=user_id,
         resource=f"document:{doc.id}",
-        details={"version_id": str(version.id), "sha256": digest, "filename": filename, "bytes": len(data)},
+        details={
+            "version_id": str(version.id),
+            "sha256": digest,
+            "filename": filename,
+            "bytes": len(data),
+            **(audit_details or {}),
+        },
     )
     await db.commit()
     return UploadResult("queued", doc.id, version.id, digest)

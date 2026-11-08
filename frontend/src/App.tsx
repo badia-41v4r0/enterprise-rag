@@ -1,15 +1,18 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogOut, MessageSquare, Shield } from "lucide-react";
+import { FolderUp, LogOut, MessageSquare, Shield, UserCog } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api, setCsrf, type Me } from "@/lib/api";
+import { StepUpDialog } from "@/components/StepUp";
+import AccountPage from "@/pages/Account";
 import AdminPage from "@/pages/Admin";
 import ChatPage from "@/pages/Chat";
+import ContentPage from "@/pages/Content";
 import LoginPage from "@/pages/Login";
 
 export default function App() {
   const qc = useQueryClient();
-  const [view, setView] = useState<"chat" | "admin">("chat");
+  const [view, setView] = useState<"chat" | "content" | "admin" | "account">("chat");
   const me = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
@@ -27,10 +30,14 @@ export default function App() {
   if (!me.data) return <LoginPage onLogin={(m) => qc.setQueryData(["me"], m)} />;
 
   const logout = async () => {
+    await qc.cancelQueries(); // an in-flight /me must not resurrect the session in the UI
     await api("/api/auth/logout", { method: "POST" });
+    await qc.cancelQueries();
     setCsrf("");
-    qc.clear();
+    // Keep the "me" query object (App observes it) and drop every other cached response.
     qc.setQueryData(["me"], null);
+    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
+    setView("chat");
   };
 
   return (
@@ -42,6 +49,11 @@ export default function App() {
           <Button variant={view === "chat" ? "outline" : "ghost"} size="sm" onClick={() => setView("chat")}>
             <MessageSquare className="h-4 w-4" /> Chat
           </Button>
+          {(me.data.can_manage_content || me.data.is_admin) && (
+            <Button variant={view === "content" ? "outline" : "ghost"} size="sm" onClick={() => setView("content")}>
+              <FolderUp className="h-4 w-4" /> Content
+            </Button>
+          )}
           {me.data.is_admin && (
             <Button variant={view === "admin" ? "outline" : "ghost"} size="sm" onClick={() => setView("admin")}>
               <Shield className="h-4 w-4" /> Admin
@@ -53,12 +65,26 @@ export default function App() {
             {me.data.display_name || me.data.email}{" "}
             <span className="text-xs text-muted-foreground">({me.data.roles.join(", ") || "no roles"})</span>
           </span>
+          <Button variant={view === "account" ? "outline" : "ghost"} size="icon" onClick={() => setView("account")} title="Account" aria-label="Account">
+            <UserCog className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" size="icon" onClick={logout} title="Log out" aria-label="Log out">
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </header>
-      <main className="min-h-0 flex-1">{view === "chat" ? <ChatPage /> : <AdminPage />}</main>
+      <main className="min-h-0 flex-1">
+        {view === "chat" ? (
+          <ChatPage />
+        ) : view === "content" ? (
+          <ContentPage />
+        ) : view === "account" ? (
+          <AccountPage me={me.data} />
+        ) : (
+          <AdminPage />
+        )}
+      </main>
+      <StepUpDialog mfa={me.data.mfa_enabled} />
     </div>
   );
 }

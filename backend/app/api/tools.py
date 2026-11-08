@@ -93,6 +93,10 @@ async def patch_tool(
     tool = await db.get(Tool, tool_id)
     if tool is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Tool not found")
+    server = await db.get(McpServer, tool.server_id)
+    if server is not None and not server.builtin:
+        # Registered servers go through review (approved hash, step-up): /api/admin/registry/tools/{id}.
+        raise HTTPException(status.HTTP_409_CONFLICT, "Review tools of registered servers in the MCP registry")
     changes = body.model_dump(exclude_none=True)
     for k, v in changes.items():
         setattr(tool, k, v)

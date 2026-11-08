@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -113,6 +114,14 @@ class User(TimestampMixin, Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # MFA (ADR 0019). The TOTP secret is stored encrypted (AAD = "mfa:<user id>"). While enrolling,
+    # the secret is stored with mfa_enabled = False and only becomes active after a valid code.
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    mfa_secret_ct: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    mfa_secret_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    mfa_key_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Highest TOTP time step accepted so far: a code can never be used twice.
+    mfa_last_step: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
 
     roles: Mapped[list[Role]] = relationship(secondary="user_roles", lazy="selectin", back_populates="users")
 
@@ -124,6 +133,19 @@ class Session(TimestampMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     csrf_token: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Password accepted, second factor still missing: the session grants nothing but /mfa/verify.
+    mfa_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    mfa_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Last time the user proved who they are (login or step-up); sensitive actions need it recent.
+    reauth_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RecoveryCode(Base):
+    __tablename__ = "mfa_recovery_codes"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))  # HMAC-SHA256, never the code
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Role(TimestampMixin, Base):
@@ -219,6 +241,12 @@ class Grant(TimestampMixin, Base):
 # --- Tools (MCP) --------------------------------------------------------------------------------
 
 
+class ServerStatus(enum.StrEnum):
+    pending = "pending"  # registered, never offered to a model
+    approved = "approved"
+    disabled = "disabled"
+
+
 class McpServer(TimestampMixin, Base):
     __tablename__ = "mcp_servers"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
@@ -226,6 +254,28 @@ class McpServer(TimestampMixin, Base):
     # For stdio servers: a python module run as `python -m <command>`; see ADR 0010.
     command: Mapped[str] = mapped_column(String(500))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # --- Registry of remote/isolated servers (R4/R5, ADR 0021) ---
+    builtin: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    transport: Mapped[str] = mapped_column(String(20), default="stdio", server_default="stdio")  # stdio|http|runner
+    url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    status: Mapped[ServerStatus] = mapped_column(
+        _enum(ServerStatus, "mcp_server_status"), default=ServerStatus.approved, server_default="approved"
+    )
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    auth_secret: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Clearance: highest classification that may be SENT to it (arguments), and the label put on
+    # everything it RETURNS. Builtin servers are scoped by the signed context (ADR 0010).
+    max_classification: Mapped[Classification] = mapped_column(
+        _enum(Classification, "classification"), default=Classification.confidential, server_default="confidential"
+    )
+    result_classification: Mapped[Classification] = mapped_column(
+        _enum(Classification, "classification"), default=Classification.public, server_default="public"
+    )
+    send_permission_context: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    limits: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    runtime: Mapped[dict[str, Any]] = mapped_column(default=dict)  # R5: image, resources, env, secrets, mounts
+    last_discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class Tool(TimestampMixin, Base):
@@ -238,6 +288,13 @@ class Tool(TimestampMixin, Base):
     input_schema: Mapped[dict[str, Any]] = mapped_column("schema", default=dict)
     classification: Mapped[Classification] = mapped_column(_enum(Classification, "classification"))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Rug-pull defence (ADR 0021): hash of name + description + schema as discovered, and the hash the
+    # admin approved. A mismatch at call time disables the tool and flags it for review.
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    approved_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    arg_constraints: Mapped[dict[str, Any]] = mapped_column(default=dict)
 
 
 # --- Chat ---------------------------------------------------------------------------------------
@@ -284,6 +341,87 @@ class ProviderSpend(Base):
     month: Mapped[str] = mapped_column(String(7), primary_key=True)  # "YYYY-MM"
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     requests: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Secret(TimestampMixin, Base):
+    """Encrypted credential (ADR 0018). The value is write-only through the API."""
+
+    __tablename__ = "secrets"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    key_id: Mapped[str] = mapped_column(String(16))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
+class AppSetting(Base):
+    """Runtime settings editable from the admin UI (e.g. the OpenRouter provider)."""
+
+    __tablename__ = "app_settings"
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+# --- Connectors (R3, ADR 0020) --------------------------------------------------------------------
+
+
+class Connector(TimestampMixin, Base):
+    """An information source synced into ONE container; its documents inherit that container's access."""
+
+    __tablename__ = "connectors"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    kind: Mapped[str] = mapped_column(String(50))
+    container_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("containers.id", ondelete="CASCADE"), index=True)
+    config: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    secret_refs: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"names": [...]} assigned secrets
+    schedule_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(20), default="idle")
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    @property
+    def secret_names(self) -> list[str]:
+        return [str(n) for n in (self.secret_refs or {}).get("names", [])]
+
+
+class ConnectorItem(Base):
+    __tablename__ = "connector_items"
+    __table_args__ = (UniqueConstraint("connector_id", "external_id", name="uq_connector_item"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    connector_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("connectors.id", ondelete="CASCADE"), index=True)
+    external_id: Mapped[str] = mapped_column(String(2000))
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    version_hint: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SyncRun(TimestampMixin, Base):
+    __tablename__ = "sync_runs"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    connector_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("connectors.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued|running|done|failed
+    dry_run: Mapped[bool] = mapped_column(Boolean, default=False)
+    triggered_by: Mapped[str] = mapped_column(String(100), default="")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    counts: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    errors: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"items": [{"item": ..., "error": ...}]}
 
 
 class AuditLog(Base):

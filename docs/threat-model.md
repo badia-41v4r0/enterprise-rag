@@ -1,6 +1,6 @@
-# Threat model (MVP)
+# Threat model
 
-Scope: a single-tenant installation with one administrator, employees with different roles, local and optional cloud models, and MCP tools. The goal is that **every piece of data a model sees, and every answer a user receives, was already authorized for that user**.
+Scope: a single-tenant installation with administrators, delegated content managers, employees with different roles, local and optional cloud models, and MCP tools. The goal is that **every piece of data a model sees, and every answer a user receives, was already authorized for that user**.
 
 ## Assets
 
@@ -35,6 +35,19 @@ Document contents (by classification), tool data (HR cases, invoices, tickets), 
 | T15 | Admin silently reads everything | Admin is a management privilege; data access only via audited grants | ADR 0009, citation-endpoint test |
 | T16 | Weak secrets in production | App refuses to start in `prod` with dev secrets | `test_prod_refuses_dev_secrets` |
 | T17 | Path traversal via uploads or tools | Filenames reduced to basenames; blob keys are hashes; `read_file` rejects `..`/absolute paths and checks the root | upload and `test_file_scope` tests |
+| T18 | A content manager or contributor escalates (changes grants, classification, other containers, reads restricted content by un-restricting it or through upload deduplication) | Grants/classification/roles stay admin-only; `contribute`/`manage` scoped to one container; lifting `restricted` requires read access; dedupe ignores unreadable restricted documents (ADR 0017) | `tests/security/test_delegation.py` |
+| T19 | Database dump or backup leaks credentials (OpenRouter key, connector and MCP tokens, MFA secrets) | AES-256-GCM per value, name/owner bound as associated data, master key outside the database; write-only API; every use audited with its consumer (ADR 0018) | `test_secret_api_is_write_only_audited_and_never_stored_in_clear`, `test_cipher_binds_name_and_key`, `test_master_key_rotation` |
+| T20 | Stolen password; hijacked admin session used for sensitive changes | Optional TOTP with replay protection, attempt limits and single-use recovery codes; pending sessions grant nothing; step-up (password or TOTP within 5 min) for secrets, providers, admin promotion and MFA resets (ADR 0019) | `test_mfa_enrolment_two_step_login_replay_and_recovery`, `test_mfa_attempts_are_limited_and_step_up_needs_totp`, `test_sensitive_actions_need_recent_reauthentication` |
+| T21 | A folder connector reads outside its folder (`..`, absolute paths, symlinks, races) | Folder must resolve inside `ERAG_CONNECTOR_ROOTS` (read-only mount); symlinks never followed; `O_NOFOLLOW` open and re-check (ADR 0020) | `test_folder_must_resolve_inside_an_allowed_root`, `test_folder_sync_skips_symlinks_and_handles_update_delete_and_resync` |
+| T22 | Server-side request forgery through a web connector (cloud metadata, loopback services, private network, redirects, DNS rebinding) | Public addresses only unless operator-allowlisted; connection pinned to the checked IP; each redirect re-checked; credentials dropped across hosts; body cap (ADR 0020) | `test_ssrf_destinations_are_refused`, `test_ssrf_allowlist_is_exact`, `test_web_connector_crawls_allowlisted_server_and_blocks_redirect_escape` |
+| T23 | Connector content reaches people the source system would not show it to | Documents inherit the target container's access; warning in the UI and in the dry run. **Not solved:** source ACLs are not mirrored (known boundary) | `test_imported_documents_answer_only_for_readers_of_the_container` |
+| T24 | Confidential conversation data sent to a third-party MCP server as tool arguments | Per-server clearance (`max_classification`, default public): tools above the conversation's classification are not offered and calls are refused (ADR 0021) | `test_clearance_refuses_calls_above_the_server_ceiling` |
+| T25 | Third-party tool output treated as low-sensitivity | Every result labeled (default confidential) and validated; routing follows the label | `test_register_approve_two_tools_for_one_role` |
+| T26 | Rug pull / tool poisoning (a server changes a tool after approval, or ships instructions in descriptions) | Tools start disabled; approval pins a hash; live definition checked on every call; changes disable and flag the tool; descriptions sanitized and withheld when instruction-like | `test_rug_pull_disables_the_tool_until_re_approved` |
+| T27 | Model abuses a third-party tool's arguments | Strict schema, admin constraints (enum, pattern, bounds, forced values) enforced by the gateway; per-user and per-tool rate limits; result size cap | `test_argument_constraints_are_enforced` |
+| T28 | Registering an internal URL as an "MCP server" (SSRF) | Same guard as connectors; step-up to register | `test_registration_needs_a_safe_url_and_step_up` |
+| T29 | A malicious or compromised MCP server attacks the infrastructure (database, app, other MCPs, internet, host) | Isolated runner: approved images pinned by ID, network `none` (Unix socket only), read-only root, no capabilities, no-new-privileges, seccomp, non-root, resource limits; the app has no Docker socket (ADR 0022) | `test_mcp_in_the_runner_is_confined_and_callable_through_the_gateway`, `test_runner_api_needs_its_token_and_allowlisted_pinned_images` |
+| T30 | One MCP obtains another MCP's credentials | Secrets resolved per server from the vault (assigned only), injected only into that container, redacted from logs | same test (secret present in A, absent in B), `test_log_redaction` |
 
 ## Residual risks (honest limits)
 
@@ -45,5 +58,9 @@ Document contents (by classification), tool data (HR cases, invoices, tickets), 
 - **Cloud egress of internal data is allowed by default** (`ERAG_CLOUD_MAX_CLASSIFICATION=internal`). Set it to `public` to keep internal data local too.
 - **In-process rate limiters** reset on restart and do not work across replicas (single-instance MVP).
 - **Audit log is in the same database** and writable by the app; no tamper evidence.
-- **MCP servers run as subprocesses of the app** with the app's OS user; a malicious server binary would not be contained. Only the bundled reference servers are registered.
-- **The OpenRouter spend ceiling is not enforced** yet (no key available during development).
+- **Third-party MCP output cannot be filtered per user**: we do not know the ACLs of the system behind it. It is access-controlled per tool and role, labeled, and kept on cleared models, nothing more.
+- **Container isolation is not a VM.** A kernel or engine escape from an MCP container would reach the host; the runner and its Docker socket are root-equivalent. No allowlisted egress for runner MCPs (network `none` only); Podman is untested.
+- **Built-in reference MCP servers run as subprocesses of the app** with the app's OS user. Remote servers run wherever their operator runs them; containment is only provided by the isolated runner (R5).
+- **The credential store master key sits on the same host as the app.** It protects against database and backup leaks, not against compromise of that host. Losing it loses the secrets and MFA enrolments.
+- **Connectors do not mirror source permissions.** A folder or site whose audience is narrower than the container's leaks to every reader of that container. Point connectors only at content whose audience matches the container.
+- **MFA is optional**, also for admins. Admin account compromise remains the largest risk; enable MFA for admins.

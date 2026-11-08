@@ -60,6 +60,8 @@ CONTAINERS = [
 ROLES: dict[str, dict[str, Action]] = {
     "Employee": {"general-handbook": Action.read, "product-docs": Action.read},
     "HR": {"hr-confidential": Action.manage},
+    # Delegated content work without access to restricted HR documents (ADR 0017).
+    "HR Contributor": {"hr-confidential": Action.contribute},
     "Finance": {"finance": Action.manage},
     "Engineering": {"engineering": Action.manage},
     "Executive": {c.slug: Action.read for c in CONTAINERS},
@@ -90,6 +92,7 @@ PERSONAS = [
     Persona("finance@acme.test", "Felix Finance Analyst", ["Employee", "Finance"]),
     Persona("engineer@acme.test", "Elena Engineer", ["Employee", "Engineering"]),
     Persona("newhire@acme.test", "Nico New Hire", ["Employee"]),
+    Persona("hr.assistant@acme.test", "Hugo HR Assistant", ["Employee", "HR Contributor"]),
     Persona("exec@acme.test", "Eva Executive", ["Employee", "Executive"]),
 ]
 
@@ -216,6 +219,92 @@ async def seed_tool_grants(db: AsyncSession) -> int:
     return n
 
 
+CONNECTOR_SOURCE = Path(__file__).resolve().parent / "connector-source"
+WIKI_CONNECTOR = "Engineering wiki (folder)"
+
+
+async def seed_connector(db: AsyncSession) -> str:
+    """A folder connector over demo/acme/connector-source/engineering-wiki into Engineering, when
+    that folder is reachable below ERAG_CONNECTOR_ROOTS (it is in Docker Compose). Queues a first sync."""
+    from app.connectors.base import ConnectorError
+    from app.connectors.folder import resolve_folder
+    from app.connectors.sync import enqueue
+    from app.core.config import get_settings
+    from app.models import Connector
+
+    roots = list(get_settings().connector_roots)
+    path = None
+    for candidate in ("acme/engineering-wiki", str(CONNECTOR_SOURCE / "engineering-wiki")):
+        try:
+            resolve_folder(candidate, roots)
+            path = candidate
+            break
+        except ConnectorError:
+            continue
+    if path is None:
+        return "skipped (folder not below ERAG_CONNECTOR_ROOTS)"
+    existing = await db.scalar(select(Connector).where(Connector.name == WIKI_CONNECTOR))
+    if existing is not None:
+        return "exists"
+    eng = await db.scalar(select(Container).where(Container.slug == "engineering"))
+    assert eng is not None
+    c = Connector(
+        name=WIKI_CONNECTOR,
+        kind="folder",
+        container_id=eng.id,
+        config={"path": path, "recursive": True, "max_items": 500},
+        schedule_minutes=60,
+        enabled=True,
+    )
+    db.add(c)
+    await db.flush()
+    await enqueue(db, c, "seed")
+    await db.commit()
+    return "created, first sync queued"
+
+
+async def seed_office_mcp(db: AsyncSession) -> str:
+    """Register the demo office MCP server as PENDING (tools discovered, all disabled), when
+    ERAG_DEMO_OFFICE_MCP_URL is set. Approval, tool enabling and role grants are left to the admin."""
+    import asyncio
+    import os
+
+    from app.mcp.review import discover
+    from app.models import Classification as Cls
+    from app.models import McpServer, ServerStatus
+
+    url = os.environ.get("ERAG_DEMO_OFFICE_MCP_URL")
+    if not url:
+        return "skipped"
+    if await db.scalar(select(McpServer).where(McpServer.name == "acme-office")) is not None:
+        return "exists"
+    server = McpServer(
+        name="acme-office",
+        command="",
+        builtin=False,
+        transport="http",
+        url=url,
+        description="ACME office information (demo third-party MCP server)",
+        status=ServerStatus.pending,
+        max_classification=Cls.public,
+        result_classification=Cls.confidential,
+        send_permission_context=False,
+        limits={"timeout_seconds": 30, "rate_limit_per_minute": 30, "max_result_bytes": 16000},
+    )
+    db.add(server)
+    await db.flush()
+    for attempt in range(10):
+        try:
+            found = await discover(db, server)
+            await db.commit()
+            return f"registered as pending ({len(found.new)} tools, all disabled)"
+        except Exception as exc:  # noqa: BLE001 - the demo server may still be starting
+            last = exc
+            await asyncio.sleep(2 + attempt)
+    await db.rollback()
+    return f"not registered ({type(last).__name__})"
+
+
 async def seed(password: str, ingest: bool = True) -> None:
     from app.ingestion.worker import drain
 
@@ -225,8 +314,11 @@ async def seed(password: str, ingest: bool = True) -> None:
         tools = 0
         await sync_registry(db)
         tools = await seed_tool_grants(db)
+        connector = await seed_connector(db)
+        office = await seed_office_mcp(db)
     processed = await drain() if ingest else 0
     print(
         f"ACME seeded: {len(containers)} containers, {len(PERSONAS)} personas, "
-        f"{queued} documents queued, {processed} processed, {tools} tool grants."
+        f"{queued} documents queued, {processed} processed, {tools} tool grants, connector: {connector}, "
+        f"office MCP: {office}."
     )

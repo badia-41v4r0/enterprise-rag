@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import re
 import uuid
 from datetime import datetime
@@ -9,11 +10,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import AuthContext, require_admin
+from app.api.deps import STEP_UP_REQUIRED, AuthContext, recently_authenticated, require_admin, require_step_up
+from app.authz.policy import effective_permissions
 from app.core.db import get_db
 from app.core.security import hash_password
 from app.models import (
@@ -23,6 +25,7 @@ from app.models import (
     Container,
     Document,
     Grant,
+    McpServer,
     ResourceType,
     Role,
     Session,
@@ -30,6 +33,7 @@ from app.models import (
     User,
     UserRole,
 )
+from app.services import mfa
 from app.services.audit import audit
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -44,6 +48,7 @@ class UserOut(BaseModel):
     is_admin: bool
     is_active: bool
     role_ids: list[uuid.UUID]
+    mfa_enabled: bool = False
 
 
 class UserIn(BaseModel):
@@ -62,15 +67,87 @@ class UserPatch(BaseModel):
     role_ids: list[uuid.UUID] | None = None
 
 
+class RoleTemplate(enum.StrEnum):
+    """Presets for container grants (ADR 0017)."""
+
+    reader = "reader"
+    contributor = "contributor"
+    manager = "manager"
+
+
+TEMPLATE_ACTION = {
+    RoleTemplate.reader: Action.read,
+    RoleTemplate.contributor: Action.contribute,
+    RoleTemplate.manager: Action.manage,
+}
+
+
 class RoleIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = ""
+    template: RoleTemplate | None = None
+    container_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class RolePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = None
+
+
+class RoleClone(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class TemplateApply(BaseModel):
+    template: RoleTemplate
+    container_ids: list[uuid.UUID] = Field(min_length=1)
+
+
+class Members(BaseModel):
+    add: list[uuid.UUID] = Field(default_factory=list)
+    remove: list[uuid.UUID] = Field(default_factory=list)
+
+
+class AccessLevel(enum.StrEnum):
+    none = "none"
+    read = "read"
+    contribute = "contribute"
+    manage = "manage"
+
+
+class AccessIn(BaseModel):
+    level: AccessLevel
 
 
 class RoleOut(BaseModel):
     id: uuid.UUID
     name: str
     description: str
+    user_count: int = 0
+    grant_count: int = 0
+
+
+class EffectiveContainer(BaseModel):
+    id: uuid.UUID
+    name: str
+    classification: Classification
+    level: AccessLevel
+
+
+class EffectiveDocument(BaseModel):
+    id: uuid.UUID
+    title: str
+    container: str
+
+
+class EffectiveOut(BaseModel):
+    user_id: uuid.UUID
+    is_admin: bool
+    is_active: bool
+    roles: list[str]
+    containers: list[EffectiveContainer]
+    restricted_documents: list[EffectiveDocument]
+    tools: list[str]
 
 
 class ContainerIn(BaseModel):
@@ -116,7 +193,7 @@ class AuditOut(BaseModel):
 
 
 VALID_GRANTS = {
-    ResourceType.container: {Action.read, Action.manage},
+    ResourceType.container: {Action.read, Action.contribute, Action.manage},
     ResourceType.document: {Action.read},
     ResourceType.tool: {Action.execute},
 }
@@ -130,6 +207,7 @@ def _user_out(u: User) -> UserOut:
         is_admin=u.is_admin,
         is_active=u.is_active,
         role_ids=sorted((r.id for r in u.roles), key=str),
+        mfa_enabled=u.mfa_enabled,
     )
 
 
@@ -151,6 +229,11 @@ async def _set_roles(db: AsyncSession, user_id: uuid.UUID, role_ids: list[uuid.U
         db.add(UserRole(user_id=user_id, role_id=rid))
 
 
+def _require_recent_auth(auth: AuthContext) -> None:
+    if not recently_authenticated(auth.session):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, STEP_UP_REQUIRED)
+
+
 # --- Users ----------------------------------------------------------------------------------------
 
 
@@ -164,6 +247,8 @@ async def list_users(_: AuthContext = Depends(require_admin), db: AsyncSession =
 async def create_user(
     body: UserIn, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
 ) -> UserOut:
+    if body.is_admin:
+        _require_recent_auth(auth)
     user = User(
         email=body.email.strip().lower(),
         display_name=body.display_name,
@@ -197,6 +282,8 @@ async def update_user(
         user.password_hash = hash_password(body.password)
         changes["password"] = "changed"  # noqa: S105 - audit marker, not a secret
     if body.is_admin is not None:
+        if body.is_admin and not user.is_admin:
+            _require_recent_auth(auth)  # promoting to admin is a step-up action (ADR 0019)
         if user.id == auth.user.id and not body.is_admin:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot remove your own admin flag")
         user.is_admin = body.is_admin
@@ -217,13 +304,70 @@ async def update_user(
     return _user_out(user)
 
 
+@router.post("/users/{user_id}/reset-mfa", status_code=204)
+async def reset_user_mfa(
+    user_id: uuid.UUID, auth: AuthContext = Depends(require_step_up), db: AsyncSession = Depends(get_db)
+) -> None:
+    """Remove a user's second factor (lost device). Their sessions are ended."""
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    await mfa.reset(db, user)
+    await db.execute(delete(Session).where(Session.user_id == user.id))
+    audit(db, "admin.user.reset_mfa", user_id=auth.user.id, resource=f"user:{user.id}")
+    await db.commit()
+
+
 # --- Roles ----------------------------------------------------------------------------------------
+
+
+async def _role_out(db: AsyncSession, r: Role) -> RoleOut:
+    users = await db.scalar(select(func.count()).select_from(UserRole).where(UserRole.role_id == r.id))
+    grants = await db.scalar(select(func.count()).select_from(Grant).where(Grant.role_id == r.id))
+    return RoleOut(id=r.id, name=r.name, description=r.description, user_count=users or 0, grant_count=grants or 0)
+
+
+async def _role_or_404(db: AsyncSession, role_id: uuid.UUID) -> Role:
+    role = await db.get(Role, role_id)
+    if role is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Role not found")
+    return role
+
+
+async def _set_container_access(
+    db: AsyncSession, role_id: uuid.UUID, container_id: uuid.UUID, level: AccessLevel
+) -> None:
+    """Replace a role's container grants on one container by a single level (or none)."""
+    await db.execute(
+        delete(Grant).where(
+            Grant.role_id == role_id,
+            Grant.resource_type == ResourceType.container,
+            Grant.resource_id == container_id,
+        )
+    )
+    if level != AccessLevel.none:
+        db.add(
+            Grant(
+                role_id=role_id,
+                resource_type=ResourceType.container,
+                resource_id=container_id,
+                action=Action(level.value),
+            )
+        )
+
+
+async def _apply_template(db: AsyncSession, role: Role, template: RoleTemplate, container_ids: list[uuid.UUID]) -> None:
+    found = set((await db.scalars(select(Container.id).where(Container.id.in_(container_ids)))).all())
+    if found != set(container_ids):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Unknown container id")
+    for cid in set(container_ids):
+        await _set_container_access(db, role.id, cid, AccessLevel(TEMPLATE_ACTION[template].value))
 
 
 @router.get("/roles")
 async def list_roles(_: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> list[RoleOut]:
     roles = (await db.scalars(select(Role).order_by(Role.name))).all()
-    return [RoleOut(id=r.id, name=r.name, description=r.description) for r in roles]
+    return [await _role_out(db, r) for r in roles]
 
 
 @router.post("/roles", status_code=201)
@@ -236,21 +380,225 @@ async def create_role(
         await db.flush()
     except IntegrityError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, "Role already exists") from exc
-    audit(db, "admin.role.create", user_id=auth.user.id, resource=f"role:{role.id}", details={"name": role.name})
+    if body.template is not None and body.container_ids:
+        await _apply_template(db, role, body.template, body.container_ids)
+    audit(
+        db,
+        "admin.role.create",
+        user_id=auth.user.id,
+        resource=f"role:{role.id}",
+        details={
+            "name": role.name,
+            "template": body.template.value if body.template else None,
+            "container_ids": [str(c) for c in body.container_ids],
+        },
+    )
     await db.commit()
-    return RoleOut(id=role.id, name=role.name, description=role.description)
+    return await _role_out(db, role)
+
+
+@router.patch("/roles/{role_id}")
+async def update_role(
+    role_id: uuid.UUID, body: RolePatch, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> RoleOut:
+    role = await _role_or_404(db, role_id)
+    changes = body.model_dump(exclude_none=True)
+    before = {"name": role.name, "description": role.description}
+    for k, v in changes.items():
+        setattr(role, k, v)
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Role already exists") from exc
+    audit(
+        db, "admin.role.update", user_id=auth.user.id, resource=f"role:{role.id}", details={"before": before, **changes}
+    )
+    await db.commit()
+    return await _role_out(db, role)
+
+
+@router.post("/roles/{role_id}/clone", status_code=201)
+async def clone_role(
+    role_id: uuid.UUID, body: RoleClone, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> RoleOut:
+    """Copy a role's grants (not its members) into a new role."""
+    src = await _role_or_404(db, role_id)
+    role = Role(name=body.name, description=src.description)
+    db.add(role)
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Role already exists") from exc
+    grants = (await db.scalars(select(Grant).where(Grant.role_id == src.id))).all()
+    for g in grants:
+        db.add(Grant(role_id=role.id, resource_type=g.resource_type, resource_id=g.resource_id, action=g.action))
+    audit(
+        db,
+        "admin.role.clone",
+        user_id=auth.user.id,
+        resource=f"role:{role.id}",
+        details={"from": str(src.id), "name": role.name, "grants": len(grants)},
+    )
+    await db.commit()
+    return await _role_out(db, role)
+
+
+@router.post("/roles/{role_id}/apply-template")
+async def apply_template(
+    role_id: uuid.UUID,
+    body: TemplateApply,
+    auth: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> RoleOut:
+    role = await _role_or_404(db, role_id)
+    await _apply_template(db, role, body.template, body.container_ids)
+    audit(
+        db,
+        "admin.role.template",
+        user_id=auth.user.id,
+        resource=f"role:{role.id}",
+        details={"template": body.template.value, "container_ids": [str(c) for c in body.container_ids]},
+    )
+    await db.commit()
+    return await _role_out(db, role)
+
+
+@router.put("/roles/{role_id}/containers/{container_id}")
+async def set_container_access(
+    role_id: uuid.UUID,
+    container_id: uuid.UUID,
+    body: AccessIn,
+    auth: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> RoleOut:
+    """Grants-matrix cell: set a role's access level on a container (none, read, contribute, manage)."""
+    role = await _role_or_404(db, role_id)
+    if await db.get(Container, container_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Container not found")
+    await _set_container_access(db, role.id, container_id, body.level)
+    audit(
+        db,
+        "admin.grant.set_level",
+        user_id=auth.user.id,
+        resource=f"role:{role.id}",
+        details={"container_id": str(container_id), "level": body.level.value},
+    )
+    await db.commit()
+    return await _role_out(db, role)
+
+
+@router.post("/roles/{role_id}/members")
+async def update_members(
+    role_id: uuid.UUID, body: Members, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> RoleOut:
+    """Bulk assignment: add and remove users from a role in one call."""
+    role = await _role_or_404(db, role_id)
+    wanted = set(body.add) | set(body.remove)
+    if wanted:
+        found = set((await db.scalars(select(User.id).where(User.id.in_(wanted)))).all())
+        if found != wanted:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Unknown user id")
+    if body.remove:
+        await db.execute(delete(UserRole).where(UserRole.role_id == role.id, UserRole.user_id.in_(body.remove)))
+    existing = set((await db.scalars(select(UserRole.user_id).where(UserRole.role_id == role.id))).all())
+    for uid in set(body.add) - existing - set(body.remove):
+        db.add(UserRole(user_id=uid, role_id=role.id))
+    audit(
+        db,
+        "admin.role.members",
+        user_id=auth.user.id,
+        resource=f"role:{role.id}",
+        details={"add": [str(u) for u in body.add], "remove": [str(u) for u in body.remove]},
+    )
+    await db.commit()
+    return await _role_out(db, role)
 
 
 @router.delete("/roles/{role_id}", status_code=204)
 async def delete_role(
-    role_id: uuid.UUID, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+    role_id: uuid.UUID,
+    reassign_to: uuid.UUID | None = None,
+    auth: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
-    role = await db.get(Role, role_id)
-    if role is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Role not found")
+    """Delete a role. Refused while users hold it, unless they are moved to `reassign_to`."""
+    role = await _role_or_404(db, role_id)
+    members = list((await db.scalars(select(UserRole.user_id).where(UserRole.role_id == role.id))).all())
+    if members and reassign_to is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Role is assigned to {len(members)} user(s); reassign them first (reassign_to=<role id>)",
+        )
+    if reassign_to is not None:
+        if reassign_to == role.id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Cannot reassign to the role being deleted")
+        await _role_or_404(db, reassign_to)
+        already = set((await db.scalars(select(UserRole.user_id).where(UserRole.role_id == reassign_to))).all())
+        for uid in set(members) - already:
+            db.add(UserRole(user_id=uid, role_id=reassign_to))
     await db.delete(role)
-    audit(db, "admin.role.delete", user_id=auth.user.id, resource=f"role:{role_id}", details={"name": role.name})
+    audit(
+        db,
+        "admin.role.delete",
+        user_id=auth.user.id,
+        resource=f"role:{role_id}",
+        details={
+            "name": role.name,
+            "reassign_to": str(reassign_to) if reassign_to else None,
+            "members": [str(m) for m in members],
+        },
+    )
     await db.commit()
+
+
+@router.get("/users/{user_id}/effective-permissions")
+async def user_effective_permissions(
+    user_id: uuid.UUID, _: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> EffectiveOut:
+    """Preview what a user can do, computed by the same function the request path uses."""
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    await db.refresh(user, ["roles"])
+    p = await effective_permissions(db, user)
+    ids = p.readable_containers | p.contributable_containers | p.manageable_containers
+    containers = (await db.scalars(select(Container).where(Container.id.in_(ids)).order_by(Container.name))).all()
+
+    def level(cid: uuid.UUID) -> AccessLevel:
+        if cid in p.manageable_containers:
+            return AccessLevel.manage
+        if cid in p.contributable_containers:
+            return AccessLevel.contribute
+        return AccessLevel.read
+
+    docs = (
+        await db.execute(
+            select(Document.id, Document.title, Container.name)
+            .join(Container, Container.id == Document.container_id)
+            .where(Document.id.in_(p.readable_restricted_documents), Document.container_id.in_(p.readable_containers))
+            .order_by(Document.title)
+        )
+    ).all()
+    tools = (
+        await db.execute(
+            select(McpServer.name, Tool.name)
+            .join(McpServer, McpServer.id == Tool.server_id)
+            .where(Tool.id.in_(p.executable_tools))
+            .order_by(McpServer.name, Tool.name)
+        )
+    ).all()
+    return EffectiveOut(
+        user_id=user.id,
+        is_admin=user.is_admin,
+        is_active=user.is_active,
+        roles=sorted(r.name for r in user.roles),
+        containers=[
+            EffectiveContainer(id=c.id, name=c.name, classification=c.classification, level=level(c.id))
+            for c in containers
+        ],
+        restricted_documents=[EffectiveDocument(id=i, title=t, container=cn) for i, t, cn in docs],
+        tools=[f"{s}__{t}" for s, t in tools],
+    )
 
 
 # --- Containers -----------------------------------------------------------------------------------

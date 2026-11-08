@@ -95,11 +95,22 @@ async def run_worker(once: bool = False) -> None:
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_json)
     log.info("worker started")
+    from app.connectors.sync import process_next, schedule_due
+
+    last_schedule = 0.0
+    loop = asyncio.get_running_loop()
     while True:
         try:
             n = await drain()
             if n:
                 log.info("processed jobs", extra={"count": n})
+            if loop.time() - last_schedule >= settings.connector_scheduler_seconds:
+                last_schedule = loop.time()
+                async with get_sessionmaker()() as db:
+                    await schedule_due(db)
+            # One connector sync per iteration, then its documents are ingested on the next pass.
+            if await process_next(get_sessionmaker()) is not None:
+                continue
         except Exception:
             log.exception("worker loop error")
         if once:

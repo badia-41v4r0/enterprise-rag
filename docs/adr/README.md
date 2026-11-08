@@ -21,3 +21,9 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0014](0014-frontend.md) | Frontend: small React SPA with vendored shadcn-style components | Accepted |
 | [0015](0015-demo-bootstrap-and-hardening.md) | One-command seeded demo and MVP hardening | Accepted, Owner review |
 | [0016](0016-openrouter-free-only-and-spend-ceiling.md) | OpenRouter: free models only and a hard monthly spend ceiling | Accepted |
+| [0017](0017-delegated-content-management.md) | Delegated content management: `contribute` and `manage` on containers | Accepted |
+| [0018](0018-credential-store.md) | Credential store: AES-256-GCM, master key outside the database, OpenRouter key in the vault | Accepted |
+| [0019](0019-mfa-and-step-up.md) | Optional TOTP MFA and step-up re-authentication | Accepted |
+| [0020](0020-connectors-and-ssrf.md) | Connectors: container-inherited permissions, folder roots, SSRF guard | Accepted |
+| [0021](0021-mcp-registry-and-clearance.md) | MCP registry for remote servers and the clearance model | Accepted |
+| [0022](0022-isolated-mcp-runner.md) | Isolated runner for MCP containers (network `none`, Unix-socket transport) | Accepted |
