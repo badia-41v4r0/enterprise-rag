@@ -99,6 +99,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 TABLES = [
     "audit_log",
+    "provider_spend",
     "messages",
     "conversations",
     "ingestion_jobs",

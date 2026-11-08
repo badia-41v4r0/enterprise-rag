@@ -73,6 +73,8 @@ class OpenAICompatProvider:
         extra_headers: dict[str, str] | None = None,
         timeout: float = 300.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        free_only: bool = False,
+        extra_body: dict[str, Any] | None = None,
     ) -> None:
         self.provider = provider
         self.base_url = base_url.rstrip("/")
@@ -87,6 +89,9 @@ class OpenAICompatProvider:
         self.extra_headers = extra_headers or {}
         self.timeout = timeout
         self.transport = transport
+        # OpenRouter free-tier guard: refuse any model id that does not end in ":free".
+        self.free_only = free_only
+        self.extra_body = extra_body or {}
 
     @property
     def model_id(self) -> str:
@@ -94,6 +99,7 @@ class OpenAICompatProvider:
 
     def build_payload(self, messages: list[dict[str, Any]], tools: list[ToolSpec] | None) -> dict[str, Any]:
         payload: dict[str, Any] = {"model": self.model, "messages": messages, "stream": True, "temperature": 0.2}
+        payload.update(self.extra_body)
         if tools:
             payload["tools"] = [t.to_openai() for t in tools]
             payload["tool_choice"] = "auto"
@@ -107,6 +113,8 @@ class OpenAICompatProvider:
         classification: Classification,
     ) -> AsyncIterator[StreamEvent]:
         check_clearance(self.max_classification, classification, self.model_id)
+        if self.free_only and not self.model.endswith(":free"):
+            raise ProviderError(f"{self.model_id} is not a free model and paid models are disabled")
         payload = self.build_payload(messages, tools)
         url = f"{self.base_url}/chat/completions"
         await emit_egress(EgressRecord(self.provider, self.model, self.locality, url, classification, payload))

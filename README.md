@@ -30,7 +30,7 @@ Requirements: Docker with Compose v2, and [Ollama](https://ollama.com) with two 
 
 ```bash
 ollama pull bge-m3      # embeddings (1.2 GB)
-ollama pull qwen3:4b    # local chat model (2.5 GB)
+ollama pull qwen3:4b-instruct-2507-q4_K_M    # local chat model (2.5 GB)
 ```
 
 Then, from the repo root:
@@ -50,6 +50,10 @@ uv run python scripts/demo_scenarios.py --base http://127.0.0.1:8000
 ```
 
 Set `APP_PORT` if port 8000 is taken. A bundled Ollama container exists behind `--profile ollama` (NVIDIA GPU via CDI; not verified, see [ADR 0006](docs/adr/0006-ollama-on-host.md)). The demo secrets and password are for local use only: set `ERAG_SECRET_KEY`, `ERAG_MCP_CONTEXT_SECRET`, `ERAG_ENV=prod` and `ERAG_SEED_DEMO=false` for anything else (see [`deploy/.env.example`](deploy/.env.example)).
+
+### Optional: OpenRouter (free models only)
+
+Set `ERAG_OPENROUTER_API_KEY` to add a cloud model. Only models whose id ends in `:free` are accepted, and a hard monthly spend ceiling (`ERAG_OPENROUTER_MONTHLY_BUDGET_USD`, default `0.01`) is enforced before every request ([ADR 0016](docs/adr/0016-openrouter-free-only-and-spend-ceiling.md)). Confidential data never goes to the cloud; what else may go is controlled by `ERAG_CLOUD_MAX_CLASSIFICATION`.
 
 ## Development
 

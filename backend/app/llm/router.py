@@ -61,6 +61,16 @@ class ModelRouter:
         return next((p for p in self.providers if p.model_id == model_id), None)
 
 
+def validate_openrouter_model(model: str, allow_paid: bool) -> None:
+    """Fail loudly at startup when a paid OpenRouter model is configured but paid models are not allowed."""
+    if not allow_paid and not model.endswith(":free"):
+        raise ValueError(
+            f"ERAG_OPENROUTER_MODEL={model!r} is not a free model (id must end in ':free'). "
+            "Set ERAG_OPENROUTER_ALLOW_PAID=true to allow paid models (spend is capped by "
+            "ERAG_OPENROUTER_MONTHLY_BUDGET_USD)."
+        )
+
+
 def build_providers(settings: Settings | None = None) -> list[LLMProvider]:
     s = settings or get_settings()
     providers: list[LLMProvider] = [
@@ -70,10 +80,11 @@ def build_providers(settings: Settings | None = None) -> list[LLMProvider]:
             model=s.local_chat_model,
             locality="local",
             max_classification=Classification.confidential,
-            strip_think=True,
+            strip_think=s.local_chat_strip_think,
         )
     ]
     if s.openrouter_api_key is not None and s.openrouter_api_key.get_secret_value():
+        validate_openrouter_model(s.openrouter_model, s.openrouter_allow_paid)
         providers.append(
             OpenAICompatProvider(
                 provider="openrouter",
@@ -83,6 +94,9 @@ def build_providers(settings: Settings | None = None) -> list[LLMProvider]:
                 max_classification=Classification(s.cloud_max_classification),
                 api_key=s.openrouter_api_key.get_secret_value(),
                 extra_headers={"HTTP-Referer": "https://badiapartners.com", "X-Title": "EnterpriseRAG"},
+                free_only=not s.openrouter_allow_paid,
+                # Ask OpenRouter to report the real cost of each request in the final usage chunk.
+                extra_body={"usage": {"include": True}},
             )
         )
     if s.claude_code_enabled and not s.is_prod:

@@ -14,6 +14,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -271,6 +272,16 @@ class IngestionJob(TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ProviderSpend(Base):
+    """Money spent per cloud provider and calendar month (UTC), see ADR 0016."""
+
+    __tablename__ = "provider_spend"
+    provider: Mapped[str] = mapped_column(String(50), primary_key=True)
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)  # "YYYY-MM"
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    requests: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class AuditLog(Base):

@@ -38,8 +38,10 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     embed_model: str = "bge-m3"
     embed_dim: int = 1024
-    local_chat_model: str = "qwen3:4b"
-    local_chat_think: bool = False
+    # Non-thinking instruct variant: fast, no reasoning preamble (ADR 0007).
+    local_chat_model: str = "qwen3:4b-instruct-2507-q4_K_M"
+    # Set true only for a "thinking" model that emits reasoning inline before `</think>`.
+    local_chat_strip_think: bool = False
 
     # OpenRouter (cloud). Disabled unless a key is present.
     openrouter_api_key: SecretStr | None = None
@@ -47,7 +49,11 @@ class Settings(BaseSettings):
     openrouter_model: str = "meta-llama/llama-3.3-8b-instruct:free"
     # Highest classification a cloud model may process (confidential is never allowed).
     cloud_max_classification: str = "internal"
-    openrouter_monthly_budget_usd: float = 1.0
+    # Only models whose id ends in ":free" are accepted unless this is set (ADR 0016).
+    openrouter_allow_paid: bool = False
+    # Hard monthly spend ceiling for OpenRouter, in USD. 0.01 is a bit under 0.01 EUR at current rates;
+    # the cap is checked before every request and the real cost is recorded after it (ADR 0016).
+    openrouter_monthly_budget_usd: float = 0.01
 
     # Dev-only provider that shells out to `claude -p`. Never enabled in the demo/production.
     claude_code_enabled: bool = False

@@ -23,7 +23,7 @@ flowchart LR
         VAL --> ROUTER
     end
 
-    LLM -- "any classification" --> OLLAMA[(Ollama, local<br/>qwen3:4b, bge-m3)]
+    LLM -- "any classification" --> OLLAMA[(Ollama, local<br/>qwen3:4b-instruct, bge-m3)]
     LLM -- "public / internal only" --> OR[(OpenRouter, cloud)]
     GW -- "stdio + _meta token" --> FILES[files_server]
     GW -- "stdio + _meta token" --> TICKETS[tickets_server<br/>SQLite]

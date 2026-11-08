@@ -17,7 +17,7 @@ Branch: `feat/mvp` (not pushed). Plan: [`docs/PLAN.md`](docs/PLAN.md). Decisions
 
 ## Run the demo
 
-Requirements: Docker Compose v2; Ollama on the host with `bge-m3` and `qwen3:4b` pulled (both already present on this machine).
+Requirements: Docker Compose v2; Ollama on the host with `bge-m3` and `qwen3:4b-instruct-2507-q4_K_M` pulled (both present on this machine; `qwen3:4b`, the thinking variant, is no longer used and can be removed).
 
 ```bash
 cd ~/Desktop/enterprise-rag
@@ -68,7 +68,14 @@ Other notable choices: Phase 5 (MCP) was done before Phase 4 (frontend) because 
 - Rate limiters are in-process (single instance).
 - The UI smoke test leaves its test role/user/container in the dev database.
 
-## Decisions for the owner
+## Update 2026-11-08 (after owner review)
+
+- Local model switched to the non-thinking `qwen3:4b-instruct-2507-q4_K_M` (ADR 0007). Full suite: **147 passed, 2 skipped in 95 s** (was 140 in 4 min 47 s); the real-Ollama provider tests (streaming, real tool call, signature scenario) pass with it.
+- OpenRouter: free models only (`:free`, enforced at startup and per request) and a hard monthly spend ceiling of `0.01` USD stored in `provider_spend` (migration 0003, ADR 0016, `tests/integration/test_spend.py`). Still **never called for real**: it needs `ERAG_OPENROUTER_API_KEY`; the `provider_openrouter` test skips without it. The ceiling is covered by tests against real Postgres, but the cost field returned by OpenRouter (`usage.cost`) has not been seen in a real response yet.
+- Owner decisions: commit attribution ignored; admin has no implicit data access but assigns roles, grants and creates users (confirmed, ADR 0009); tag/push at the end.
+- Still open: decision 4 below (what the cloud may receive).
+
+## Decisions for the owner (original list; 1, 2, 3, 6 resolved above)
 
 1. **Commit attribution:** commits end with `Co-Authored-By: Claude Sonnet 5.5`, exactly as the task instructed, although the work was done by Claude Opus 5.5. Amend if you want accurate attribution.
 2. Swap the local model to the non-thinking `qwen3:4b-instruct-2507` for 3-5x faster demos (one `ollama pull` + `ERAG_LOCAL_CHAT_MODEL`). ADR 0007.

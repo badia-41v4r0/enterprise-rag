@@ -1,6 +1,6 @@
-# 0007. Local chat model: `qwen3:4b`
+# 0007. Local chat model: `qwen3:4b-instruct-2507-q4_K_M`
 
-**Status:** Accepted (2026-11-08) — **Owner review**
+**Status:** Accepted (2026-11-08); amended 2026-11-08 after owner review (switched from the thinking variant)
 
 ## Context
 GTX 1660 SUPER (6 GB VRAM). We may pull one small model (<= ~3 GB) that supports tool calling. Candidates: Qwen3 1.7B/4B, Llama 3.2 3B, Gemma 3 4B.
@@ -12,5 +12,5 @@ GTX 1660 SUPER (6 GB VRAM). We may pull one small model (<= ~3 GB) that supports
 - The current `qwen3:4b` tag is the 2507 *thinking* variant: it always reasons first (`think: false` and `/no_think` are ignored; `reasoning_effort` is rejected). The reasoning arrives inline in `content`, terminated by `</think>`. The provider strips everything up to `</think>` before anything reaches the user or is stored.
 - Throughput is about 50 tokens/s, so a grounded answer takes roughly 10 to 40 s, most of it reasoning.
 
-## Owner review
-For faster demos, pull `qwen3:4b-instruct-2507` (non-thinking, same size) and set `ERAG_LOCAL_CHAT_MODEL=qwen3:4b-instruct-2507`. Not done here to respect the "one model" limit.
+## Amendment: non-thinking variant (owner approved)
+The default is now `qwen3:4b-instruct-2507-q4_K_M` (2.5 GB, same size and licence, native tool calling, no reasoning preamble). `ERAG_LOCAL_CHAT_STRIP_THINK` defaults to `false` so answers stream immediately; set it to `true` only if you switch to a thinking model. The old `qwen3:4b` can be removed from Ollama if the disk space matters.

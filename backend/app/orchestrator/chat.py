@@ -21,12 +21,13 @@ from app.authz.policy import EffectivePermissions, readable_document_ids
 from app.core.config import Settings, get_settings
 from app.ingestion.embedder import Embedder
 from app.llm.prompt_builder import NO_INFO_ANSWER, HistoryTurn, build_messages, render_tool_result
-from app.llm.providers.base import LLMProvider, ProviderError, TextDelta, ToolCall, ToolCallsEvent, ToolSpec
+from app.llm.providers.base import Done, LLMProvider, ProviderError, TextDelta, ToolCall, ToolCallsEvent, ToolSpec
 from app.llm.router import ModelRouter, RoutingRefused
 from app.models import Classification, Conversation, Message, User
 from app.rag.context_builder import BuiltContext, build_context
 from app.rag.retrieval import RetrievalResult, Retriever
 from app.services.audit import audit
+from app.services.spend import cost_from_usage, ensure_budget, record_spend
 
 log = logging.getLogger(__name__)
 
@@ -218,14 +219,22 @@ class ChatOrchestrator:
                     offer_tools = prep.tools if (self.tools and iteration < max_iter) else None
                     calls: list[ToolCall] = []
                     step_text = ""
+                    if provider.locality == "cloud":
+                        # Hard monthly ceiling, checked before anything leaves the process (ADR 0016).
+                        await ensure_budget(self.db, provider.provider, self.settings.openrouter_monthly_budget_usd)
                     await self._audit_egress(user, provider, classification, prep, iteration)
                     models_used.append(provider.model_id)
+                    usage: dict[str, Any] = {}
                     async for ev in provider.stream_chat(messages, tools=offer_tools, classification=classification):
                         if isinstance(ev, TextDelta):
                             step_text += ev.text
                             yield {"type": "delta", "text": ev.text}
                         elif isinstance(ev, ToolCallsEvent):
                             calls = ev.calls
+                        elif isinstance(ev, Done):
+                            usage = ev.usage
+                    if provider.locality == "cloud":
+                        await record_spend(self.db, provider.provider, cost_from_usage(usage))
                     answer += step_text
                     if not calls or self.tools is None:
                         break

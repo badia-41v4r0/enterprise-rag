@@ -66,7 +66,7 @@ The same question, "What is the salary band for a senior engineer?":
 
 ## 6. Results
 
-Automated suite on the reference implementation (commit at the end of the MVP branch), run against a real PostgreSQL + pgvector, real `bge-m3` embeddings, the real MCP reference servers and, where marked, a real local model (`qwen3:4b`). No mocked models.
+Automated suite on the reference implementation (commit at the end of the MVP branch), run against a real PostgreSQL + pgvector, real `bge-m3` embeddings, the real MCP reference servers and, where marked, a real local model (`qwen3:4b-instruct-2507`). No mocked models.
 
 | Test group | What it shows | Result |
 |---|---|---|

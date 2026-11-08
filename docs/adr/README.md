@@ -11,7 +11,7 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0004](0004-async-sqlalchemy-asyncpg.md) | Async SQLAlchemy with asyncpg (no psycopg) | Accepted |
 | [0005](0005-storage-interfaces.md) | `VectorStore` and `BlobStore` interfaces | Accepted |
 | [0006](0006-ollama-on-host.md) | Ollama on the host by default; bundled Ollama as a profile | Accepted, Owner review |
-| [0007](0007-local-chat-model.md) | Local chat model: `qwen3:4b` | Accepted, Owner review |
+| [0007](0007-local-chat-model.md) | Local chat model: `qwen3:4b-instruct-2507-q4_K_M` | Accepted (amended) |
 | [0008](0008-testing-without-fake-providers.md) | Testing without fake providers | Accepted |
 | [0009](0009-admin-is-not-data-access.md) | Admin is a management privilege, not a data-access privilege | Accepted, Owner review |
 | [0010](0010-mcp-stdio-and-permission-context.md) | MCP over stdio with a signed permission context in `_meta` | Accepted |
@@ -20,3 +20,4 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0013](0013-result-validator-heuristics.md) | Result validator: size cap, classification floor, injection heuristics | Accepted, Owner review |
 | [0014](0014-frontend.md) | Frontend: small React SPA with vendored shadcn-style components | Accepted |
 | [0015](0015-demo-bootstrap-and-hardening.md) | One-command seeded demo and MVP hardening | Accepted, Owner review |
+| [0016](0016-openrouter-free-only-and-spend-ceiling.md) | OpenRouter: free models only and a hard monthly spend ceiling | Accepted |
