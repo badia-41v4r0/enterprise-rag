@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: oklch(0.45 0.12 255);
+  --color-brand-foreground: oklch(0.98 0 0);
+  --color-muted: oklch(0.96 0.005 255);
+  --color-muted-foreground: oklch(0.5 0.02 255);
+  --color-border: oklch(0.9 0.01 255);
+  --color-public: oklch(0.6 0.13 150);
+  --color-internal: oklch(0.65 0.13 70);
+  --color-confidential: oklch(0.55 0.18 25);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  @apply bg-white text-slate-900 antialiased;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}

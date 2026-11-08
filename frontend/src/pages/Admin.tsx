@@ -1,0 +1,717 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw, Trash2, Upload } from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, ClassBadge, Table, Th } from "@/components/ui/card";
+import { Input, Label, Select } from "@/components/ui/input";
+import {
+  api,
+  json,
+  type AuditRow,
+  type Classification,
+  type ContainerRow,
+  type DocumentRow,
+  type GrantRow,
+  type JobRow,
+  type RoleRow,
+  type ToolRow,
+  type UserRow,
+} from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+const TABS = ["Users", "Roles", "Containers", "Grants", "Tools", "Audit", "Jobs"] as const;
+type Tab = (typeof TABS)[number];
+const CLASSES: Classification[] = ["public", "internal", "confidential"];
+
+function useInvalidate() {
+  const qc = useQueryClient();
+  return (...keys: string[]) => keys.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+}
+
+function ErrorLine({ error }: { error: unknown }) {
+  return error ? <p className="text-sm text-red-600">{error instanceof Error ? error.message : String(error)}</p> : null;
+}
+
+const useRoles = () => useQuery({ queryKey: ["roles"], queryFn: () => api<RoleRow[]>("/api/admin/roles") });
+const useContainers = () =>
+  useQuery({ queryKey: ["containers"], queryFn: () => api<ContainerRow[]>("/api/admin/containers") });
+const useTools = () => useQuery({ queryKey: ["tools"], queryFn: () => api<ToolRow[]>("/api/admin/tools") });
+
+// --- Users ---------------------------------------------------------------------------------------
+
+function Users() {
+  const inv = useInvalidate();
+  const users = useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/api/admin/users") });
+  const roles = useRoles();
+  const [form, setForm] = useState({ email: "", display_name: "", password: "", is_admin: false, role_ids: [] as string[] });
+  const create = useMutation({
+    mutationFn: () => api("/api/admin/users", { method: "POST", body: json(form) }),
+    onSuccess: () => {
+      setForm({ email: "", display_name: "", password: "", is_admin: false, role_ids: [] });
+      inv("users");
+    },
+  });
+  const patch = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: object }) =>
+      api(`/api/admin/users/${id}`, { method: "PATCH", body: json(body) }),
+    onSuccess: () => inv("users"),
+  });
+  const roleName = (id: string) => roles.data?.find((r) => r.id === id)?.name ?? id;
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <h3 className="mb-3 text-sm font-semibold">Create user</h3>
+        <div className="grid grid-cols-4 gap-2">
+          <Input placeholder="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <Input
+            placeholder="display name"
+            value={form.display_name}
+            onChange={(e) => setForm({ ...form, display_name: e.target.value })}
+          />
+          <Input
+            placeholder="password (12+ chars)"
+            type="password"
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+          />
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.is_admin} onChange={(e) => setForm({ ...form, is_admin: e.target.checked })} />
+            admin
+          </label>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-3 text-sm">
+          {roles.data?.map((r) => (
+            <label key={r.id} className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={form.role_ids.includes(r.id)}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    role_ids: e.target.checked ? [...form.role_ids, r.id] : form.role_ids.filter((x) => x !== r.id),
+                  })
+                }
+              />
+              {r.name}
+            </label>
+          ))}
+        </div>
+        <Button className="mt-3" size="sm" onClick={() => create.mutate()} disabled={!form.email || !form.password}>
+          Create
+        </Button>
+        <ErrorLine error={create.error} />
+      </Card>
+      <Card>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Email</Th>
+              <Th>Name</Th>
+              <Th>Roles</Th>
+              <Th>Admin</Th>
+              <Th>Active</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.data?.map((u) => (
+              <tr key={u.id} className="border-t border-border align-top">
+                <td>{u.email}</td>
+                <td>{u.display_name}</td>
+                <td>
+                  <div className="flex flex-wrap gap-2">
+                    {roles.data?.map((r) => (
+                      <label key={r.id} className="flex items-center gap-1 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={u.role_ids.includes(r.id)}
+                          onChange={(e) =>
+                            patch.mutate({
+                              id: u.id,
+                              body: {
+                                role_ids: e.target.checked ? [...u.role_ids, r.id] : u.role_ids.filter((x) => x !== r.id),
+                              },
+                            })
+                          }
+                        />
+                        {roleName(r.id)}
+                      </label>
+                    ))}
+                  </div>
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={u.is_admin}
+                    onChange={(e) => patch.mutate({ id: u.id, body: { is_admin: e.target.checked } })}
+                    aria-label="admin"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={u.is_active}
+                    onChange={(e) => patch.mutate({ id: u.id, body: { is_active: e.target.checked } })}
+                    aria-label="active"
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+        <div className="px-3 pb-2">
+          <ErrorLine error={patch.error} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// --- Roles ---------------------------------------------------------------------------------------
+
+function Roles() {
+  const inv = useInvalidate();
+  const roles = useRoles();
+  const [name, setName] = useState("");
+  const create = useMutation({
+    mutationFn: () => api("/api/admin/roles", { method: "POST", body: json({ name }) }),
+    onSuccess: () => {
+      setName("");
+      inv("roles");
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/api/admin/roles/${id}`, { method: "DELETE" }),
+    onSuccess: () => inv("roles", "users", "grants"),
+  });
+  return (
+    <Card className="p-4">
+      <div className="mb-3 flex gap-2">
+        <Input placeholder="role name" value={name} onChange={(e) => setName(e.target.value)} className="max-w-xs" />
+        <Button size="sm" onClick={() => create.mutate()} disabled={!name}>
+          Create role
+        </Button>
+      </div>
+      <ErrorLine error={create.error} />
+      <ul className="divide-y divide-border text-sm">
+        {roles.data?.map((r) => (
+          <li key={r.id} className="flex items-center justify-between py-2">
+            {r.name}
+            <Button variant="ghost" size="icon" onClick={() => remove.mutate(r.id)} aria-label={`Delete ${r.name}`}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+// --- Containers and documents ---------------------------------------------------------------------
+
+function Documents({ container }: { container: ContainerRow }) {
+  const inv = useInvalidate();
+  const docs = useQuery({
+    queryKey: ["docs", container.id],
+    queryFn: () => api<DocumentRow[]>(`/api/containers/${container.id}/documents`),
+    refetchInterval: 3000,
+  });
+  const [file, setFile] = useState<File | null>(null);
+  const [restricted, setRestricted] = useState(false);
+  const [msg, setMsg] = useState("");
+  const upload = useMutation({
+    mutationFn: async () => {
+      const fd = new FormData();
+      fd.append("file", file!);
+      fd.append("restricted", String(restricted));
+      return api<{ status: string }>(`/api/containers/${container.id}/documents`, { method: "POST", body: fd });
+    },
+    onSuccess: (r) => {
+      setMsg(r.status === "duplicate" ? "Identical file already present: skipped." : "Queued for ingestion.");
+      setFile(null);
+      inv("docs");
+    },
+  });
+  const patch = useMutation({
+    mutationFn: ({ id, restricted }: { id: string; restricted: boolean }) =>
+      api(`/api/documents/${id}`, { method: "PATCH", body: json({ restricted }) }),
+    onSuccess: () => inv("docs"),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/api/documents/${id}`, { method: "DELETE" }),
+    onSuccess: () => inv("docs"),
+  });
+  return (
+    <Card className="p-4">
+      <h3 className="mb-3 text-sm font-semibold">Documents in {container.name}</h3>
+      <div className="mb-3 flex items-center gap-2">
+        <Input
+          type="file"
+          accept=".pdf,.docx,.xlsx,.html,.htm,.md,.markdown,.txt"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          className="max-w-sm"
+        />
+        <label className="flex items-center gap-1 text-sm">
+          <input type="checkbox" checked={restricted} onChange={(e) => setRestricted(e.target.checked)} />
+          restricted
+        </label>
+        <Button size="sm" onClick={() => upload.mutate()} disabled={!file || upload.isPending}>
+          <Upload className="h-4 w-4" /> Upload
+        </Button>
+        <span className="text-xs text-muted-foreground">{msg}</span>
+      </div>
+      <ErrorLine error={upload.error} />
+      <Table>
+        <thead>
+          <tr>
+            <Th>Title</Th>
+            <Th>File</Th>
+            <Th>Status</Th>
+            <Th>Chunks</Th>
+            <Th>Restricted</Th>
+            <Th />
+          </tr>
+        </thead>
+        <tbody>
+          {docs.data?.map((d) => (
+            <tr key={d.id} className="border-t border-border">
+              <td>{d.title}</td>
+              <td className="font-mono text-xs">{d.filename}</td>
+              <td>{d.latest_status}</td>
+              <td>{d.chunk_count}</td>
+              <td>
+                <input
+                  type="checkbox"
+                  checked={d.restricted}
+                  onChange={(e) => patch.mutate({ id: d.id, restricted: e.target.checked })}
+                  aria-label="restricted"
+                />
+              </td>
+              <td>
+                <Button variant="ghost" size="icon" onClick={() => remove.mutate(d.id)} aria-label="Delete document">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </Card>
+  );
+}
+
+function Containers() {
+  const inv = useInvalidate();
+  const containers = useContainers();
+  const [selected, setSelected] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", description: "", classification: "internal" as Classification });
+  const create = useMutation({
+    mutationFn: () => api("/api/admin/containers", { method: "POST", body: json(form) }),
+    onSuccess: () => {
+      setForm({ name: "", description: "", classification: "internal" });
+      inv("containers");
+    },
+  });
+  const patch = useMutation({
+    mutationFn: ({ id, classification }: { id: string; classification: Classification }) =>
+      api(`/api/admin/containers/${id}`, { method: "PATCH", body: json({ classification }) }),
+    onSuccess: () => inv("containers"),
+  });
+  const current = containers.data?.find((c) => c.id === selected);
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <h3 className="mb-3 text-sm font-semibold">Create container</h3>
+        <div className="flex gap-2">
+          <Input placeholder="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Input
+            placeholder="description"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+          <Select
+            value={form.classification}
+            onChange={(e) => setForm({ ...form, classification: e.target.value as Classification })}
+            className="w-40"
+          >
+            {CLASSES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </Select>
+          <Button size="sm" onClick={() => create.mutate()} disabled={!form.name}>
+            Create
+          </Button>
+        </div>
+        <ErrorLine error={create.error} />
+      </Card>
+      <Card>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Name</Th>
+              <Th>Slug</Th>
+              <Th>Classification</Th>
+              <Th />
+            </tr>
+          </thead>
+          <tbody>
+            {containers.data?.map((c) => (
+              <tr key={c.id} className={cn("border-t border-border", c.id === selected && "bg-muted")}>
+                <td>{c.name}</td>
+                <td className="font-mono text-xs">{c.slug}</td>
+                <td>
+                  <Select
+                    value={c.classification}
+                    onChange={(e) => patch.mutate({ id: c.id, classification: e.target.value as Classification })}
+                    className="w-40"
+                  >
+                    {CLASSES.map((x) => (
+                      <option key={x}>{x}</option>
+                    ))}
+                  </Select>
+                </td>
+                <td>
+                  <Button variant="outline" size="sm" onClick={() => setSelected(c.id)}>
+                    Documents
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </Card>
+      {current && <Documents container={current} />}
+    </div>
+  );
+}
+
+// --- Grants --------------------------------------------------------------------------------------
+
+function Grants() {
+  const inv = useInvalidate();
+  const roles = useRoles();
+  const containers = useContainers();
+  const tools = useTools();
+  const [roleId, setRoleId] = useState("");
+  const [rtype, setRtype] = useState<GrantRow["resource_type"]>("container");
+  const [docContainer, setDocContainer] = useState("");
+  const [resourceId, setResourceId] = useState("");
+  const [action, setAction] = useState<GrantRow["action"]>("read");
+  const grants = useQuery({
+    queryKey: ["grants", roleId],
+    queryFn: () => api<GrantRow[]>(`/api/admin/grants${roleId ? `?role_id=${roleId}` : ""}`),
+  });
+  const docs = useQuery({
+    queryKey: ["docs", docContainer],
+    queryFn: () => api<DocumentRow[]>(`/api/containers/${docContainer}/documents`),
+    enabled: rtype === "document" && !!docContainer,
+  });
+  const create = useMutation({
+    mutationFn: () =>
+      api("/api/admin/grants", {
+        method: "POST",
+        body: json({ role_id: roleId, resource_type: rtype, resource_id: resourceId, action }),
+      }),
+    onSuccess: () => inv("grants"),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/api/admin/grants/${id}`, { method: "DELETE" }),
+    onSuccess: () => inv("grants"),
+  });
+  const actions: GrantRow["action"][] = rtype === "container" ? ["read", "manage"] : rtype === "document" ? ["read"] : ["execute"];
+  const label = (g: GrantRow) => {
+    if (g.resource_type === "container") return containers.data?.find((c) => c.id === g.resource_id)?.name ?? g.resource_id;
+    if (g.resource_type === "tool") return tools.data?.find((t) => t.id === g.resource_id)?.model_name ?? g.resource_id;
+    return `document ${g.resource_id.slice(0, 8)}`;
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="grid grid-cols-5 items-end gap-2">
+          <div>
+            <Label>Role</Label>
+            <Select value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+              <option value="">all roles</option>
+              {roles.data?.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Resource type</Label>
+            <Select
+              value={rtype}
+              onChange={(e) => {
+                const t = e.target.value as GrantRow["resource_type"];
+                setRtype(t);
+                setResourceId("");
+                setAction(t === "tool" ? "execute" : "read");
+              }}
+            >
+              <option value="container">container</option>
+              <option value="document">document (restricted)</option>
+              <option value="tool">tool</option>
+            </Select>
+          </div>
+          <div>
+            <Label>Resource</Label>
+            {rtype === "container" && (
+              <Select value={resourceId} onChange={(e) => setResourceId(e.target.value)}>
+                <option value="">select...</option>
+                {containers.data?.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {rtype === "tool" && (
+              <Select value={resourceId} onChange={(e) => setResourceId(e.target.value)}>
+                <option value="">select...</option>
+                {tools.data?.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.model_name}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {rtype === "document" && (
+              <div className="flex gap-1">
+                <Select value={docContainer} onChange={(e) => setDocContainer(e.target.value)}>
+                  <option value="">container...</option>
+                  {containers.data?.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+                <Select value={resourceId} onChange={(e) => setResourceId(e.target.value)}>
+                  <option value="">document...</option>
+                  {docs.data?.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.title}
+                      {d.restricted ? " (restricted)" : ""}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+          </div>
+          <div>
+            <Label>Action</Label>
+            <Select value={action} onChange={(e) => setAction(e.target.value as GrantRow["action"])}>
+              {actions.map((a) => (
+                <option key={a}>{a}</option>
+              ))}
+            </Select>
+          </div>
+          <Button size="sm" onClick={() => create.mutate()} disabled={!roleId || !resourceId}>
+            Add grant
+          </Button>
+        </div>
+        <ErrorLine error={create.error} />
+      </Card>
+      <Card>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Role</Th>
+              <Th>Type</Th>
+              <Th>Resource</Th>
+              <Th>Action</Th>
+              <Th />
+            </tr>
+          </thead>
+          <tbody>
+            {grants.data?.map((g) => (
+              <tr key={g.id} className="border-t border-border">
+                <td>{roles.data?.find((r) => r.id === g.role_id)?.name}</td>
+                <td>{g.resource_type}</td>
+                <td>{label(g)}</td>
+                <td>{g.action}</td>
+                <td>
+                  <Button variant="ghost" size="icon" onClick={() => remove.mutate(g.id)} aria-label="Revoke grant">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </Card>
+    </div>
+  );
+}
+
+// --- Tools, audit, jobs --------------------------------------------------------------------------
+
+function Tools() {
+  const inv = useInvalidate();
+  const tools = useTools();
+  const sync = useMutation({ mutationFn: () => api("/api/admin/tools/sync", { method: "POST" }), onSuccess: () => inv("tools") });
+  const patch = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: object }) =>
+      api(`/api/admin/tools/${id}`, { method: "PATCH", body: json(body) }),
+    onSuccess: () => inv("tools"),
+  });
+  return (
+    <Card className="p-4">
+      <Button size="sm" variant="outline" onClick={() => sync.mutate()} disabled={sync.isPending}>
+        <RefreshCw className="h-4 w-4" /> Sync tools from MCP servers
+      </Button>
+      <ErrorLine error={sync.error} />
+      <Table className="mt-3">
+        <thead>
+          <tr>
+            <Th>Tool</Th>
+            <Th>Description</Th>
+            <Th>Result classification (floor)</Th>
+            <Th>Enabled</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {tools.data?.map((t) => (
+            <tr key={t.id} className="border-t border-border">
+              <td className="font-mono text-xs">{t.model_name}</td>
+              <td className="text-xs">{t.description}</td>
+              <td>
+                <Select
+                  value={t.classification}
+                  onChange={(e) => patch.mutate({ id: t.id, body: { classification: e.target.value } })}
+                  className="w-40"
+                >
+                  {CLASSES.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </Select>
+              </td>
+              <td>
+                <input
+                  type="checkbox"
+                  checked={t.enabled}
+                  onChange={(e) => patch.mutate({ id: t.id, body: { enabled: e.target.checked } })}
+                  aria-label="enabled"
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </Card>
+  );
+}
+
+function Audit() {
+  const [action, setAction] = useState("");
+  const audit = useQuery({
+    queryKey: ["audit", action],
+    queryFn: () => api<AuditRow[]>(`/api/admin/audit?limit=200${action ? `&action=${encodeURIComponent(action)}` : ""}`),
+    refetchInterval: 5000,
+  });
+  return (
+    <Card className="p-4">
+      <Input
+        placeholder="filter by action prefix, e.g. chat, tool, llm, admin"
+        value={action}
+        onChange={(e) => setAction(e.target.value)}
+        className="mb-3 max-w-sm"
+      />
+      <Table>
+        <thead>
+          <tr>
+            <Th>Time</Th>
+            <Th>Action</Th>
+            <Th>Decision</Th>
+            <Th>Resource</Th>
+            <Th>Details</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {audit.data?.map((a) => (
+            <tr key={a.id} className="border-t border-border align-top">
+              <td className="whitespace-nowrap text-xs">{new Date(a.ts).toLocaleString()}</td>
+              <td className="font-mono text-xs">{a.action}</td>
+              <td>
+                <span className={cn("text-xs", a.decision === "deny" && "font-semibold text-red-600")}>{a.decision}</span>
+              </td>
+              <td className="font-mono text-xs">{a.resource}</td>
+              <td className="max-w-md truncate font-mono text-[11px]" title={JSON.stringify(a.details)}>
+                {JSON.stringify(a.details)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </Card>
+  );
+}
+
+function Jobs() {
+  const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => api<JobRow[]>("/api/admin/jobs"), refetchInterval: 3000 });
+  return (
+    <Card>
+      <Table>
+        <thead>
+          <tr>
+            <Th>Created</Th>
+            <Th>Version</Th>
+            <Th>State</Th>
+            <Th>Attempts</Th>
+            <Th>Error</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {jobs.data?.map((j) => (
+            <tr key={j.id} className="border-t border-border">
+              <td className="text-xs">{new Date(j.created_at).toLocaleString()}</td>
+              <td className="font-mono text-xs">{j.version_id.slice(0, 8)}</td>
+              <td>{j.state}</td>
+              <td>{j.attempts}</td>
+              <td className="text-xs text-red-600">{j.error}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </Card>
+  );
+}
+
+export default function AdminPage() {
+  const [tab, setTab] = useState<Tab>("Users");
+  const containers = useContainers();
+  return (
+    <div className="h-full overflow-y-auto p-6">
+      <div className="mb-4 flex gap-1 border-b border-border">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={cn(
+              "-mb-px border-b-2 px-3 py-2 text-sm",
+              t === tab ? "border-brand font-medium" : "border-transparent text-muted-foreground",
+            )}
+          >
+            {t}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-1 pb-1">
+          {containers.data?.map((c) => (
+            <span key={c.id} title={c.name}>
+              <ClassBadge value={c.classification} />
+            </span>
+          ))}
+        </div>
+      </div>
+      {tab === "Users" && <Users />}
+      {tab === "Roles" && <Roles />}
+      {tab === "Containers" && <Containers />}
+      {tab === "Grants" && <Grants />}
+      {tab === "Tools" && <Tools />}
+      {tab === "Audit" && <Audit />}
+      {tab === "Jobs" && <Jobs />}
+    </div>
+  );
+}

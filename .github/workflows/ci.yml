@@ -29,3 +29,16 @@ jobs:
       - run: uv run python scripts/check_licenses.py
       # No Ollama in CI: tests marked `embeddings` / `provider_*` skip themselves.
       - run: uv run pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build

@@ -10,7 +10,7 @@ Branch: `feat/mvp` (not pushed). Plan: [`docs/PLAN.md`](docs/PLAN.md). Decisions
 | 1. Identity and permissions | Done | Sessions (argon2, HttpOnly cookie, CSRF), roles, containers, grants, `can()`, admin API, audit, CLI admin |
 | 2. Ingestion | Done | Upload API, sha256 dedupe, versioning, LocalBlobStore, SKIP LOCKED worker, parsers (PDF/DOCX/XLSX/HTML/MD/TXT), chunker, bge-m3 embeddings |
 | 3. Authorized retrieval and chat | Done | Filtered pgvector search, ACL re-check, context builder, prompt builder, Ollama/OpenRouter/claude-code providers, classification router, SSE chat, conversations; **leakage suite green** |
-| 4. Frontend | In progress | Done after Phase 5 (MCP first because its security tests are core) |
+| 4. Frontend | Done | React SPA: login, streaming chat with clickable citations, model picker, tool/classification display, history; admin (users, roles, containers + uploads, grants incl. document/tool, tools, audit, jobs). Built after Phase 5. |
 | 5. MCP | Done | Registry, gateway (MCP client, stdio), signed permission context, tool authz, tool loop with re-routing, result validator, per-tool audit; `files` and `tickets` reference servers |
 | 6. ACME demo and hardening | Not started | |
 | 7. Docs, release | Not started | |
@@ -55,3 +55,11 @@ Branch: `feat/mvp` (not pushed). Plan: [`docs/PLAN.md`](docs/PLAN.md). Decisions
   - injection in a ticket title is dropped and flagged; oversized results refused; per-user tool rate limit; re-routing to a local model after a confidential tool result (pure function).
 - Real Ollama (`tests/providers/test_providers.py::test_tool_scenario_end_to_end`): the finance analyst's "open invoices over 10k" runs the real tool loop (`tickets__list_invoices`, result `confidential`, answer from the local model); the engineer is never offered the tool.
 - Docker (hostnet, port 8088): `/api/tools` for finance lists 4 tools, for the engineer 3; finance chat -> `tool_call tickets__list_invoices {"min_amount":10000,"status":"open"}` -> `tool_result ok confidential` -> answer listing INV-2026-0914/0912/0911; engineer -> "I don't have information about that ...".
+
+## Verified (Phase 4)
+
+- `cd frontend && npm run build` (tsc strict + vite) passes.
+- Docker image rebuilt with the multi-stage Dockerfile; FastAPI serves the SPA at `/` and `/api/*` 404s stay JSON.
+- `scripts/ui_smoke.mjs` (playwright-core + system Chromium, against the Docker app on port 8088): admin logs in, creates a role, a container, uploads a Markdown file (worker ingests it: status `ready`), creates a user with that role, grants `read` on the container; the new user logs in, asks "Where do employees park?", gets "Employees park on level -2 [1]" from `ollama:qwen3:4b` tagged `internal`, clicks the citation and sees the source chunk. Output: `UI SMOKE PASSED`.
+- Found and fixed with it: a `useEffect` returning the Promise of `scrollIntoView()` crashed React on unmount in current Chromium.
+- Not exercised by an automated UI test: document/tool grants, tool enable/classification edits, audit/jobs views (they use the same API endpoints covered by backend tests).
