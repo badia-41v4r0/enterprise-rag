@@ -21,6 +21,13 @@ def _cmd_create_admin(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_worker(args: argparse.Namespace) -> int:
+    from app.ingestion.worker import run_worker
+
+    asyncio.run(run_worker(once=args.once))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erag")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -29,6 +36,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--email", required=True)
     p.add_argument("--password", help="defaults to $ERAG_ADMIN_PASSWORD or an interactive prompt")
     p.set_defaults(func=_cmd_create_admin)
+
+    p = sub.add_parser("worker", help="run the ingestion worker")
+    p.add_argument("--once", action="store_true", help="process the queue once and exit")
+    p.set_defaults(func=_cmd_worker)
 
     args = parser.parse_args(argv)
     result: int = args.func(args)
