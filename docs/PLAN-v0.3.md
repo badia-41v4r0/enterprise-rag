@@ -13,7 +13,9 @@
 | D4 | Quotas **per user** and **per role**. A role quota can be a standard cap for each member and/or a collective cap shared by everyone with that role (section 3). |
 | D5 | A **model router** that looks at the query and chooses the most suitable model. It can be enabled or disabled in the settings and works with the **official Jev API** and with **open-source Jev-style models**. |
 | D6 | A hosted Jev only receives `public` data by default, configurable. Open models running locally may be cleared for `internal` and `confidential`. |
-| D7 | The router lives in a new admin tab (I name it **Model router**, like "MCP registry"). |
+| D7 | The router lives in a new admin tab named **Model router** (confirmed). |
+| D8 | **Free licenses only** for anything we use or recommend: model weights and code under Apache-2.0, MIT or BSD. No AGPL, GPL or non-commercial licenses (so DecisionNode Edge Mini, AGPL-3.0, is excluded). |
+| D9 | The owner has an account for the official Jev API. The system is built from the official documentation first; the key is added later in the panel and tested with a budget of about EUR 1. |
 
 ## 1. Goals
 
@@ -41,8 +43,8 @@ A monthly USD ceiling per provider (enforced only when the provider reports `usa
 - **Per user:** an optional override for a specific person.
 - **Per role, two forms:**
   - a **standard cap per member**: every person with that role gets the same allowance, counted separately;
-  - a **collective cap**: one shared pool for everyone with that role.
-- **How they combine (proposal, to confirm):** a person's standard allowance is their per-user override if one exists, otherwise the highest standard cap among their roles. Every collective pool of every role they hold is charged for each request, and the request is refused if any applicable cap is exhausted. So a pool on the broad "Employee" role is effectively a company-wide pool.
+  - a **collective cap**: one shared pool for everyone with that role. Example: a collective cap on the **Engineering** role is one pool shared by all engineers; a standard cap on Engineering gives each engineer the same individual allowance.
+- **How they combine (proposal, to confirm):** a person's standard allowance is their per-user override if one exists, otherwise the highest standard cap among their roles. Every collective pool of every role they hold is charged for each request, and the request is refused if any applicable cap is exhausted. A collective pool on a role that everyone holds (such as "Employee") would be a company-wide pool, which is a valid use but not the intended one.
 - **Panel:** a quotas screen under Roles (standard and collective caps, overrides on the user), a usage view per role and per user, and what the user sees when blocked ("your daily allowance is used up; it resets at 00:00 UTC").
 - **Privacy of usage:** a user sees only their own usage; admins see aggregates and per-user figures but never prompts or answers.
 
@@ -65,7 +67,7 @@ Both the official Jev API and the open Jev-style models speak the same **decisio
 
 | Decider | Where it runs | Default clearance | Notes |
 |---|---|---|---|
-| **Official Jev API** | TypeSafe (`https://api.typesafe.ai/v1/systemone`) | `public` | Early access with a key from their console (a waitlist applies). Third-party sources report $0.042 per million input tokens and free output; unverified, read `usage` on the first call. Also reachable through OpenRouter. |
+| **Official Jev API** | TypeSafe (`https://api.typesafe.ai/v1/systemone`; base URL and model name are settings) | `public` | The owner has an account. Built from the official documentation; the key is added in the panel afterwards (D9). Third-party sources report $0.042 per million input tokens and free output; unverified, so the first real call reads `usage`. Also reachable through OpenRouter, to be confirmed against its documentation. |
 | **Open Jev-style model** | Local, or any server you run | up to `confidential` when local (same locality rule as the provider registry) | Needs the model's own server; see the table below. |
 | **Prompted LLM decider** | Any model from the provider registry (for example a small local Ollama model) | that of the chosen provider | No special model: the router asks the same three question types in a strict-JSON prompt. The practical choice on modest hardware. |
 | **Rules** | In the app | n/a | Deterministic (question length, number of chunks, tools offered, classification). Always available as the last fallback. |
@@ -101,7 +103,7 @@ The ranking below is JevBench's own leaderboard ("Capability Score", higher is b
 | Model | Size and weights | License | Capability | Fits here? |
 |---|---|---|---|---|
 | **Open-Jev 2B** (ZefanCai) | LoRA adapter plus decision head on Qwen3.5-2B; own server `python -m jev.server`, protocol `/v1/systemone`; needs Transformers 5.10.2 and PEFT, sizes not stated | Adapter Apache-2.0, code MIT, base model separate | 47.7 | **Yes, for tests**, on CPU or after unloading the chat model; the 2B base in fp16 is about 4 to 5 GB. To validate in a spike. |
-| **DecisionNode Edge Mini 0.9.2** (Bynn) | 0.85B, 8-bit GGUF of 0.8 GB, official runtime runs on CPU (OpenVINO or llama.cpp), also vLLM | **AGPL-3.0** (commercial license available) | 47.6 | **Yes**, the lightest. The AGPL conflicts with the project's no-copyleft-dependency rule, so it could only be used as a separate, unmodified service reached over HTTP, never bundled. Owner decision. |
+| ~~DecisionNode Edge Mini 0.9.2~~ (Bynn) | 0.85B, 8-bit GGUF of 0.8 GB | **AGPL-3.0** | 47.6 | **Excluded by D8** (not a free license in the sense chosen). |
 | pjev-2b (Kailune AI) | 2B on MiniCPM5-2B, letter-logit readout | not checked | 56.5 | Probably, same class as Open-Jev 2B. Not inspected. |
 | **Torchcast Decision 4B** | 5B parameters in BF16, serving package with vLLM or SGLang | Apache-2.0 | 77.5 | **No** on this machine: 9 GB or more of weights and BF16 on a GPU without bf16. Its card warns that llama.cpp and similar runtimes give different probabilities. Good for a production GPU. |
 | **H2O-Lightning-4B** | 9.3 GB safetensors, vLLM shim recommended; a community GGUF exists | Apache-2.0 | 75.0 | **No** for the same reasons. |
@@ -124,15 +126,20 @@ Real Postgres, real Ollama. Because real models are non-deterministic, router te
 | R9 | Official Jev API decider, OpenRouter Jev Router as a virtual model | ~1 week |
 | **Total** | | **about 6.5 weeks (roughly 3 months part-time)** |
 
-## 9. Still open
+## 9. Assumptions and what is still open
 
-1. **AGPL decider.** May the DecisionNode Edge Mini be offered as an optional, separately installed service (never bundled), or do you want only Apache and MIT models?
-2. **Quota combination rule** in section 3 (highest standard cap among roles, all collective pools charged). Confirm or change.
-3. **Official Jev API access.** It is early access with a waitlist: do you already have a key? Without one, its tests are skipped and it is built from the documentation only.
-4. The tab name (**Model router**).
+Assumptions I am building on (change any of them before or after the work):
+- The router is **off by default**; off means exactly the v0.2 behavior.
+- Users see only their own usage; admins see aggregates and per-user figures, never prompts or answers.
+- Quotas count tokens (input plus output) and estimated USD, per day and per month, in UTC.
+- A hosted decider is cleared for `public` data by default; local deciders for what their locality allows.
+- Tests that call real remote models use free models only and never the owner's Jev key; the official Jev API is tested manually by the owner after adding the key.
+
+Still open:
+1. Whether the official key you hold is TypeSafe's own or an OpenRouter one (the system supports a configurable base URL, so both can work).
+2. The result of the first open-decider spike on this machine (section 6).
 
 ## Sources
-
 - Jev Router on OpenRouter: https://openrouter.ai/docs/guides/routing/routers/jev-router
 - Jev decision model (choice, score and yes/no questions): https://www.mindstudio.ai/blog/how-to-build-model-router-with-jev
 - JevBench leaderboard of open decision models: https://benchmarkheaven.com/jev-models
