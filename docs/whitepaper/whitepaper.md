@@ -4,7 +4,7 @@
 
 *Badia Partners, https://badiapartners.com. Draft 0.1 (November 2026). Licensed CC BY 4.0 (see `LICENSE-CC-BY-4.0.txt` in this directory). The reference implementation is source-available under PolyForm Noncommercial 1.0.0.*
 
-> Draft status: sections 1 to 6 are written from the MVP as built; numbers come from the automated test suite and a single developer workstation. Sections marked *TODO* need the owner's input.
+> Draft status: sections 1 to 6 are written from the MVP as built; numbers come from the automated test suite and a single developer workstation.
 
 ## 1. The problem: a naive enterprise assistant is a data-leak machine
 
@@ -96,4 +96,8 @@ Multi-tenancy, SSO/OIDC, delegated OAuth to SaaS systems, external connectors, d
 
 ## 9. Consulting and implementation
 
-*TODO (owner):* Badia Partners offers implementation and consulting for organizations adopting this pattern: https://badiapartners.com
+Badia Partners provides technology consulting and software implementation, and helps organizations adopt this pattern: mapping your data-classification policy to containers, roles and grants; deploying the reference implementation on-premises or in a private cloud; integrating your systems through connectors and MCP servers; and testing the result for permission leaks and prompt injection before go-live. Engagements typically start with a scoped pilot on a real set of documents and roles.
+
+The reference implementation is source-available for noncommercial use; commercial use requires a separate agreement.
+
+Contact: https://badiapartners.com
