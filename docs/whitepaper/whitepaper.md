@@ -4,7 +4,7 @@
 
 *Badia Partners, https://badiapartners.com. Draft 0.1 (November 2026). Licensed CC BY 4.0 (see `LICENSE-CC-BY-4.0.txt` in this directory). The reference implementation is source-available under PolyForm Noncommercial 1.0.0.*
 
-> Draft status: sections 1 to 6 are written from the MVP as built; numbers come from the automated test suite and a single developer workstation.
+> Draft status: all sections are written from the MVP as built; numbers come from the automated test suite and a single developer workstation.
 
 ## 1. The problem: a naive enterprise assistant is a data-leak machine
 

@@ -4,7 +4,10 @@ Rules (PLAN.md section 5):
 - Effective permissions = union of grants over the user's roles.
 - A document is readable iff the user can read its container AND, when the document is
   `restricted`, also holds a `read` grant on the document itself. Chunks inherit from documents.
-- `manage` on a container implies `read` on it.
+- `manage` on a container implies `contribute`, which implies `read` (ADR 0017).
+- `contribute` lets a user upload documents and new versions of documents they can read.
+- `manage` additionally lets a user delete documents and toggle `restricted` (lifting the flag only
+  on documents the user can read). Neither changes grants or classification: those are admin-only.
 - Tools need an `execute` grant.
 - `is_admin` unlocks the management API only; it adds no data access (ADR 0009).
 - Inactive users have no permissions at all.
@@ -27,6 +30,7 @@ class EffectivePermissions:
     is_admin: bool = False
     role_ids: frozenset[uuid.UUID] = field(default_factory=frozenset)
     readable_containers: frozenset[uuid.UUID] = field(default_factory=frozenset)
+    contributable_containers: frozenset[uuid.UUID] = field(default_factory=frozenset)
     manageable_containers: frozenset[uuid.UUID] = field(default_factory=frozenset)
     readable_restricted_documents: frozenset[uuid.UUID] = field(default_factory=frozenset)
     executable_tools: frozenset[uuid.UUID] = field(default_factory=frozenset)
@@ -52,14 +56,19 @@ async def effective_permissions(db: AsyncSession, user: User) -> EffectivePermis
     ).all()
 
     read_c: set[uuid.UUID] = set()
+    contrib_c: set[uuid.UUID] = set()
     manage_c: set[uuid.UUID] = set()
     read_d: set[uuid.UUID] = set()
     exec_t: set[uuid.UUID] = set()
     for rtype, rid, action in rows:
         if rtype == ResourceType.container and action == Action.read:
             read_c.add(rid)
+        elif rtype == ResourceType.container and action == Action.contribute:
+            contrib_c.add(rid)
+            read_c.add(rid)
         elif rtype == ResourceType.container and action == Action.manage:
             manage_c.add(rid)
+            contrib_c.add(rid)
             read_c.add(rid)
         elif rtype == ResourceType.document and action == Action.read:
             read_d.add(rid)
@@ -71,6 +80,7 @@ async def effective_permissions(db: AsyncSession, user: User) -> EffectivePermis
         is_admin=user.is_admin,
         role_ids=role_ids,
         readable_containers=frozenset(read_c),
+        contributable_containers=frozenset(contrib_c),
         manageable_containers=frozenset(manage_c),
         readable_restricted_documents=frozenset(read_d),
         executable_tools=frozenset(exec_t),
@@ -98,6 +108,8 @@ def can(
     if resource_type == ResourceType.container:
         if action == Action.read:
             return resource_id in perms.readable_containers
+        if action == Action.contribute:
+            return perms.is_admin or resource_id in perms.contributable_containers
         if action == Action.manage:
             return perms.is_admin or resource_id in perms.manageable_containers
         return False
@@ -106,12 +118,37 @@ def can(
             return False
         if action == Action.read:
             return can_read_document(perms, container_id=container_id, document_id=resource_id, restricted=restricted)
+        if action == Action.contribute:
+            # New versions: managers always; contributors only for documents they can read.
+            if perms.is_admin or container_id in perms.manageable_containers:
+                return True
+            return container_id in perms.contributable_containers and can_read_document(
+                perms, container_id=container_id, document_id=resource_id, restricted=restricted
+            )
         if action == Action.manage:
             return perms.is_admin or container_id in perms.manageable_containers
         return False
     if resource_type == ResourceType.tool:
         return action == Action.execute and resource_id in perms.executable_tools
     return False
+
+
+def can_set_restricted(
+    perms: EffectivePermissions, *, container_id: uuid.UUID, document_id: uuid.UUID, currently: bool, new: bool
+) -> bool:
+    """Managers may restrict any document in their container, but may only lift the flag on a
+    document they can already read: otherwise un-restricting would grant them (and every reader of
+    the container) access they were not given."""
+    if not can(perms, Action.manage, ResourceType.document, document_id, container_id=container_id):
+        return False
+    if currently and not new and not perms.is_admin:
+        return can_read_document(perms, container_id=container_id, document_id=document_id, restricted=True)
+    return True
+
+
+def content_containers(perms: EffectivePermissions) -> frozenset[uuid.UUID]:
+    """Containers whose content this user may change (contribute or manage)."""
+    return perms.contributable_containers | perms.manageable_containers
 
 
 async def readable_document_ids(db: AsyncSession, perms: EffectivePermissions, ids: set[uuid.UUID]) -> set[uuid.UUID]:
