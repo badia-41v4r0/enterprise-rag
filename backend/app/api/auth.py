@@ -9,7 +9,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import AuthContext, get_auth, get_pending_mfa, recently_authenticated
+from app.api.deps import (
+    AuthContext,
+    get_auth,
+    get_auth_allow_password_change,
+    get_pending_mfa,
+    recently_authenticated,
+)
 from app.authz.policy import EffectivePermissions, content_containers, effective_permissions
 from app.core.config import get_settings
 from app.core.db import get_db
@@ -43,6 +49,8 @@ class MeOut(BaseModel):
     # Login: password accepted, a TOTP or recovery code is still required (POST /mfa/verify).
     mfa_required: bool = False
     step_up_valid: bool = False
+    # A temporary password: the UI shows only the change-password screen until it is replaced (ADR 0037).
+    must_change_password: bool = False
 
 
 class CodeIn(BaseModel):
@@ -83,6 +91,7 @@ def _me(user: User, sess: Session, perms: EffectivePermissions | None = None) ->
         mfa_enabled=user.mfa_enabled,
         mfa_required=sess.mfa_pending,
         step_up_valid=recently_authenticated(sess) and not sess.mfa_pending,
+        must_change_password=user.must_change_password and not sess.mfa_pending,
     )
 
 
@@ -184,7 +193,11 @@ async def mfa_verify(
 
 
 @router.post("/logout", status_code=204)
-async def logout(response: Response, auth: AuthContext = Depends(get_auth), db: AsyncSession = Depends(get_db)) -> None:
+async def logout(
+    response: Response,
+    auth: AuthContext = Depends(get_auth_allow_password_change),
+    db: AsyncSession = Depends(get_db),
+) -> None:
     await db.execute(delete(Session).where(Session.id == auth.session.id))
     audit(db, "auth.logout", user_id=auth.user.id)
     await db.commit()
@@ -192,8 +205,48 @@ async def logout(response: Response, auth: AuthContext = Depends(get_auth), db: 
 
 
 @router.get("/me")
-async def me(auth: AuthContext = Depends(get_auth)) -> MeOut:
+async def me(auth: AuthContext = Depends(get_auth_allow_password_change)) -> MeOut:
     return _me(auth.user, auth.session, auth.perms)
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(max_length=1024)
+    new_password: str = Field(max_length=1024)
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordIn,
+    response: Response,
+    auth: AuthContext = Depends(get_auth_allow_password_change),
+    db: AsyncSession = Depends(get_db),
+) -> MeOut:
+    """Replace one's own password (required at the first login after a temporary password). Every other session of
+    the user ends and this one is replaced by a fresh session (ADR 0037)."""
+    from app.core.security import hash_password
+    from app.services.setup import password_problems
+
+    user = auth.user
+    if not mfa_limiter.allow(f"pw:{user.id}"):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts")
+    if not verify_password(user.password_hash, body.current_password):
+        audit(db, "auth.password.change", user_id=user.id, decision="deny")
+        await db.commit()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "The current password is wrong")
+    if body.new_password == body.current_password:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Choose a password different from the current one")
+    problems = password_problems(body.new_password, user.email)
+    if problems:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Password: " + "; ".join(problems))
+    forced = user.must_change_password
+    user.password_hash = hash_password(body.new_password)
+    user.must_change_password = False
+    await db.execute(delete(Session).where(Session.user_id == user.id))
+    token, sess = _new_session(db, user, pending=False)
+    audit(db, "auth.password.change", user_id=user.id, details={"forced": forced})
+    await db.commit()
+    _set_cookie(response, token)
+    return _me(user, sess, await effective_permissions(db, user))
 
 
 @router.post("/step-up")

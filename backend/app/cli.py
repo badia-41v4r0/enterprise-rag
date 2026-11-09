@@ -16,8 +16,31 @@ def _cmd_create_admin(args: argparse.Namespace) -> int:
     if len(password) < 12:
         print("Password must be at least 12 characters.", file=sys.stderr)
         return 2
-    created = asyncio.run(create_admin(args.email, password))
+
+    async def run() -> tuple[bool, bool]:
+        from sqlalchemy import select
+
+        from app.core.db import dispose_engine, get_sessionmaker
+        from app.models import User
+        from app.services import setup
+
+        created = await create_admin(args.email, password)
+        completed = False
+        async with get_sessionmaker()() as db:
+            row = await setup.get_state(db)
+            if row is not None and row.completed_at is None:
+                # A headless installation: the administrator was created on the server, so the wizard is not
+                # needed any more (ADR 0034). Its token is destroyed.
+                user = await db.scalar(select(User).where(User.email == args.email.lower()))
+                await setup.complete_existing(db, "cli", user.id if user else None)
+                completed = True
+        await dispose_engine()
+        return created, completed
+
+    created, completed = asyncio.run(run())
     print(f"Admin {'created' if created else 'already exists'}: {args.email}")
+    if completed:
+        print("Setup marked as completed (the setup wizard and its token are disabled).")
     return 0
 
 
@@ -163,16 +186,117 @@ async def _ensure_builtin_providers() -> None:
     print("Built-in LLM providers ensured (ollama, openrouter).")
 
 
+async def _setup_on_start() -> None:
+    """Setup mode for a fresh installation; an existing one is recorded as completed (ADR 0034)."""
+    from app.core.config import get_settings
+    from app.core.db import dispose_engine, get_sessionmaker
+    from app.services import setup
+
+    s = get_settings()
+    async with get_sessionmaker()() as db:
+        res = await setup.init_on_start(db, s)
+    await dispose_engine()
+    if res.mode != "setup":
+        return
+    port = os.environ.get("APP_PORT", "8000")
+    print("=" * 72)
+    print("EnterpriseRAG is in SETUP MODE: open the web interface to run the setup wizard.")
+    print(f"  URL: http://127.0.0.1:{port}/  (or this server's address)")
+    if res.new_token:
+        print(f"  Setup token: {res.new_token}")
+        print(f"  (also in {s.setup_token_path}, readable only by the application user)")
+    elif res.token_from_init:
+        print("  Setup token: the one printed by `erag init`.")
+    else:
+        print(f"  Setup token: unchanged since the last start (see {s.setup_token_path} or the earlier log).")
+    print("  Lost it? Run `erag setup --new-token` on the server.")
+    print("=" * 72, flush=True)
+
+
 def _cmd_bootstrap(_: argparse.Namespace) -> int:
-    """Container start-up hook: seed the ACME demo when ERAG_SEED_DEMO=true (documents go to the worker)."""
+    """Container start-up hook: built-in providers, the ACME demo when ERAG_SEED_DEMO=true (development and
+    scripts/demo_scenarios.py; ADR 0040), then setup mode for a fresh installation."""
+    from app.core.config import get_settings
+
     _ensure_dev_key_file()
     asyncio.run(_ensure_builtin_providers())
-    if os.environ.get("ERAG_SEED_DEMO", "false").lower() != "true":
-        return 0
+    s = get_settings()
+    if s.seed_demo:
+        if s.is_prod:
+            # The demo's admin persona has a published password: never in production (ADR 0040).
+            print("ERAG_SEED_DEMO=true is ignored in production; choose the demo in the setup wizard instead.")
+        else:
+            asyncio.run(_seed_and_complete(s.demo_password.get_secret_value()))
+            return 0
+    asyncio.run(_setup_on_start())
+    return 0
+
+
+async def _seed_and_complete(password: str) -> None:
+    """One event loop for the seed and the completion record (the engine's pool is bound to its loop)."""
+    from app.core.db import dispose_engine, get_sessionmaker
+    from app.services import setup
     from demo.acme.seed import seed
 
-    asyncio.run(seed(password=os.environ.get("ERAG_DEMO_PASSWORD", "acme-demo-password"), ingest=False))
-    return 0
+    await seed(password=password, ingest=False)
+    async with get_sessionmaker()() as db:
+        row = await setup.get_state(db)
+        if row is None or row.completed_at is None:
+            await setup.complete_existing(db, "seed_demo")
+            print("Demo seeded with its admin persona (ERAG_SEED_DEMO=true): setup counts as completed.")
+    await dispose_engine()
+
+
+def _cmd_setup(args: argparse.Namespace) -> int:
+    """Server-side setup commands. They need the database and the data volume, never a web request."""
+
+    async def run() -> int:
+        from app.core.config import get_settings
+        from app.core.db import dispose_engine, get_sessionmaker
+        from app.services import setup
+
+        s = get_settings()
+        async with get_sessionmaker()() as db:
+            row = await setup.get_state(db)
+            if args.status or not (args.reset or args.new_token):
+                if row is None:
+                    print("No setup record (development database, or never started): not in setup mode.")
+                elif row.completed_at is None:
+                    print(
+                        f"Setup mode: step {setup.current_step(row)} of {len(setup.STEPS) - 1}; "
+                        f"token expires {row.token_expires_at:%Y-%m-%d %H:%M} UTC."
+                    )
+                else:
+                    print(f"Setup completed {row.completed_at:%Y-%m-%d %H:%M} UTC (via {row.completed_via}).")
+                await dispose_engine()
+                return 0
+            if args.reset and not args.yes:
+                print(
+                    "This re-opens the setup wizard: until it is finished again, only administrators can use the "
+                    "application. Re-run with --yes to confirm.",
+                    file=sys.stderr,
+                )
+                await dispose_engine()
+                return 2
+            try:
+                token = await setup.new_token_cli(db, s, reopen=bool(args.reset))
+            except setup.SetupError as exc:
+                print(str(exc), file=sys.stderr)
+                await dispose_engine()
+                return 1
+        await dispose_engine()
+        print("Setup re-opened." if args.reset else "New setup token issued (the previous one no longer works).")
+        print(f"Setup token: {token}")
+        print(f"(also in {s.setup_token_path}). Restart the app if it does not pick this up within 30 seconds.")
+        return 0
+
+    return asyncio.run(run())
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    from app.installer import run_init
+
+    return run_init(args)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -212,8 +336,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--new-key-file", required=True)
     p.set_defaults(func=_cmd_secrets_rotate)
 
-    p = sub.add_parser("bootstrap", help="start-up hook (seeds the demo when ERAG_SEED_DEMO=true)")
+    p = sub.add_parser("bootstrap", help="start-up hook (setup mode for a fresh installation; demo seed in dev)")
     p.set_defaults(func=_cmd_bootstrap)
+
+    p = sub.add_parser("setup", help="setup mode on the server: --status, --new-token, --reset")
+    p.add_argument("--status", action="store_true", help="show whether setup is running or completed")
+    p.add_argument("--new-token", action="store_true", help="issue a new setup token (setup mode only)")
+    p.add_argument("--reset", action="store_true", help="re-open a completed setup (prints a new token)")
+    p.add_argument("--yes", action="store_true", help="confirm --reset")
+    p.set_defaults(func=_cmd_setup)
+
+    from app.installer import add_init_arguments
+
+    p = sub.add_parser("init", help="prepare a production environment file, master key and setup token")
+    add_init_arguments(p)
+    p.set_defaults(func=_cmd_init)
 
     args = parser.parse_args(argv)
     result: int = args.func(args)

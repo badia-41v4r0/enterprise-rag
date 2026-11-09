@@ -27,8 +27,10 @@ import Providers from "@/pages/Providers";
 import Registry from "@/pages/Registry";
 import { ContainerContent } from "@/pages/Content";
 import { RoleQuotas, UsageOverview, UserQuotas } from "@/pages/Quotas";
+import SetupAssistant, { SetupChecklist } from "@/pages/SetupAssistant";
+import type { Me } from "@/lib/api";
 
-const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Model router", "Audit", "Jobs"] as const;
+const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Model router", "Audit", "Jobs", "Setup assistant"] as const;
 type Tab = (typeof TABS)[number];
 const CLASSIFICATIONS = ["public", "internal", "confidential"] as const;
 const CLASSES: Classification[] = ["public", "internal", "confidential"];
@@ -49,7 +51,7 @@ const useTools = () => useQuery({ queryKey: ["tools"], queryFn: () => api<ToolRo
 
 // --- Users ---------------------------------------------------------------------------------------
 
-function Users() {
+export function Users() {
   const inv = useInvalidate();
   const users = useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/api/admin/users") });
   const roles = useRoles();
@@ -228,7 +230,7 @@ const TEMPLATES = [
   { id: "manager", label: "Manager (read + upload + delete)" },
 ];
 
-function Roles() {
+export function Roles() {
   const inv = useInvalidate();
   const roles = useRoles();
   const containers = useContainers();
@@ -393,7 +395,7 @@ function Roles() {
 
 // --- Containers and documents ---------------------------------------------------------------------
 
-function Containers() {
+export function Containers() {
   const inv = useInvalidate();
   const containers = useContainers();
   const [selected, setSelected] = useState<string | null>(null);
@@ -643,7 +645,7 @@ function Grants() {
 
 const LEVELS: AccessLevel[] = ["none", "read", "contribute", "manage"];
 
-function Matrix() {
+export function Matrix() {
   const inv = useInvalidate();
   const roles = useRoles();
   const containers = useContainers();
@@ -740,7 +742,7 @@ function Matrix() {
   );
 }
 
-function EffectivePreview() {
+export function EffectivePreview() {
   const users = useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/api/admin/users") });
   const [userId, setUserId] = useState("");
   const eff = useQuery({
@@ -1007,18 +1009,23 @@ function RolesQuotas() {
   return <RoleQuotas roles={roles.data ?? []} />;
 }
 
-export default function AdminPage() {
+export default function AdminPage({ me }: { me?: Me }) {
   const [tab, setTab] = useState<Tab>("Users");
   const containers = useContainers();
+  const openWhere = (where: string) => {
+    if (where === "account") return;
+    if ((TABS as readonly string[]).includes(where)) setTab(where as Tab);
+  };
   return (
     <div className="h-full overflow-y-auto p-6">
-      <div className="mb-4 flex gap-1 border-b border-border">
+      <SetupChecklist onOpen={openWhere} />
+      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-border">
         {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              "-mb-px border-b-2 px-3 py-2 text-sm",
+              "-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm",
               t === tab ? "border-brand font-medium" : "border-transparent text-muted-foreground",
             )}
           >
@@ -1062,6 +1069,7 @@ export default function AdminPage() {
       {tab === "Model router" && <ModelRouter />}
       {tab === "Audit" && <Audit />}
       {tab === "Jobs" && <Jobs />}
+      {tab === "Setup assistant" && <SetupAssistant me={me} />}
     </div>
   );
 }

@@ -1,0 +1,38 @@
+# A throw-away installation next to a running one, for verifying the setup wizard from an empty database
+# (PLAN-v0.4 section 9). Everything is on the host network (for a host Ollama on 127.0.0.1) with its own ports,
+# its own image tag (ERAG_IMAGE), its own runner socket directory (ERAG_RUNNER_SOCKET_DIR) and its own Compose project and volumes:
+#
+#   uv run erag init --env-file .scratch/erag-test-setup/.env --app-port 8099 --postgres-port 55499
+#   ERAG_IMAGE=erag-test-setup:dev ERAG_RUNNER_SOCKET_DIR=/tmp/erag-throwaway-runner-sockets \
+#   THROWAWAY_RUNNER_PORT=8797 THROWAWAY_OFFICE_PORT=8798 \
+#     docker compose -p erag-test-setup --env-file .scratch/erag-test-setup/.env \
+#       -f deploy/docker-compose.yml -f deploy/docker-compose.throwaway.yml up -d --build
+#   ... test ...
+#   docker compose -p erag-test-setup ... down -v      # ONLY this project
+#
+# Never point it at another installation's project name or volumes.
+services:
+  app:
+    network_mode: host
+    ports: !reset []
+    extra_hosts: !reset []
+    environment:
+      ERAG_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-erag}:${POSTGRES_PASSWORD:-erag}@127.0.0.1:${POSTGRES_HOST_PORT:-55499}/${POSTGRES_DB:-erag}
+      ERAG_OLLAMA_BASE_URL: http://127.0.0.1:11434
+      ERAG_SSRF_ALLOWLIST: 127.0.0.1:${THROWAWAY_OFFICE_PORT:-8798}
+      ERAG_DEMO_OFFICE_MCP_URL: http://127.0.0.1:${THROWAWAY_OFFICE_PORT:-8798}/mcp
+      ERAG_RUNNER_URL: http://127.0.0.1:${THROWAWAY_RUNNER_PORT:-8797}
+    command: ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && uvicorn app.main:app --host 127.0.0.1 --port ${APP_PORT:-8099}"]
+  worker:
+    network_mode: host
+    extra_hosts: !reset []
+    environment:
+      ERAG_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-erag}:${POSTGRES_PASSWORD:-erag}@127.0.0.1:${POSTGRES_HOST_PORT:-55499}/${POSTGRES_DB:-erag}
+      ERAG_OLLAMA_BASE_URL: http://127.0.0.1:11434
+  runner:
+    network_mode: host
+    environment:
+      ERAG_RUNNER_LISTEN: 127.0.0.1:${THROWAWAY_RUNNER_PORT:-8797}
+  mcp-office:
+    network_mode: host
+    command: ["python", "-m", "mcp_servers.office_server", "--http", "127.0.0.1:${THROWAWAY_OFFICE_PORT:-8798}"]

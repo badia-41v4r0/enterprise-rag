@@ -27,3 +27,11 @@ def test_prod_refuses_dev_secrets() -> None:
     with pytest.raises(RuntimeError, match="ERAG_SECRETS_KEY"):
         Settings(env="prod", **strong).check_secrets()  # the credential store master key is required too
     Settings(env="prod", secrets_key="k" * 44, **strong).check_secrets()
+
+
+def test_empty_master_key_variable_means_unset() -> None:
+    """Compose passes `ERAG_SECRETS_KEY: ${ERAG_SECRETS_KEY:-}`: an empty value must fall back to the key file."""
+    from app.core.config import Settings
+
+    s = Settings(secrets_key="", setup_token_sha256=" ")  # type: ignore[arg-type]
+    assert s.secrets_key is None and s.setup_token_sha256 is None

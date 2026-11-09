@@ -24,6 +24,7 @@ os.environ.setdefault("ERAG_MCP_TICKETS_DB", str(Path(tempfile.mkdtemp(prefix="e
 os.environ.setdefault("ERAG_LOG_JSON", "false")
 os.environ.setdefault("ERAG_CONNECTOR_ROOTS", tempfile.mkdtemp(prefix="erag-connector-root-"))
 os.environ.setdefault("ERAG_FRONTEND_DIST", str(ROOT / "nonexistent-dist"))
+os.environ.setdefault("ERAG_SETUP_TOKEN_FILE", str(Path(tempfile.mkdtemp(prefix="erag-setup-")) / "setup-token"))
 
 import httpx  # noqa: E402
 from sqlalchemy import text  # noqa: E402
@@ -121,11 +122,14 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(pytest.mark.skip(reason="set ERAG_TEST_OPEN_JEV_URL to a running open Jev-style server"))
         if "decider_official" in item.keywords and not os.environ.get("ERAG_TEST_JEV_API_KEY"):
             item.add_marker(pytest.mark.skip(reason="set ERAG_TEST_JEV_API_KEY to run (real, paid calls)"))
+        if "ollama_download" in item.keywords and os.environ.get("ERAG_TEST_OLLAMA_DOWNLOAD") != "1":
+            item.add_marker(pytest.mark.skip(reason="set ERAG_TEST_OLLAMA_DOWNLOAD=1 to download all-minilm for real"))
         if "provider_claude_code" in item.keywords and os.environ.get("ERAG_RUN_CLAUDE_CODE_TESTS") != "1":
             item.add_marker(pytest.mark.skip(reason="set ERAG_RUN_CLAUDE_CODE_TESTS=1 to run"))
 
 
 TABLES = [
+    "setup_state",
     "audit_log",
     "sync_runs",
     "connector_items",
@@ -161,9 +165,13 @@ TABLES = [
 
 
 async def truncate_all() -> None:
+    from app.llm import registry
     from app.llm.router import invalidate_router_cache
+    from app.services.setup import invalidate_cache
 
     invalidate_router_cache()
+    invalidate_cache()
+    registry._cloud_override.clear()
     async with get_sessionmaker()() as s:
         await s.execute(text("TRUNCATE " + ", ".join(TABLES) + " RESTART IDENTITY CASCADE"))
         await s.commit()

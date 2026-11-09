@@ -27,6 +27,7 @@ class AuthContext:
 
 
 STEP_UP_REQUIRED = "step_up_required"
+PASSWORD_CHANGE_REQUIRED = "password_change_required"  # noqa: S105 - an error code
 
 
 async def _session_and_user(request: Request, db: AsyncSession) -> tuple[Session, User]:
@@ -47,13 +48,23 @@ async def _session_and_user(request: Request, db: AsyncSession) -> tuple[Session
     return sess, user
 
 
-async def get_auth(request: Request, db: AsyncSession = Depends(get_db)) -> AuthContext:
+async def get_auth_allow_password_change(request: Request, db: AsyncSession = Depends(get_db)) -> AuthContext:
+    """A complete login, also when the user still has to replace a temporary password. Only for /me, /logout and
+    /change-password."""
     sess, user = await _session_and_user(request, db)
     if sess.mfa_pending:
         # Password accepted but the second factor is missing: this session grants nothing.
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "MFA verification required")
     perms = await effective_permissions(db, user)
     return AuthContext(user=user, session=sess, perms=perms)
+
+
+async def get_auth(request: Request, db: AsyncSession = Depends(get_db)) -> AuthContext:
+    auth = await get_auth_allow_password_change(request, db)
+    if auth.user.must_change_password:
+        # A temporary password set by an administrator: nothing works until the user chooses their own (ADR 0037).
+        raise HTTPException(status.HTTP_403_FORBIDDEN, PASSWORD_CHANGE_REQUIRED)
+    return auth
 
 
 async def get_pending_mfa(request: Request, db: AsyncSession = Depends(get_db)) -> tuple[Session, User]:
@@ -74,6 +85,23 @@ async def require_admin(auth: AuthContext = Depends(get_auth)) -> AuthContext:
     if not auth.user.is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin only")
     return auth
+
+
+async def setup_gate(request: Request, db: AsyncSession = Depends(get_db)) -> None:
+    """While the installation is in setup mode (ADR 0034) every API outside /health, /api/info, /api/auth and
+    /api/setup answers 503 "setup required", except for an administrator's session (the one created in the
+    wizard's step 2, which configures the rest through the normal admin screens)."""
+    from app.services.setup import setup_required
+
+    if not await setup_required(db):
+        return
+    try:
+        sess, user = await _session_and_user(request, db)
+    except HTTPException:
+        sess = None
+        user = None
+    if sess is None or user is None or sess.mfa_pending or not user.is_admin or user.must_change_password:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "setup required")
 
 
 async def require_step_up(auth: AuthContext = Depends(require_admin)) -> AuthContext:

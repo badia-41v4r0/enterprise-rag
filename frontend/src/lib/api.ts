@@ -1,8 +1,14 @@
 // Same-origin API client. The session cookie is HttpOnly; the CSRF token comes from /api/auth/me.
 let csrfToken = "";
+// The setup wizard's own CSRF token (its session cookie is limited to /api/setup).
+let setupCsrf = "";
 
 export function setCsrf(token: string) {
   csrfToken = token;
+}
+
+export function setSetupCsrf(token: string) {
+  setupCsrf = token;
 }
 
 export class ApiError extends Error {
@@ -36,6 +42,7 @@ async function rawApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (method !== "GET" && csrfToken) headers.set("X-CSRF-Token", csrfToken);
+  if (method !== "GET" && setupCsrf && path.startsWith("/api/setup/")) headers.set("X-Setup-CSRF", setupCsrf);
   if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
   const res = await fetch(path, { ...init, headers, credentials: "same-origin" });
   if (!res.ok) {
@@ -67,6 +74,109 @@ export interface Me {
   mfa_enabled: boolean;
   mfa_required: boolean;
   step_up_valid: boolean;
+  must_change_password: boolean;
+}
+
+export interface Info {
+  setup_required: boolean;
+  company_name: string;
+  demo: boolean;
+  product: string;
+}
+
+export interface SetupStep {
+  key: string;
+  index: number;
+  status: "pending" | "done" | "skipped";
+  required: boolean;
+}
+
+export interface SetupStatus {
+  mode: string;
+  steps: SetupStep[];
+  current_step: number;
+  session: boolean;
+  setup_csrf: string | null;
+  admin_signed_in: boolean;
+  token_source: "init" | "file";
+  token_file: string;
+  install_type: string | null;
+  license_accepted: boolean;
+}
+
+export interface EnvCheck {
+  id: string;
+  label: string;
+  status: "ok" | "warn" | "fail" | "info";
+  detail: string;
+  fix: string;
+}
+
+export interface Organization {
+  company_name: string;
+  cloud_max_classification: Classification;
+  cloud_max_source: "database" | "environment";
+  environment_cloud_max_classification: string;
+}
+
+export interface ModelDownload {
+  id: string;
+  model: string;
+  size_bytes: number;
+  status: "running" | "done" | "failed" | "cancelled";
+  message: string;
+  completed: number;
+  total: number;
+}
+
+export interface ModelsStatus {
+  ollama_url: string;
+  reachable: boolean;
+  error: string;
+  installed: { name: string; size: number }[];
+  embedding: { model: string; dimensions: number; installed: boolean; locked: boolean; confirmed: boolean };
+  chat: { environment_model: string; default_model: string | null; installed: boolean };
+  suggested: { name: string; purpose: string; license: string; note: string }[];
+  downloads: ModelDownload[];
+  registry: string;
+}
+
+export interface SetupProgress {
+  admins: number;
+  users: number;
+  roles: number;
+  containers: number;
+  containers_by_classification: Record<Classification, number>;
+  grants: number;
+  documents: number;
+  documents_ready: number;
+  documents_pending: number;
+  documents_failed: number;
+  chunks: number;
+  connectors: number;
+  tools_enabled: number;
+  demo: boolean;
+}
+
+export interface ChecklistItem {
+  key: string;
+  label: string;
+  done: boolean;
+  dismissed: boolean;
+  dismissable: boolean;
+  where: string;
+}
+
+export interface CheckResult {
+  user: { id: string; email: string; roles: string[] };
+  effective: EffectivePermissions;
+  sources: { title: string; container: string; classification: Classification }[];
+  model: string | null;
+  classification: Classification | null;
+  refusal: string | null;
+  error: string | null;
+  answer: string | null;
+  answer_hidden: boolean;
 }
 export interface SecretRow {
   name: string;
@@ -217,6 +327,7 @@ export interface UserRow {
   is_active: boolean;
   role_ids: string[];
   mfa_enabled: boolean;
+  must_change_password?: boolean;
 }
 export interface RoleRow {
   id: string;
