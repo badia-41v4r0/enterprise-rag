@@ -16,12 +16,12 @@ x-app-env: &app-env
   # Credential store master key (ADR 0018). In dev the file is generated on first start; in prod create
   # it with `erag secrets init --file ...` (or set ERAG_SECRETS_KEY) and keep a backup outside the database.
   ERAG_SECRETS_KEY_FILE: ${ERAG_SECRETS_KEY_FILE:-/data/secrets.key}
+  # `erag init` puts the master key here instead (it takes precedence over the file).
+  ERAG_SECRETS_KEY: ${ERAG_SECRETS_KEY:-}
   # Bootstrap fallback only: once the key is in the credential store (Admin > Providers, or
   # `erag secrets set openrouter_api_key --from-env ERAG_OPENROUTER_API_KEY`), remove it from here.
   ERAG_OPENROUTER_API_KEY: ${ERAG_OPENROUTER_API_KEY:-}
   ERAG_OPENROUTER_MODEL: ${ERAG_OPENROUTER_MODEL:-meta-llama/llama-3.3-8b-instruct:free}
-  # Removed in v0.3 (ADR 0028): passed through only so that a leftover value is reported with a warning.
-  ERAG_OPENROUTER_ALLOW_PAID: ${ERAG_OPENROUTER_ALLOW_PAID:-}
   ERAG_OPENROUTER_MONTHLY_BUDGET_USD: ${ERAG_OPENROUTER_MONTHLY_BUDGET_USD:-0.01}
   # Metered providers (ADR 0024, 0026): initial defaults for the monthly ceiling (USD), the daily request cap and
   # the maximum output tokens per request. Admins may lower or raise them per provider (step-up, audited).
@@ -42,9 +42,15 @@ x-app-env: &app-env
   ERAG_RUNNER_TOKEN: ${ERAG_RUNNER_TOKEN:-dev-insecure-runner-token}
   ERAG_RUNNER_SOCKET_DIR: ${ERAG_RUNNER_SOCKET_DIR:-/tmp/erag-runner-sockets}
   ERAG_MCP_TICKETS_DB: /data/tickets.sqlite3
-  # Demo: seed ACME Corp on startup (idempotent). Set to false for a real installation.
-  ERAG_SEED_DEMO: ${ERAG_SEED_DEMO:-true}
+  # A fresh installation starts in setup mode (the wizard); choose "Demo with mock data" there to explore ACME Corp.
+  # ERAG_SEED_DEMO=true seeds the full demo (including admin@acme.test) at start-up for development and
+  # scripts/demo_scenarios.py, and counts as a completed setup; ignored in production (ADR 0040).
+  ERAG_SEED_DEMO: ${ERAG_SEED_DEMO:-false}
   ERAG_DEMO_PASSWORD: ${ERAG_DEMO_PASSWORD:-acme-demo-password}
+  # Setup (ADR 0034): the SHA-256 of the token printed by `erag init`; without it a token is generated at first
+  # start and written to the log and to /data/setup-token (mode 0600).
+  ERAG_SETUP_TOKEN_SHA256: ${ERAG_SETUP_TOKEN_SHA256:-}
+  APP_PORT: ${APP_PORT:-8000}
 
 services:
   postgres:
@@ -68,7 +74,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: enterprise-rag:dev
+    image: ${ERAG_IMAGE:-enterprise-rag:dev}
     environment: *app-env
     command: ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
     ports:
@@ -86,7 +92,7 @@ services:
     mem_limit: 1g
 
   worker:
-    image: enterprise-rag:dev
+    image: ${ERAG_IMAGE:-enterprise-rag:dev}
     environment: *app-env
     command: ["python", "-m", "app.cli", "worker"]
     extra_hosts:
@@ -102,7 +108,7 @@ services:
   # Demo remote MCP server (no access to the database or the app). In production, MCP servers run in
   # the isolated runner (R5) or elsewhere; this one only exists so the registry can be tried.
   mcp-office:
-    image: enterprise-rag:dev
+    image: ${ERAG_IMAGE:-enterprise-rag:dev}
     command: ["python", "-m", "mcp_servers.office_server", "--http", "0.0.0.0:8791"]
     depends_on:
       app:
@@ -112,7 +118,7 @@ services:
   # The only service with the Docker socket (root-equivalent). Narrow, token-authenticated API; it only
   # starts images pinned by ID in ERAG_RUNNER_IMAGES, e.g. office=sha256:... (see README). Not published.
   runner:
-    image: enterprise-rag:dev
+    image: ${ERAG_IMAGE:-enterprise-rag:dev}
     user: root
     command: ["python", "-m", "app.runner.service"]
     environment:

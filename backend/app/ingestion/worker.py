@@ -98,9 +98,16 @@ async def run_worker(once: bool = False) -> None:
     from app.connectors.sync import process_next, schedule_due
 
     last_schedule = 0.0
+    last_beat = -1e9
     loop = asyncio.get_running_loop()
     while True:
         try:
+            if loop.time() - last_beat >= settings.worker_heartbeat_seconds:
+                from app.services.setup import worker_heartbeat
+
+                async with get_sessionmaker()() as db:
+                    await worker_heartbeat(db)  # read by the setup environment check
+                last_beat = loop.time()  # only after success: retried on the next pass (e.g. before migrations)
             n = await drain()
             if n:
                 log.info("processed jobs", extra={"count": n})

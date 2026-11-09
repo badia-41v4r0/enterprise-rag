@@ -95,3 +95,31 @@ One PostgreSQL holds identities, ACL, documents, vectors, jobs, conversations an
 - **Router build** (`app/llm/registry.py`, `load_router`): for each enabled provider the host is resolved and the locality derived (local only if every address is private), the clearance capped by locality and `ERAG_CLOUD_MAX_CLASSIFICATION`, the key read from the credential store, and one `OpenAICompatProvider` created per enabled model. The admin's default model is passed to `ModelRouter`, which uses it only when it is cleared. The router is cached and rebuilt when providers, models, secrets or settings change.
 - **Every request** goes through `check_clearance`, the egress hook and a destination guard that re-resolves the host, applies the provider's address policy (private only for Ollama/self-hosted; a local provider must stay private), pins the connection to the checked address and never follows redirects (ADR 0025). Before the request is sent, the worst case of the request (estimated input tokens x input price + max output tokens x output price) is checked against the provider and model limits (size, per-turn cap, tokens per day and month, USD per month) and the user's quotas (their allowance and every collective pool of their roles); metered providers also count the request against a daily cap. Afterwards the reported (or estimated) tokens and cost are recorded per provider, model, user and day, without any text (ADR 0024, 0026, 0027).
 - **Model router** (v0.3, ADR 0029/0030): off by default (then not called at all). When on and the user picked no model, it computes the permitted models with the existing code (clearance, enabled, budgets and quotas, tool capability), asks the first available decider that is cleared for the request's classification (a prompted registry model, an open Jev-style `/v1/systemone` server, the official Jev API; the deterministic rules decider last), maps the validated answers to a lane and picks the lane's first permitted target; otherwise the default lane, the default model, then `ModelRouter.choose`. Deciders get the question and metadata, never retrieved chunks unless local with "see context". The decision log holds no question or context.
+
+## v0.4: guided first-run setup
+
+- **Installer** (`app/installer.py`, `erag init`): host-side, no database. Writes the Compose environment file (0600)
+  with production settings, random secrets, the master key and the SHA-256 of a printed one-time setup token, plus an
+  owner-only master key copy for backup (ADR 0034).
+- **Setup mode** (`setup_state`, migration 0012, `app/services/setup.py`): created by `erag bootstrap` only for a
+  database with no user; an existing database is recorded as completed (migration and bootstrap), so upgrades never
+  enter setup mode. While it is active, a router-level dependency (`setup_gate`) answers `503 setup required` on every
+  API except `/health`, `/api/info`, `/api/auth/*` and `/api/setup/*`, unless the caller is an administrator. The
+  token is exchanged for a setup session (HttpOnly cookie on `/api/setup`, its own CSRF header); steps 3 to 11 also
+  need the administrator's normal session. Completion destroys the token and the session, and every `/api/setup/*`
+  endpoint answers 404 afterwards.
+- **Wizard API** (`app/api/setup.py`): the same step handlers are mounted twice, on `/api/setup` (installation mode)
+  and `/api/admin/setup` (the Setup assistant, normal admin session); the steps that build structure (containers,
+  roles, grants, uploads, connectors, providers) use the existing admin endpoints and screens.
+- **Environment checks** (`app/services/envcheck.py`, ADR 0038): read-only; the worker writes a heartbeat to
+  `app_settings` for the "worker alive" check; Ollama is reached through the provider destination guard.
+- **Model downloads** (`app/services/ollama_models.py`, ADR 0039): size from the Ollama registry manifest (public
+  HTTPS, destination guard), then Ollama's `/api/pull` streamed in a background task with progress and cancellation;
+  only on an explicit, confirmed request.
+- **Organization settings in the database**: the company name and the cloud ceiling (`app_settings.organization`),
+  read by the provider registry (cached per process, part of the router fingerprint); the environment value is the
+  initial default.
+- **Forced password change** (`users.must_change_password`, ADR 0037): enforced in `get_auth` for every endpoint except
+  `/me`, `/logout` and `/change-password`.
+- **Demo** (ADR 0036): installed from the wizard without the demo administrator, detected live (banner), removable
+  with a listed confirmation. `ERAG_SEED_DEMO=true` keeps the one-command seeded demo for development (ADR 0040).

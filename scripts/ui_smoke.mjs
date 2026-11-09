@@ -5,7 +5,7 @@
 //   NODE_PATH=.scratch/e2e/node_modules CHROMIUM=/usr/bin/chromium BASE=http://127.0.0.1:8088 \
 //     node scripts/ui_smoke.mjs
 //
-// Needs a seeded demo (admin@acme.test / $ERAG_DEMO_PASSWORD) and a running worker + Ollama.
+// Needs a seeded demo (ERAG_SEED_DEMO=true: admin@acme.test / $ERAG_DEMO_PASSWORD) and a running worker + Ollama.
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -24,7 +24,8 @@ const QWEN = process.env.UI_MODEL ?? "qwen3:4b-instruct-2507-q4_K_M";
 const ollamaSlug = `ui-ollama-${sfx}`;
 const apiSlug = `ui-api-${sfx}`;
 const apiKey = `ui-key-${sfx}-not-real`;
-const pw = "ui-tester-password-1";
+const pw = "ui-tester-password-1"; // set by the admin: temporary, replaced at the first login (ADR 0037)
+const ownPw = `UI-tester-own-${sfx}-pass`;
 const deciderName = `ui-decider-${sfx}`;
 const laneName = `ui-lane-${sfx}`;
 
@@ -116,7 +117,18 @@ async function login(page, user, password) {
   await page.getByLabel("Email").fill(user);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.getByRole("button", { name: "Chat" }).waitFor();
+  const chat = page.getByRole("button", { name: "Chat" });
+  const change = page.getByRole("heading", { name: "Choose your own password" });
+  await Promise.race([chat.waitFor(), change.waitFor()]);
+  if (await change.isVisible()) {
+    // A temporary password set by an administrator must be replaced before anything else works.
+    await page.getByLabel("Current (temporary) password").fill(password);
+    await page.getByLabel("New password", { exact: true }).fill(ownPw);
+    await page.getByLabel("Repeat the new password").fill(ownPw);
+    await page.getByRole("button", { name: "Save and continue" }).click();
+    await chat.waitFor();
+    step(`${user} replaced the temporary password at the first login`);
+  }
 }
 
 try {
@@ -432,7 +444,7 @@ try {
   await user.getByTestId("recovery-codes").waitFor();
   await user.getByRole("button", { name: "Log out" }).click();
   await user.getByLabel("Email").fill(email);
-  await user.getByLabel("Password").fill(pw);
+  await user.getByLabel("Password").fill(ownPw);
   await user.getByRole("button", { name: "Sign in" }).click();
   await user.getByLabel("Authenticator code (or a recovery code)").fill(totp(secret, Date.now() / 1000 + 30));
   await user.getByRole("button", { name: "Verify" }).click();

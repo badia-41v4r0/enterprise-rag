@@ -115,7 +115,7 @@ async def _openrouter_out(db: AsyncSession) -> OpenRouterOut:
         monthly_budget_usd=conf.budget_usd,
         budget_cap_usd=s.openrouter_monthly_budget_usd,
         spent_this_month_usd=await month_spend(db, "openrouter"),
-        cloud_max_classification=s.cloud_max_classification,
+        cloud_max_classification=registry.cloud_cap(s).value,
     )
 
 

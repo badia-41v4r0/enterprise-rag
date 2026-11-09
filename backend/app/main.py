@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -22,8 +22,10 @@ from app.api import (
     providers,
     quotas,
     secrets,
+    setup,
     tools,
 )
+from app.api.deps import setup_gate
 from app.core.config import get_settings, warn_removed_settings
 from app.core.db import dispose_engine
 from app.core.logging import configure_logging
@@ -44,19 +46,26 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="EnterpriseRAG", version="0.1.0.dev0", lifespan=lifespan)
     app.add_middleware(SecurityHeadersMiddleware)
+    # Always reachable, also in setup mode (ADR 0034): health, public info, login and the setup wizard itself.
     app.include_router(health.router)
+    app.include_router(setup.public_router)
     app.include_router(auth.router)
-    app.include_router(admin.router)
-    app.include_router(documents.router)
-    app.include_router(chat.router)
-    app.include_router(tools.router)
-    app.include_router(secrets.router)
+    app.include_router(setup.wizard_router)
+    # Everything else answers 503 "setup required" while the installation is in setup mode, except for the
+    # administrator created in the wizard (who configures the rest through the normal admin screens).
+    gated = [Depends(setup_gate)]
+    app.include_router(setup.assistant_router, dependencies=gated)
+    app.include_router(admin.router, dependencies=gated)
+    app.include_router(documents.router, dependencies=gated)
+    app.include_router(chat.router, dependencies=gated)
+    app.include_router(tools.router, dependencies=gated)
+    app.include_router(secrets.router, dependencies=gated)
     # After `secrets`: its /providers/openrouter routes must match before /providers/{provider_id}.
-    app.include_router(providers.router)
-    app.include_router(connectors.router)
-    app.include_router(mcp_registry.router)
-    app.include_router(quotas.router)
-    app.include_router(model_router.router)
+    app.include_router(providers.router, dependencies=gated)
+    app.include_router(connectors.router, dependencies=gated)
+    app.include_router(mcp_registry.router, dependencies=gated)
+    app.include_router(quotas.router, dependencies=gated)
+    app.include_router(model_router.router, dependencies=gated)
 
     _mount_frontend(app, settings.frontend_dist)
     return app

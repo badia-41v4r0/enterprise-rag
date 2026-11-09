@@ -114,7 +114,10 @@ async def _get_or_create_role(db: AsyncSession, name: str) -> Role:
     return role
 
 
-async def seed_structure(db: AsyncSession, password: str) -> dict[str, Container]:
+async def seed_structure(db: AsyncSession, password: str, *, include_admin: bool = True) -> dict[str, Container]:
+    """Containers, roles, grants and personas. `include_admin=False` (the wizard's demo installation, ADR 0036)
+    leaves out the admin persona: the administrator is the person who ran the wizard, so no administrator account
+    with the published demo password exists."""
     containers: dict[str, Container] = {}
     for spec in CONTAINERS:
         c = await db.scalar(select(Container).where(Container.slug == spec.slug))
@@ -147,6 +150,8 @@ async def seed_structure(db: AsyncSession, password: str) -> dict[str, Container
 
     pw_hash = hash_password(password)
     for p in PERSONAS:
+        if p.is_admin and not include_admin:
+            continue
         u = await db.scalar(select(User).where(User.email == p.email))
         if u is None:
             u = User(email=p.email, display_name=p.name, password_hash=pw_hash, is_admin=p.is_admin)
@@ -263,7 +268,7 @@ async def seed_connector(db: AsyncSession) -> str:
     return "created, first sync queued"
 
 
-async def seed_office_mcp(db: AsyncSession) -> str:
+async def seed_office_mcp(db: AsyncSession, attempts: int = 10) -> str:
     """Register the demo office MCP server as PENDING (tools discovered, all disabled), when
     ERAG_DEMO_OFFICE_MCP_URL is set. Approval, tool enabling and role grants are left to the admin."""
     import asyncio
@@ -293,16 +298,18 @@ async def seed_office_mcp(db: AsyncSession) -> str:
     )
     db.add(server)
     await db.flush()
-    for attempt in range(10):
+    last: Exception | None = None
+    for attempt in range(attempts):
         try:
             found = await discover(db, server)
             await db.commit()
             return f"registered as pending ({len(found.new)} tools, all disabled)"
         except Exception as exc:  # noqa: BLE001 - the demo server may still be starting
             last = exc
-            await asyncio.sleep(2 + attempt)
+            if attempt + 1 < attempts:
+                await asyncio.sleep(2 + attempt)
     await db.rollback()
-    return f"not registered ({type(last).__name__})"
+    return f"not registered ({type(last).__name__ if last else 'no attempt'})"
 
 
 async def seed(password: str, ingest: bool = True) -> None:

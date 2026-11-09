@@ -74,10 +74,28 @@ def validate_model_name(model: str) -> str:
 # --- Policy ---------------------------------------------------------------------------------------
 
 
+# The cloud ceiling stored by the administrator (Setup > Organization), cached in the process. NULL = the
+# environment value (ERAG_CLOUD_MAX_CLASSIFICATION) is the default (PLAN-v0.4 section 7, ADR 0034).
+_cloud_override: dict[str, Classification] = {}
+ORG_SETTING = "organization"
+
+
 def cloud_cap(s: Settings) -> Classification:
     """Highest classification any cloud provider may receive (never confidential)."""
-    env = Classification(s.cloud_max_classification)
-    return env if env.rank < Classification.confidential.rank else Classification.internal
+    base = _cloud_override.get("value") or Classification(s.cloud_max_classification)
+    return base if base.rank < Classification.confidential.rank else Classification.internal
+
+
+async def refresh_cloud_cap(db: AsyncSession) -> None:
+    """Load the administrator's cloud ceiling from the database into the process cache."""
+    row = await db.scalar(
+        select(AppSetting).where(AppSetting.key == ORG_SETTING).execution_options(populate_existing=True)
+    )
+    value = (row.value or {}).get("cloud_max_classification") if row is not None else None
+    if value in (Classification.public.value, Classification.internal.value):
+        _cloud_override["value"] = Classification(value)
+    else:
+        _cloud_override.pop("value", None)
 
 
 def locality_cap(locality: str, s: Settings) -> Classification:

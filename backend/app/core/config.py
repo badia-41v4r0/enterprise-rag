@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     # (`host`, `host:port` or a CIDR), for web connectors and remote MCP servers alike.
     ssrf_allowlist: list[str] = Field(default_factory=list)
 
+    @field_validator("secrets_key", "setup_token_sha256", mode="before")
+    @classmethod
+    def _empty_is_unset(cls, v: object) -> object:
+        # Docker Compose passes unset variables as empty strings (e.g. ERAG_SECRETS_KEY: ${ERAG_SECRETS_KEY:-}).
+        return None if isinstance(v, str) and not v.strip() else v
+
     @field_validator(
         "connector_roots", "ssrf_allowlist", "allowed_hosts", "runner_images", "runner_mount_roots", mode="before"
     )
@@ -134,6 +140,25 @@ class Settings(BaseSettings):
     # Worker
     worker_poll_seconds: float = 1.0
     job_max_attempts: int = 3
+    # How often the worker records that it is alive (read by the setup environment check).
+    worker_heartbeat_seconds: float = 20.0
+
+    # Guided first-run setup (PLAN-v0.4, ADR 0034). A fresh installation starts in setup mode; the one-time
+    # setup token is printed by `erag init` (only its SHA-256 is kept, here) or generated at first start and
+    # written to the log and to `setup_token_file` (default: next to the blob directory, mode 0600).
+    setup_token_sha256: str | None = None
+    setup_token_file: Path | None = None
+    setup_token_ttl_hours: int = 24
+    # Demo (ACME Corp). `seed_demo` seeds it at start-up for development and scripts/demo_scenarios.py (ADR 0040);
+    # a real installation chooses "Demo with mock data" in the wizard instead.
+    seed_demo: bool = False
+    demo_password: SecretStr = SecretStr("acme-demo-password")
+    # Ollama's model registry, asked for a model's size before the administrator confirms a download (ADR 0039).
+    ollama_registry_url: str = "https://registry.ollama.ai"
+
+    @property
+    def setup_token_path(self) -> Path:
+        return self.setup_token_file or self.blob_dir.parent / "setup-token"
 
     allowed_hosts: list[str] = Field(default_factory=lambda: ["*"])
 
@@ -141,22 +166,31 @@ class Settings(BaseSettings):
     def is_prod(self) -> bool:
         return self.env == "prod"
 
+    def weak_secrets(self) -> list[str]:
+        """Names of the environment secrets that still hold a development default (or are too short)."""
+        weak = [
+            f"ERAG_{name.upper()}"
+            for name in ("secret_key", "mcp_context_secret")
+            if _is_weak(getattr(self, name).get_secret_value())
+        ]
+        if self.runner_url and (self.runner_token is None or _is_weak(self.runner_token.get_secret_value())):
+            weak.append("ERAG_RUNNER_TOKEN")
+        return weak
+
     def check_secrets(self) -> None:
         """Refuse to run in production with the development secrets."""
         if not self.is_prod:
             return
-        for name in ("secret_key", "mcp_context_secret"):
-            value = getattr(self, name).get_secret_value()
-            if value.startswith("dev-insecure") or len(value) < 32:
-                raise RuntimeError(f"ERAG_{name.upper()} must be set to a strong value in prod")
-        if self.runner_url and (
-            self.runner_token is None
-            or self.runner_token.get_secret_value().startswith("dev-insecure")
-            or len(self.runner_token.get_secret_value()) < 32
-        ):
-            raise RuntimeError("ERAG_RUNNER_TOKEN must be set to a strong value in prod when the runner is used")
-        if self.secrets_key is None and self.secrets_key_file is None:
+        for name in self.weak_secrets():
+            if name == "ERAG_RUNNER_TOKEN":
+                raise RuntimeError("ERAG_RUNNER_TOKEN must be set to a strong value in prod when the runner is used")
+            raise RuntimeError(f"{name} must be set to a strong value in prod")
+        if (self.secrets_key is None or not self.secrets_key.get_secret_value()) and self.secrets_key_file is None:
             raise RuntimeError("ERAG_SECRETS_KEY or ERAG_SECRETS_KEY_FILE is required in prod (erag secrets init)")
+
+
+def _is_weak(value: str) -> bool:
+    return value.startswith("dev-insecure") or len(value) < 32
 
 
 # Settings that no longer have any effect; a warning is logged once at start-up when one is still set.

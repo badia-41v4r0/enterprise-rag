@@ -13,6 +13,9 @@ dist/
 .env
 .env.*
 !.env.example
+# Master key backup copy written by `erag init`, and generated setup tokens
+master.key
+setup-token
 # Data
 /data/
 *.sqlite3

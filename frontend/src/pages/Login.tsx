@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
-import { api, json, setCsrf, type Me } from "@/lib/api";
+import { api, json, setCsrf, type Info, type Me } from "@/lib/api";
 
 const PERSONAS = ["hr", "finance", "engineer", "newhire", "exec", "admin"];
 
-export default function LoginPage({ onLogin }: { onLogin: (m: Me) => void }) {
+export default function LoginPage({ onLogin, info }: { onLogin: (m: Me) => void; info?: Info }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -43,7 +43,7 @@ export default function LoginPage({ onLogin }: { onLogin: (m: Me) => void }) {
   return (
     <div className="flex h-full items-center justify-center bg-muted">
       <Card className="w-full max-w-sm p-6">
-        <h1 className="text-lg font-semibold">EnterpriseRAG</h1>
+        <h1 className="text-lg font-semibold">EnterpriseRAG{info?.company_name ? ` - ${info.company_name}` : ""}</h1>
         <p className="mb-4 text-sm text-muted-foreground">Permission-aware RAG + MCP. Sign in.</p>
         <form onSubmit={submit} className="space-y-3">
           {mfaStep ? (
@@ -74,9 +74,11 @@ export default function LoginPage({ onLogin }: { onLogin: (m: Me) => void }) {
             {busy ? "Signing in..." : mfaStep ? "Verify" : "Sign in"}
           </Button>
         </form>
-        <p className="mt-4 text-xs text-muted-foreground">
-          Demo personas: {PERSONAS.map((p) => `${p}@acme.test`).join(", ")}
-        </p>
+        {info?.demo && (
+          <p className="mt-4 text-xs text-muted-foreground">
+            Demo personas: {PERSONAS.map((p) => `${p}@acme.test`).join(", ")}
+          </p>
+        )}
       </Card>
     </div>
   );

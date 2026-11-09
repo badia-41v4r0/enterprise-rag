@@ -8,6 +8,17 @@ import { api, json, type Me, type MyUsage } from "@/lib/api";
 import { UsageSummary } from "@/pages/Quotas";
 
 export default function AccountPage({ me }: { me: Me }) {
+  return (
+    <div className="h-full overflow-y-auto p-6">
+      <h2 className="mb-4 text-lg font-semibold">Account</h2>
+      <MfaCard me={me} />
+      <MyUsageCard />
+    </div>
+  );
+}
+
+// Also used by the setup wizard (step 2) to enroll the administrator right away.
+export function MfaCard({ me }: { me: Me }) {
   const qc = useQueryClient();
   const status = useQuery({
     queryKey: ["mfa"],
@@ -54,8 +65,6 @@ export default function AccountPage({ me }: { me: Me }) {
     });
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <h2 className="mb-4 text-lg font-semibold">Account</h2>
       <Card className="max-w-xl space-y-3 p-4">
         <div className="text-sm">
           Signed in as <strong>{me.email}</strong>
@@ -114,8 +123,6 @@ export default function AccountPage({ me }: { me: Me }) {
         )}
         {error && <p className="text-sm text-red-600">{error}</p>}
       </Card>
-      <MyUsageCard />
-    </div>
   );
 }
 

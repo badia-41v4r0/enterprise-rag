@@ -188,7 +188,8 @@ async def _fingerprint(db: AsyncSession, s: Settings) -> tuple[object, ...]:
         await db.execute(select(func.count(Secret.id), func.max(Secret.updated_at), func.sum(Secret.version)))
     ).one()
     setting = await db.scalar(select(AppSetting.updated_at).where(AppSetting.key == OPENROUTER_KEY))
-    return (id(s), tuple(prov), tuple(mods), tuple(secs), setting)
+    org = await db.scalar(select(AppSetting.updated_at).where(AppSetting.key == "organization"))
+    return (id(s), tuple(prov), tuple(mods), tuple(secs), setting, org)
 
 
 async def resolve_openrouter(
@@ -225,6 +226,7 @@ async def load_router(db: AsyncSession, settings: Settings | None = None) -> Mod
     from app.llm import registry
 
     s = settings or get_settings()
+    await registry.refresh_cloud_cap(db)  # the administrator's cloud ceiling (Setup > Organization)
     cached = _cache.get("router")
     if cached is not None and cached[0] == await _fingerprint(db, s):
         return cached[1]

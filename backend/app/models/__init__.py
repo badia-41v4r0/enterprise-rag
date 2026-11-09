@@ -123,6 +123,9 @@ class User(TimestampMixin, Base):
     mfa_key_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Highest TOTP time step accepted so far: a code can never be used twice.
     mfa_last_step: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    # A temporary password set by an administrator (wizard, CSV import, admin panel): the user must choose their
+    # own at the next login before anything else works (PLAN-v0.4 decision 2, ADR 0037).
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     roles: Mapped[list[Role]] = relationship(secondary="user_roles", lazy="selectin", back_populates="users")
 
@@ -588,6 +591,36 @@ class Secret(TimestampMixin, Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_used_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
+class SetupState(Base):
+    """The guided first-run setup (PLAN-v0.4, ADR 0034). A single row (id 1).
+
+    No row: the database was never bootstrapped as a fresh installation (development, tests), so there is no setup
+    mode. A row with `completed_at` NULL: setup mode. Only the SHA-256 of the setup token and of the setup
+    session are stored, never the token itself."""
+
+    __tablename__ = "setup_state"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    # {"<step key>": {"status": "done" | "skipped", "at": iso, "by": user id or null, ...}}
+    steps: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The browser session obtained with the token (cookie `erag_setup`); one at a time.
+    session_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    session_csrf: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    session_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    license_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    license_accepted_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    license_text_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    install_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # "empty" | "demo"
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # How setup ended: "wizard", "upgrade" (an existing installation), "cli" (erag create-admin), "seed_demo".
+    completed_via: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    checklist_dismissed: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class AppSetting(Base):

@@ -19,7 +19,7 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0012](0012-tool-scope-from-container-permissions.md) | Tool data scope derived from container permissions | Accepted |
 | [0013](0013-result-validator-heuristics.md) | Result validator: size cap, classification floor, injection heuristics | Accepted, Owner review |
 | [0014](0014-frontend.md) | Frontend: small React SPA with vendored shadcn-style components | Accepted |
-| [0015](0015-demo-bootstrap-and-hardening.md) | One-command seeded demo and MVP hardening | Accepted, Owner review |
+| [0015](0015-demo-bootstrap-and-hardening.md) | One-command seeded demo and MVP hardening | Accepted, Owner review; compose default superseded by 0040 |
 | [0016](0016-openrouter-free-only-and-spend-ceiling.md) | OpenRouter: free models only and a hard monthly spend ceiling | Superseded in part by 0028 |
 | [0017](0017-delegated-content-management.md) | Delegated content management: `contribute` and `manage` on containers | Accepted |
 | [0018](0018-credential-store.md) | Credential store: AES-256-GCM, master key outside the database, OpenRouter key in the vault | Accepted |
@@ -38,3 +38,11 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0031](0031-open-decider-spike.md) | Open decider spike: Open-Jev 2B runs on this machine's CPU (about 1 minute per decision) | Accepted, Owner review |
 | [0032](0032-official-jev-api-and-openrouter-jev-router.md) | Official Jev API decider and the OpenRouter Jev Router as a virtual model | Accepted, Owner review |
 | [0033](0033-delete-users.md) | Deleting users: deactivate first, step-up, what is kept | Accepted |
+| [0034](0034-setup-mode-and-setup-token.md) | Setup mode, the one-time setup token and `erag init` | Accepted, Owner review |
+| [0035](0035-license-acceptance-record.md) | License acceptance in the wizard: a record and a deliberate pause | Accepted, Owner review (lawyer) |
+| [0036](0036-installation-type-and-demo-removal.md) | Installation type: empty by default, the ACME demo on request, and removing it | Accepted |
+| [0037](0037-forced-password-change.md) | Temporary passwords must be changed at the first login | Accepted |
+| [0038](0038-environment-checks.md) | Environment checks: read-only, booleans and the exact fix, never values | Accepted |
+| [0039](0039-explicit-ollama-downloads.md) | Ollama models are downloaded only on an explicit, confirmed administrator action | Accepted |
+| [0040](0040-seed-demo-and-the-wizard.md) | `ERAG_SEED_DEMO` with the setup wizard | Accepted |
+| [0041](0041-check-as-another-user.md) | "Does it work?": asking as another user, and what the administrator sees | Accepted, Owner review |
