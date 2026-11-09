@@ -81,15 +81,20 @@ async function cleanup() {
     const mr = await list("/api/admin/router");
     for (const d of mr.deciders.filter((x) => /^ui-decider-\d{6}$/.test(x.name))) await api("DELETE", `/api/admin/router/deciders/${d.id}`);
     for (const l of mr.lanes.filter((x) => /^ui-lane-\d{6}$/.test(x.name))) await api("DELETE", `/api/admin/router/lanes/${l.id}`);
-    const user = (await list("/api/admin/users")).find((u) => u.email === email);
-    if (user) await api("PATCH", `/api/admin/users/${user.id}`, { role_ids: [], is_active: false });
+    // Test users (this run's and those of interrupted runs): deactivate, then delete. Deleting also removes their
+    // role membership, so the test role below can be deleted.
+    for (const u of (await list("/api/admin/users")).filter((x) => /^ui\.tester\.\d{6}@acme\.test$/.test(x.email))) {
+      await api("PATCH", `/api/admin/users/${u.id}`, { role_ids: [], is_active: false });
+      const del = await api("DELETE", `/api/admin/users/${u.id}`);
+      if (del.status !== 204) throw new Error(`could not delete test user ${u.email}: HTTP ${del.status}`);
+    }
     const r = (await list("/api/admin/roles")).find((x) => x.name === role);
     if (r) await api("DELETE", `/api/admin/roles/${r.id}`);
     const c = (await list("/api/admin/containers")).find((x) => x.name === container);
     if (c) await api("DELETE", `/api/admin/containers/${c.id}`);
-    console.log("cleanup: removed the test providers, router deciders and lanes (router disabled), role (and its quotas) and container, reset the default model, deactivated the test user");
+    console.log("cleanup: removed the test providers, router deciders and lanes (router disabled), role (and its quotas) and container, reset the default model, deleted the test users");
   } catch (err) {
-    console.error("cleanup failed (remove the 'UI Tester'/'UI Facilities' leftovers manually):", err.message);
+    console.error("cleanup failed (remove the 'UI Tester'/'UI Facilities' leftovers in Admin):", err.message);
   }
 }
 
