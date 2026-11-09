@@ -59,19 +59,20 @@ class Settings(BaseSettings):
     openrouter_model: str = "meta-llama/llama-3.3-8b-instruct:free"
     # Highest classification a cloud model may process (confidential is never allowed).
     cloud_max_classification: str = "internal"
-    # Only models whose id ends in ":free" are accepted unless this is set (ADR 0016).
-    openrouter_allow_paid: bool = False
-    # Hard monthly spend ceiling for OpenRouter, in USD. 0.01 is a bit under 0.01 EUR at current rates;
-    # the cap is checked before every request and the real cost is recorded after it (ADR 0016).
+    # Paid OpenRouter models are allowed (ADR 0028 supersedes the free-only rule of ADR 0016); the default
+    # model stays a free one. Default monthly spend ceiling for OpenRouter, in USD (0.01 is a bit under 0.01
+    # EUR); the worst case of each request is checked before sending and the real cost recorded after it.
     openrouter_monthly_budget_usd: float = 0.01
 
-    # Providers added from the admin panel (ADR 0023/0024). Every OpenAI-compatible API provider (and any
-    # Ollama on a public address) is metered: a monthly spend ceiling in USD, used when the response reports
-    # its cost (`usage.cost`), and a daily request cap, because many providers do not report cost at all.
-    # The admin panel can only lower these per provider, never raise them. OpenRouter keeps its own ceiling
-    # (ERAG_OPENROUTER_MONTHLY_BUDGET_USD) and has no daily cap unless the admin sets one.
+    # Providers added from the admin panel (ADR 0023/0024/0026). Every OpenAI-compatible API provider (and any
+    # Ollama on a public address) is metered: a monthly spend ceiling in USD (reported cost, or tokens x price)
+    # and a daily request cap. These are the initial defaults: an admin may lower or raise them per provider
+    # (step-up, audited). OpenRouter's default ceiling is ERAG_OPENROUTER_MONTHLY_BUDGET_USD.
     provider_monthly_budget_usd: float = 0.01
     provider_daily_request_cap: int = 100
+    # Default maximum output tokens per request (sent as `max_tokens`) when neither the provider nor the model
+    # sets one; also the output side of the preventive worst-case cost check (ADR 0026).
+    provider_max_output_tokens: int = 2048
 
     # Dev-only provider that shells out to `claude -p`. Never enabled in the demo/production.
     claude_code_enabled: bool = False
@@ -156,6 +157,23 @@ class Settings(BaseSettings):
             raise RuntimeError("ERAG_RUNNER_TOKEN must be set to a strong value in prod when the runner is used")
         if self.secrets_key is None and self.secrets_key_file is None:
             raise RuntimeError("ERAG_SECRETS_KEY or ERAG_SECRETS_KEY_FILE is required in prod (erag secrets init)")
+
+
+# Settings that no longer have any effect; a warning is logged once at start-up when one is still set.
+REMOVED_SETTINGS = {
+    "ERAG_OPENROUTER_ALLOW_PAID": "paid OpenRouter models are allowed; spend is bounded by the provider ceiling, "
+    "the preventive worst-case check, the daily request cap and quotas (ADR 0028). Remove the variable.",
+}
+
+
+def warn_removed_settings() -> list[str]:
+    import logging
+    import os
+
+    found = [name for name in REMOVED_SETTINGS if os.environ.get(name, "").strip()]
+    for name in found:
+        logging.getLogger("app.config").warning("%s is ignored: %s", name, REMOVED_SETTINGS[name])
+    return found
 
 
 @lru_cache

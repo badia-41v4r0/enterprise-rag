@@ -15,7 +15,10 @@ flowchart LR
         RECHECK --> CTX[Context builder<br/>dedupe, budget, citations]
         CTX --> ROUTER[Classification router<br/>max(context, history, tool results)]
         ROUTER --> PROMPT[Prompt builder<br/>untrusted data delimited]
-        PROMPT --> LLM[OpenAI-compatible client<br/>+ egress hook + destination guard<br/>+ spend ceiling + daily cap]
+        PROMPT --> MR[Model router, off by default<br/>permitted set first, then a decider<br/>and lanes; never widens the set]
+        MR --> LLM
+        MR -. "question + metadata only<br/>if cleared" .-> DEC[(Deciders: prompted registry model,<br/>open Jev-style server, official Jev API)]
+        PROMPT --> LLM[OpenAI-compatible client<br/>+ egress hook + destination guard<br/>+ limits and quotas<br/>(worst case before sending)]
         REG[Provider registry<br/>locality from address,<br/>clearance cap, default model] -.-> ROUTER
         ORCH --> TOOLS[Tool runtime]
         TOOLS --> TAUTHZ[Tool authz<br/>grant, schema, constraints,<br/>clearance, approval state]
@@ -29,7 +32,7 @@ flowchart LR
 
     KEY[(Master key file<br/>outside the DB)] -.-> VAULT
     LLM -- "any classification" --> OLLAMA[(Ollama, local<br/>qwen3:4b-instruct, bge-m3)]
-    LLM -- "public / internal only<br/>key from the vault" --> OR[(OpenRouter, free models)]
+    LLM -- "public / internal only<br/>key from the vault" --> OR[(OpenRouter<br/>any model, budgets and quotas)]
     LLM -- "local: any classification<br/>(private address, Ollama or self-hosted)" --> LANLLM[(Admin-added local providers<br/>Ollama, vLLM, LM Studio)]
     LLM -- "cloud: up to the provider's clearance<br/>(public by default), HTTPS, pinned IP" --> APILLM[(Admin-added OpenAI-compatible APIs)]
     GW -- "stdio + _meta token" --> FILES[files_server]
@@ -90,4 +93,5 @@ One PostgreSQL holds identities, ACL, documents, vectors, jobs, conversations an
 
 - **Providers and models in the database** (`llm_providers`, `llm_models`, ADR 0023). Two kinds: Ollama instances and OpenAI-compatible APIs. The built-in `ollama` and `openrouter` rows are bootstrapped from the environment on start-up; the dev `claude-code` provider stays env-only.
 - **Router build** (`app/llm/registry.py`, `load_router`): for each enabled provider the host is resolved and the locality derived (local only if every address is private), the clearance capped by locality and `ERAG_CLOUD_MAX_CLASSIFICATION`, the key read from the credential store, and one `OpenAICompatProvider` created per enabled model. The admin's default model is passed to `ModelRouter`, which uses it only when it is cleared. The router is cached and rebuilt when providers, models, secrets or settings change.
-- **Every request** goes through `check_clearance`, the egress hook and a destination guard that re-resolves the host, applies the provider's address policy (private only for Ollama/self-hosted; a local provider must stay private), pins the connection to the checked address and never follows redirects (ADR 0025). Metered providers (every API provider and any non-local Ollama) are checked against a monthly ceiling and a daily request cap before the request is sent (ADR 0024).
+- **Every request** goes through `check_clearance`, the egress hook and a destination guard that re-resolves the host, applies the provider's address policy (private only for Ollama/self-hosted; a local provider must stay private), pins the connection to the checked address and never follows redirects (ADR 0025). Before the request is sent, the worst case of the request (estimated input tokens x input price + max output tokens x output price) is checked against the provider and model limits (size, per-turn cap, tokens per day and month, USD per month) and the user's quotas (their allowance and every collective pool of their roles); metered providers also count the request against a daily cap. Afterwards the reported (or estimated) tokens and cost are recorded per provider, model, user and day, without any text (ADR 0024, 0026, 0027).
+- **Model router** (v0.3, ADR 0029/0030): off by default (then not called at all). When on and the user picked no model, it computes the permitted models with the existing code (clearance, enabled, budgets and quotas, tool capability), asks the first available decider that is cleared for the request's classification (a prompted registry model, an open Jev-style `/v1/systemone` server, the official Jev API; the deterministic rules decider last), maps the validated answers to a lane and picks the lane's first permitted target; otherwise the default lane, the default model, then `ModelRouter.choose`. Deciders get the question and metadata, never retrieved chunks unless local with "see context". The decision log holds no question or context.

@@ -273,8 +273,9 @@ async def test_create_providers_with_locality_clearance_and_defaults(
         {"base_url": "http://127.0.0.1:9/v1"},  # private without self-hosted
         {"base_url": "http://1.1.1.1/v1"},  # public over http
         {"base_url": "http://169.254.169.254/v1", "self_hosted": True},
-        {"monthly_budget_usd": 5.0},  # above ERAG_PROVIDER_MONTHLY_BUDGET_USD
-        {"daily_request_limit": 100_000},  # above ERAG_PROVIDER_DAILY_REQUEST_CAP
+        {"monthly_budget_usd": -1},  # negative limits are refused (raising above the env default is allowed: D2)
+        {"daily_request_limit": -5},
+        {"max_output_tokens": 0},
         {"models": ["bad model id with spaces"]},
     ):
         body = {"name": f"x-{uuid.uuid4().hex[:6]}", "kind": "api", "base_url": "https://1.1.1.1/v1", **bad}
@@ -376,11 +377,12 @@ async def test_sensitive_provider_actions_need_step_up(db: AsyncSession, client:
         await client.put("/api/admin/models/default", json={"model_id": None}),
     ):
         assert resp.status_code == 403 and resp.json()["detail"] == "step_up_required", resp.text
-    # Lowering limits, renaming and switching off are admin work without step-up.
-    r = await client.patch(
-        f"/api/admin/providers/{pid}", json={"name": "Acme", "enabled": False, "daily_request_limit": 5}
-    )
-    assert r.status_code == 200 and r.json()["daily_request_limit"] == 5
+    # Any limit change needs step-up since limits may be raised (D2); renaming and switching off do not.
+    for limit in ({"daily_request_limit": 5}, {"monthly_budget_usd": 0.001}, {"tokens_per_day": 10}):
+        resp = await client.patch(f"/api/admin/providers/{pid}", json=limit)
+        assert resp.status_code == 403 and resp.json()["detail"] == "step_up_required", limit
+    r = await client.patch(f"/api/admin/providers/{pid}", json={"name": "Acme", "enabled": False})
+    assert r.status_code == 200 and r.json()["name"] == "Acme" and not r.json()["enabled"]
 
 
 @pytest.mark.db
@@ -545,26 +547,12 @@ async def test_builtin_providers_bootstrap_idempotently_from_the_environment(
     assert r.status_code == 409
     env_model = builtin["models"][0]
     assert (await client.delete(f"/api/admin/providers/{builtin['id']}/models/{env_model['id']}")).status_code == 409
-    # OpenRouter keeps the free-only rule for added models.
+    # The free-only rule is gone (ADR 0028): a paid OpenRouter model can be added (no key: its price stays
+    # unknown, which the panel flags); OpenRouter now has the default daily request cap like any metered API.
     orow = _provider(listing, "openrouter")
     r = await client.post(f"/api/admin/providers/{orow['id']}/models", json={"model": "openai/gpt-5"})
-    assert r.status_code == 422
-    assert orow["free_only"] is True and orow["daily_cap_env"] is None
-
-
-@pytest.mark.db
-async def test_openrouter_ceiling_still_only_lowers(db: AsyncSession, client: httpx.AsyncClient) -> None:
-    await _admin(db, client)
-    listing = (await client.get("/api/admin/providers")).json()
-    orow = _provider(listing, "openrouter")
-    cap = get_settings().openrouter_monthly_budget_usd
-    assert orow["budget_cap_usd"] == cap
-    r = await client.patch(f"/api/admin/providers/{orow['id']}", json={"monthly_budget_usd": cap * 10})
-    assert r.status_code == 422
-    r = await client.patch(f"/api/admin/providers/{orow['id']}", json={"monthly_budget_usd": cap / 2})
-    assert r.status_code == 200 and r.json()["monthly_budget_usd"] == cap / 2
-    # The legacy endpoint and the registry agree.
-    assert (await client.get("/api/admin/providers/openrouter")).json()["monthly_budget_usd"] == cap / 2
+    assert r.status_code == 201, r.text
+    assert "free_only" not in orow and orow["daily_cap_env"] == get_settings().provider_daily_request_cap
 
 
 async def test_discovery_reports_http_errors_and_never_follows_redirects(listener: CountingSocket) -> None:

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
-import { api, json, type Me } from "@/lib/api";
+import { api, json, type Me, type MyUsage } from "@/lib/api";
+import { UsageSummary } from "@/pages/Quotas";
 
 export default function AccountPage({ me }: { me: Me }) {
   const qc = useQueryClient();
@@ -113,6 +114,20 @@ export default function AccountPage({ me }: { me: Me }) {
         )}
         {error && <p className="text-sm text-red-600">{error}</p>}
       </Card>
+      <MyUsageCard />
     </div>
+  );
+}
+
+function MyUsageCard() {
+  const q = useQuery({ queryKey: ["my-usage"], queryFn: () => api<MyUsage>("/api/usage/me") });
+  return (
+    <Card className="mt-4 max-w-3xl p-4">
+      <h3 className="text-sm font-semibold">Your usage</h3>
+      <p className="text-xs text-muted-foreground">
+        Tokens (input plus output) and estimated cost of your questions. Daily allowances reset at 00:00 UTC, monthly ones on the 1st.
+      </p>
+      {q.data ? <UsageSummary data={q.data} /> : <p className="text-xs text-muted-foreground">Loading...</p>}
+    </Card>
   );
 }

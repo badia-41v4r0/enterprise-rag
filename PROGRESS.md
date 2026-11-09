@@ -1,5 +1,114 @@
 # EnterpriseRAG: progress report
 
+## v0.3, branch `feat/v0.3` (built autonomously overnight, not pushed)
+
+Plan: [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md). Branch created from `main` (d615639). Open questions became ADRs from 0026 on. Sections below are per release (R6 to R9) and are updated at each release boundary.
+
+### R6: cost limits, token accounting, quotas per user and role, removal of the free-only rule
+
+**What was built**
+- **Migration 0009**: token-limit columns on `llm_providers` (max output/input tokens, tokens per day/month, per-turn cap) and `llm_models` (overrides, per-model USD/month, price in USD per million input/output tokens and its source); `llm_usage` (provider, model, user, UTC day/month, requests, prompt/completion tokens, cost, estimated count; unique with `NULLS NOT DISTINCT`); `quotas` (user override or role standard/collective, optional provider, 4 limits, shape enforced by a check constraint); `quota_pool_usage`.
+- **Accounting** (`app/services/usage.py`): reported `usage` tokens (built-in Ollama now also asked with `stream_options.include_usage`), else characters / 4 flagged; cost = reported `usage.cost` else tokens x price; recorded per provider/model/user/day after every request of the tool loop; collective pools charged; `provider_spend` still fed (now with tokens x price when no cost is reported).
+- **Preventive check** before every request, after routing: input size, per-turn cap, provider and model budgets on the worst case (input estimated at characters / 3 x input price + max output tokens x output price), then quotas, then the daily request counter. `max_tokens` is sent on every request (default `ERAG_PROVIDER_MAX_OUTPUT_TOKENS` = 2048). Refusals are `error` events with `code` `limit_reached` or `quota_exceeded` and a message naming the limit (no usage of others); the chat shows them as an amber notice.
+- **Quotas** (ADR 0027): personal override, else highest standard cap among roles per dimension; every collective pool of every role charged; refused if any cap does not fit; per provider scope.
+- **D2**: environment values are defaults; admins may lower or raise every limit (provider, model, legacy OpenRouter endpoint), with step-up for every limit/price/quota change; audited with old/new values; `GET /api/admin/limits/history`. OpenRouter now also gets the default daily cap (100).
+- **APIs**: provider/model limits and prices in `GET/PATCH /api/admin/providers...`, `POST /api/admin/providers/{id}/prices/sync` (OpenRouter `GET /models` pricing; also auto-filled when an OpenRouter model is added and a key exists), `GET .../usage/daily`, `GET/POST/PATCH/DELETE /api/admin/quotas`, `GET /api/admin/usage`, `GET /api/admin/users/{id}/usage`, `GET /api/usage/me`.
+- **Free-only rule removed** (ADR 0028, ADR 0016 marked superseded in part): `validate_openrouter_model`, `free_only`, `openrouter_allow_paid`, API/UI fields, compose/.env.example, README, architecture, white paper 7.3 row, threat model T34. `ERAG_OPENROUTER_ALLOW_PAID` is ignored with a start-up warning (seen in the stack log, because `deploy/.env` on this machine still sets it).
+- **UI**: Providers cards with usage bars (requests today, USD this month, tokens today/month; amber at 80 percent, red "limit reached"), a 30-day token chart, "Edit and limits" (all provider limits, raise or lower), per-model "Price and limits", price column ("unknown" flagged for metered models), OpenRouter "Sync prices", "Change history" card. Roles tab: "Quotas per role" (standard or collective, provider scope) and a usage overview (per user, per pool). Users tab: "Personal quota and usage". Account page: "Your usage" with allowances (pools only as available/used up). Chat: allowance/limit notice.
+
+**Verified (R6)**
+- `uv run pytest`: **266 passed, 2 skipped** (162 s). New: `tests/security/test_quotas_and_limits.py` (10: measuring, worst-case refusal and month reset, size/per-turn/token/per-model caps, override vs highest standard cap with per-person counting and day reset, a role without a value means no limit, collective pools shared and every pool charged across several roles with day/month reset, provider-scoped quota, quota API step-up/409/422/audit/history, raising limits with step-up and model prices, users see only their own usage while admins see per-user and pool figures, no text column in `llm_usage`). Real Ollama: `test_tokens_prices_max_tokens_and_quota_with_the_real_model` (reported tokens recorded for the user with `estimated_requests == 0`, completion tokens <= the model's `max_output_tokens` of 8, cost = tokens x price and fed into `provider_spend`, a personal allowance just above the usage refuses with "Your daily allowance is used up; it resets at 00:00 UTC." and no request counted). Replaced: the free-only tests and "limits can only be lowered" tests (now "admin value wins", "paid models allowed and the old switch warns", "every limit change needs step-up").
+- `ruff check`, `ruff format --check`, `mypy` (strict, 97 files), `scripts/check_licenses.py` (no new dependency), `npm run build`: pass. Migration 0009 downgrade/upgrade round trip on `erag_test`.
+- Stack rebuilt (`Running upgrade 0008 -> 0009`); live API: providers listing shows limits/usage; a new-hire chat on the built-in Ollama recorded 722 tokens for that user (`/api/usage/me`).
+- `scripts/ui_smoke.mjs` extended and passing (`UI SMOKE PASSED`): after the user's cited answer, the provider's "Tokens today" bar shows the real tokens; the admin sets a model price 0.5/1.5, raises the monthly ceiling to 0.5 USD (above the 0.01 default) and 1M tokens/day with step-up; both appear in the change history; a standard cap of 1 token/day on the test role makes the user's next question show "Your daily allowance is used up; it resets at 00:00 UTC." and the Account page shows "limit reached". Cleanup removes role (quotas cascade), providers, container.
+- `scripts/demo_scenarios.py --base http://127.0.0.1:8088`: unchanged results (HR confidential answered locally, finance invoices tool, revocation).
+
+**Decisions (R6)**: ADR 0026 (accounting, prices, preventive check, raising limits, OpenRouter daily cap), ADR 0027 (quota semantics as proposed in the plan; pool usage hidden from users), ADR 0028 (free-only removed). Smaller: per-model token/USD values are additional caps (per-request values override the provider's); prices live on `llm_models`; the provider-level counters `provider_spend`/`provider_daily_usage` are kept rather than migrated into `llm_usage`; every limit change (not only raises) needs step-up; price auto-fill on add only when an OpenRouter key exists (no network call otherwise).
+
+**Known issues / not done (R6)**
+- Checks are not reservations (concurrent requests can overshoot by their worst cases).
+- Tokens of a request that fails mid-stream are not recorded (the request is counted).
+- `max_tokens` is sent to every provider; OpenAI reasoning models that require `max_completion_tokens` would need a gateway.
+- The built-in OpenRouter free model's price shows "unknown" until "Sync prices" is pressed (that makes one `GET /models` to OpenRouter; not done tonight).
+
+### R7: model router core (and the R8 decider clients, written in the same pass)
+
+**What was built**
+- **Migration 0010**: `router_deciders`, `router_lanes` (one default lane), `router_decisions` (no text columns), `llm_models.supports_tools`. Router settings in `app_settings` (`router`: enabled, timeout, long-context threshold).
+- **`app/modelrouter/`**: `decision.py` (answers, strict validation, deterministic rules decider, lane conditions), `service.py` (permitted set from existing code incl. budgets/quotas/tool capability; deciders in order with clearance skip, timeout, budget and validation; lanes; fallbacks default lane -> default model -> `ModelRouter.choose`; in-code invariant; decision log), `deciders.py` (locality from the address, clearance capped by locality, per-decider budget/daily cap, audited calls, keys from the vault), `protocol.py` (the `/v1/systemone` client, built from the official reference), `prompted.py` (strict-JSON prompt and parser).
+- **Orchestrator**: router consulted only when enabled and no model was requested; any exception falls back to the existing rules; route event carries `router: {decider, lane, reason}`.
+- **API** `/api/admin/router` (overview, settings, deciders CRUD + test, lanes CRUD, dry run, decisions). Step-up for everything except disabling (kill switch); audited as `admin.router.*` (also in the change history).
+- **UI**: Admin tab **Model router** (toggle, deciders with order/test/enable/delete and the fixed "rules" row, add-decider form for the three kinds, lanes with conditions and ordered targets, dry run with persona, classification and the sample-text confirmation for non-local deciders, decision log).
+
+**Verified (R7)**
+- `uv run pytest`: **276 passed, 2 skipped** (201 s). New `tests/security/test_model_router.py` (10): rules decider deterministic; strict validation of answers and lane conditions; prompted output must be exactly the schema; protocol request/response against the official reference's shapes (parsing code only); decider clearance capped by locality; **router off identical** (lane to the cloud configured but off: route to the local model, no decision rows, no `router` key); **permitted-set invariant** with a real cloud provider row (its egress blocked by the egress hook) and real Ollama: the internal engineering question goes to the cloud lane target with only Engineering data; the HR confidential question and an injection asking for the cloud model are answered locally; the log holds no question/context; **failing deciders fall back**: a real Ollama (HTTP 404 on `/v1/systemone`), a real socket that never answers (timeout), a closed port, and a hosted decider not cleared for internal (never contacted) -> rules; **prompted decider on the real qwen model**: valid answers, chosen model permitted, confidential never to the cloud, the decider request carries the question but no retrieved canary; **admin API**: 422 for confidential/see-context on a non-local decider, private URL without self-hosted, public over http, metadata IP, unknown model; official decider defaults (endpoint, `jev-latest`, public, key in the vault, 0.042 USD/M default price, cap 100); dry run needs sample-text confirmation with a non-local decider, works while the router is off; enabling needs step-up, disabling does not; deleting a decider deletes its key.
+- `ruff`, `ruff format --check`, `mypy` (104 files), `npm run build`: pass.
+- Stack rebuilt (`Running upgrade 0009 -> 0010`). `scripts/ui_smoke.mjs` extended and passing: a prompted decider on `ollama:qwen3:4b-instruct-2507-q4_K_M` added from the UI, **Test** "OK in 2924 ms; 394 in / 48 out tokens; $0.000000" with valid answers; default lane to the UI Ollama model while the chat default is the UI API model; the dry run (internal, test user) chose the lane target; **Enable router**; the user's question was answered by the lane target (not the default); **Disable (kill switch)**; 2 decisions logged; the question text appears nowhere on the router page. Cleanup deletes the run's deciders and lanes and ends with the router disabled.
+
+**Decisions (R7)**: ADR 0029 (placement, permitted set, fallbacks, kill switch without step-up, settings in `app_settings`, explicit user choice not routed), ADR 0030 (protocol and decider clearance). Smaller: decider usage is counted under `decider:<id>` keys (requests and spend) and in `llm_usage` with no user, so decider overhead never consumes a user's quota but does consume the underlying provider's budget for prompted deciders.
+
+**Known issues (R7)**: the permitted-set budget check is read-only (a model can still hit a limit at send time under concurrency, which then refuses as in R6); `supports_tools` has no UI toggle yet (API column only, default true).
+
+### R8: decision-protocol client, prompted LLM decider, open Jev-style decider (spike)
+
+**What was built** (code shipped with the R7 commit, finished here): the `/v1/systemone` client built from TypeSafe's API reference (`choice`/`score`/`noul`, answers with confidence and probabilities, `usage`), strict parsing; the prompted LLM decider (strict JSON, six keys, delimited untrusted question); the `protocol` decider kind for open Jev-style servers; per-decider timeouts up to 10 minutes (a CPU open decider needs about a minute); opt-in tests `decider_open` and `decider_official` (`tests/providers/test_deciders_real.py`, markers in `pyproject.toml`, skip logic in `tests/conftest.py`).
+
+**Spike (about 30 minutes, ADR 0031)**: Open-Jev 2B (adapter Apache-2.0, code MIT, base Qwen3.5-2B Apache-2.0, all verified on the files) installed in `~/.cache/erag-open-jev` (separate venv, CPU torch; nothing added to `pyproject.toml`/`uv.lock`), run under a systemd user scope capped at 6.5 GB RAM + 1.5 GB swap after unloading the Ollama models (restored afterwards; `mcp-office` did not need to be stopped). Results: ready in about 10 s, RSS about 3.3 GB; the protocol and answer shapes match the official reference exactly (plus a `metadata` object; `noul` spelling confirmed; no `model` needed); our 13-candidate router request took **155 s, or 58 s with `--prefix-cache`**; answers plausible. Port 8791 is taken by the demo MCP server here, so 8792 was used.
+
+**Verified (R8)**
+- Unit: protocol request/response against the official shapes; prompted output strictness (in `test_model_router.py`).
+- Real server: `ERAG_TEST_OPEN_JEV_URL=http://127.0.0.1:8792 uv run pytest -m decider_open` -> **1 passed** (117 s: a raw protocol call and the admin API's decider **Test**).
+- Live stack: a `protocol` decider at `http://127.0.0.1:8792` (self-hosted) created through the API: local, cleared for confidential, available; a dry run for `finance@acme.test` at `confidential` was decided by it in 58.7 s (tool_use not chosen: question_answering 0.62, needs tools p=0.74), kept on the local model; decider deleted, router left disabled.
+- Prompted decider on the real local qwen model: `test_prompted_decider_with_the_real_local_model` and the UI smoke's **Test** (about 3 s).
+- `decider_official` is skipped (no key tonight, as instructed).
+
+**Decisions (R8)**: ADR 0030 (protocol, prompted decider, clearance, budgets), ADR 0031 (spike result: works on CPU, too slow for interactive use here; the prompted decider stays the practical default). Decider timeout limit raised to 600000 ms for CPU deciders (router-wide default stays 3000 ms).
+
+**Not done (R8)**: no GPU run of Open-Jev (6 GB Turing, no bf16, documented peak 6.9 GiB); no quality benchmark; pjev-2b not inspected.
+
+### R9: official Jev API decider and the OpenRouter Jev Router (both built from the documentation, not called for real)
+
+**What was built**
+- **Official Jev API** decider (kind `jev_official`, ADR 0032): endpoint `https://api.typesafe.ai/v1/systemone` and model `jev-latest` as editable settings, key in the credential store, default clearance `public` (configurable, never confidential), default price 0.042 USD/M input tokens and 0 output (third-party figure, flagged "unverified default" in the panel; TypeSafe's reference documents no price and no cost field), daily cap 100 and monthly budget 0.01 USD by default; **Test** button; README how-to for adding the key and testing with about EUR 1.
+- **OpenRouter Jev Router** as a virtual model `typesafe/jev-router` of the OpenRouter provider; migration **0011** adds per-model `max_classification` (only lowers the provider's; the Jev Router defaults to public) and `options` (the documented `plugins: [{"id": "jev-router", cost_tier, allowed_models, excluded_models}]`, validated, unknown fields refused); per-model "may be offered tools" toggle. UI in the model's "Price and limits" panel.
+- Docs differences recorded in ADR 0032: options go in a `plugins` array; OpenRouter exposes the Jev Router (routes and serves), not the `/v1/systemone` decision API; no published price.
+
+**Verified (R9)**: `tests/security/test_jev_router.py` (2): options validation per the documentation; through the admin API the virtual model is added (before any key, so no price lookup), options saved, invalid options 422, clearance above the provider's 422; built router: Jev Router cleared for public while the plain OpenRouter model stays internal; the payload observed at the egress hook (and blocked there) carries `usage.include` and the exact plugin object; an internal request is refused before egress; options/clearance/tools changes need step-up. **Not verified against the real services** (no key for TypeSafe; no unpriced OpenRouter calls within the budget rules). `decider_official` test written and skipped.
+
+### v0.3 final state (after R9)
+
+- `uv run pytest`: **278 passed, 4 skipped** (206 s); the 4 skips are the OpenRouter env-key test, the opt-in claude-code test and the two opt-in real-decider tests (`decider_open` passed separately against the real Open-Jev server; `decider_official` needs a key). `ruff check`, `ruff format --check` (208 files), `mypy` strict (104 files), `scripts/check_licenses.py`, `npm run build`: pass. Migrations 0009 to 0011 downgrade to 0008 and upgrade again on `erag_test`.
+- Stack rebuilt at the final commit (`Running upgrade 0010 -> 0011`); `scripts/ui_smoke.mjs` **UI SMOKE PASSED** (R6 limits/quota steps and R7 router steps included); `scripts/demo_scenarios.py` unchanged results. Afterwards the stack has only `ollama` and `openrouter`, default automatic, no quotas, no deciders or lanes, router **disabled**, no `UI*` roles, no `erag-test-*` containers. The decision log keeps the rows of the test runs (no question text in them).
+- Spike leftovers outside the repo: `~/.cache/erag-open-jev` (venv, Open-Jev clone and adapter, about 1 GB) and the Qwen3.5-2B weights in `~/.cache/huggingface` (4.5 GB). Nothing is running; delete them if the open decider is not wanted.
+- No money spent: no OpenRouter call was made tonight (not even a price sync), no TypeSafe call.
+
+**Exact commands**
+```bash
+cd ~/Desktop/enterprise-rag && git checkout feat/v0.3
+ERAG_OPENROUTER_API_KEY= ERAG_LOCAL_CHAT_MODEL=qwen3:4b-instruct-2507-q4_K_M APP_PORT=8088 \
+  docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.hostnet.yml up -d --build app worker
+uv run pytest                                   # 278 passed, 4 skipped (~3.5 min)
+uv run pytest tests/security/test_quotas_and_limits.py tests/security/test_model_router.py tests/security/test_jev_router.py
+ERAG_TEST_OPEN_JEV_URL=http://127.0.0.1:8792 uv run pytest -m decider_open      # needs the Open-Jev server (README)
+ERAG_TEST_JEV_API_KEY=... uv run pytest -m decider_official                       # real, paid (tiny) calls
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run python scripts/check_licenses.py
+cd frontend && npm run build && cd ..
+uv run python scripts/demo_scenarios.py --base http://127.0.0.1:8088
+NODE_PATH=.scratch/e2e/node_modules CHROMIUM=/usr/bin/chromium BASE=http://127.0.0.1:8088 node scripts/ui_smoke.mjs
+```
+
+**Decisions for the owner (v0.3)**
+1. **Quota combination rule** (ADR 0027): implemented exactly as proposed in the plan (override, else highest standard cap per dimension; every collective pool charged). Users see shared pools only as "available / used up" (privacy); change if you prefer showing pool usage.
+2. **Every limit change needs step-up**, not only raises (stricter than "raising"); disabling the router does not (kill switch). Confirm.
+3. **OpenRouter now has the default daily cap of 100 requests** (it had none): paid models are allowed, so it is bounded like any metered provider.
+4. **`max_tokens` is sent on every request** (default 2048, `ERAG_PROVIDER_MAX_OUTPUT_TOKENS`): may truncate very long answers; OpenAI reasoning models want `max_completion_tokens` instead.
+5. **Unknown prices count as 0** in the worst-case check (flagged "unknown" in the panel). Press **Sync prices** on OpenRouter once (one free `GET /models`) so the built-in free model shows 0 and paid models get real prices; enter prices by hand for other APIs. Alternative: refuse metered models without a price.
+6. **`deploy/.env` still sets `ERAG_OPENROUTER_ALLOW_PAID`** (the app logs that it is ignored): remove the line.
+7. **Official Jev API**: add the key as a decider (README "Adding the official Jev key"), raise its monthly budget from 0.01 to what you want to spend, press **Test**, check the reported input tokens against your invoice and correct the default price (0.042 USD/M input, a third-party figure) if needed. Only then put it first and enable the router.
+8. **Open-Jev 2B** works here but takes about a minute per decision on CPU: keep it for evaluation/dry runs, or run it on a GPU; the prompted local decider (about 3 s) is the practical choice on this machine.
+9. **OpenRouter Jev Router**: implemented from the docs, never called (its price is unpublished). If you try it, set a low OpenRouter ceiling and an allowed list of models with known prices first.
+10. **Questions with an explicit model choice are not routed** (the user's choice wins when cleared, as before). Change if the router should also override explicit choices.
+
 ## Model providers from the admin panel, branch `feat/providers`
 
 Branch `feat/providers`, created from `fix/admin-ui-clutter` (not pushed). Work done autonomously; open questions became ADRs 0023 to 0025 and the list at the end of this section.

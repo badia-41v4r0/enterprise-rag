@@ -10,8 +10,21 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import admin, auth, chat, connectors, documents, health, mcp_registry, providers, secrets, tools
-from app.core.config import get_settings
+from app.api import (
+    admin,
+    auth,
+    chat,
+    connectors,
+    documents,
+    health,
+    mcp_registry,
+    model_router,
+    providers,
+    quotas,
+    secrets,
+    tools,
+)
+from app.core.config import get_settings, warn_removed_settings
 from app.core.db import dispose_engine
 from app.core.logging import configure_logging
 from app.core.middleware import SecurityHeadersMiddleware
@@ -27,6 +40,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     settings.check_secrets()
     configure_logging(settings.log_level, settings.log_json)
+    warn_removed_settings()
 
     app = FastAPI(title="EnterpriseRAG", version="0.1.0.dev0", lifespan=lifespan)
     app.add_middleware(SecurityHeadersMiddleware)
@@ -41,6 +55,8 @@ def create_app() -> FastAPI:
     app.include_router(providers.router)
     app.include_router(connectors.router)
     app.include_router(mcp_registry.router)
+    app.include_router(quotas.router)
+    app.include_router(model_router.router)
 
     _mount_frontend(app, settings.frontend_dist)
     return app

@@ -353,6 +353,77 @@ class ProviderDailyUsage(Base):
     requests: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class LlmUsage(Base):
+    """Requests, tokens and cost per provider, model, user and UTC day (PLAN-v0.3 R6, ADR 0026).
+
+    `user_id` NULL is usage with no user (for example a decider test). Only figures are stored, never text."""
+
+    __tablename__ = "llm_usage"
+    __table_args__ = (
+        Index(
+            "uq_llm_usage_key", "provider", "model", "user_id", "day", unique=True, postgresql_nulls_not_distinct=True
+        ),
+        Index("ix_llm_usage_user_month", "user_id", "month"),
+        Index("ix_llm_usage_provider_month", "provider", "month"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    provider: Mapped[str] = mapped_column(String(50))
+    model: Mapped[str] = mapped_column(String(200))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    day: Mapped[str] = mapped_column(String(10))
+    month: Mapped[str] = mapped_column(String(7))
+    requests: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    completion_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    estimated_requests: Mapped[int] = mapped_column(Integer, default=0)  # tokens estimated (chars / 4)
+
+
+class Quota(Base):
+    """A user's allowance (override) or a role's standard cap per member or collective pool (ADR 0027)."""
+
+    __tablename__ = "quotas"
+    __table_args__ = (
+        Index(
+            "uq_quota_scope",
+            "subject",
+            "user_id",
+            "role_id",
+            "kind",
+            "provider",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    subject: Mapped[str] = mapped_column(String(10))  # "user" | "role"
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    role_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("roles.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(12))  # "standard" | "collective"
+    provider: Mapped[str | None] = mapped_column(String(40), nullable=True)  # NULL = every provider
+    tokens_per_day: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    tokens_per_month: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    usd_per_day: Mapped[float | None] = mapped_column(Float, nullable=True)
+    usd_per_month: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class QuotaPoolUsage(Base):
+    """What a collective (role) pool has consumed per UTC day ("YYYY-MM-DD") and month ("YYYY-MM")."""
+
+    __tablename__ = "quota_pool_usage"
+    quota_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("quotas.id", ondelete="CASCADE"), primary_key=True)
+    period: Mapped[str] = mapped_column(String(10), primary_key=True)
+    tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+
+
 # --- LLM provider registry (ADR 0023) ------------------------------------------------------------
 
 
@@ -382,6 +453,12 @@ class LlmProvider(TimestampMixin, Base):
     secret_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     monthly_budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # NULL = the env ceiling
     daily_request_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)  # NULL = the env cap
+    # Token limits (PLAN-v0.3 R6). NULL = the environment default (max output) or no limit (the others).
+    max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)  # sent as max_tokens
+    max_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_per_day: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    tokens_per_month: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    max_turn_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)  # across the tool loop
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     models: Mapped[list[LlmModel]] = relationship(
@@ -402,8 +479,98 @@ class LlmModel(TimestampMixin, Base):
     # The model named by ERAG_LOCAL_CHAT_MODEL / ERAG_OPENROUTER_MODEL for a built-in provider.
     env_managed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Per-model overrides of the provider limits (NULL = the provider's value) and extra per-model caps.
+    max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_per_day: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    tokens_per_month: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    monthly_budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Price in USD per million tokens. NULL = unknown; "admin" | "openrouter" | "local" says where it came from.
+    input_usd_per_mtok: Mapped[float | None] = mapped_column(Float, nullable=True)
+    output_usd_per_mtok: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # The model router only picks tool-capable models when tools are offered (PLAN-v0.3 R7).
+    supports_tools: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # Per-model clearance: can only LOWER the provider's (NULL = the provider's; the OpenRouter Jev Router
+    # virtual model defaults to public). Per-model request options, e.g. {"jev_router": {...}} (ADR 0032).
+    max_classification: Mapped[Classification | None] = mapped_column(
+        _enum(Classification, "classification"), nullable=True
+    )
+    options: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=text("'{}'::jsonb"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     provider: Mapped[LlmProvider] = relationship(back_populates="models", lazy="selectin")
+
+
+# --- Model router (PLAN-v0.3 R7 to R9, ADR 0029 to 0032) ------------------------------------------
+
+
+class RouterDecider(TimestampMixin, Base):
+    """A configured decider: a prompted registry model, an open Jev-style server or the official Jev API.
+
+    The rules decider is built in and always last; it is not stored. Locality is derived from the address
+    (as for providers) and caps the clearance: a non-local decider is never cleared for confidential."""
+
+    __tablename__ = "router_deciders"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    kind: Mapped[str] = mapped_column(String(20))  # "prompted" | "protocol" | "jev_official"
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    base_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(250), nullable=True)
+    secret_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    self_hosted: Mapped[bool] = mapped_column(Boolean, default=False)
+    locality: Mapped[str] = mapped_column(String(10), default="cloud")
+    max_classification: Mapped[Classification | None] = mapped_column(
+        _enum(Classification, "classification"), nullable=True
+    )
+    see_context: Mapped[bool] = mapped_column(Boolean, default=False)
+    timeout_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    monthly_budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    daily_request_cap: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_usd_per_mtok: Mapped[float | None] = mapped_column(Float, nullable=True)
+    output_usd_per_mtok: Mapped[float | None] = mapped_column(Float, nullable=True)
+    options: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class RouterLane(TimestampMixin, Base):
+    """Conditions on the decider's answers and an ordered list of target model ids (first permitted wins)."""
+
+    __tablename__ = "router_lanes"
+    __table_args__ = (
+        Index("uq_router_lanes_single_default", "is_default", unique=True, postgresql_where=text("is_default")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    conditions: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    targets: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class RouterDecision(Base):
+    """One routing decision. Never the question nor any context (PLAN-v0.3 section 5)."""
+
+    __tablename__ = "router_decisions"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now(), index=True)
+    dry_run: Mapped[bool] = mapped_column(Boolean, default=False)
+    classification: Mapped[Classification] = mapped_column(_enum(Classification, "classification"))
+    tools_offered: Mapped[bool] = mapped_column(Boolean, default=False)
+    permitted: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    decider: Mapped[str] = mapped_column(String(100))
+    attempts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    answers: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    lane: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    chosen_model: Mapped[str | None] = mapped_column(String(250), nullable=True)
+    reason: Mapped[str] = mapped_column(String(500), default="")
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class Secret(TimestampMixin, Base):

@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.core.crypto import CryptoError
 from app.core.db import get_db
 from app.llm import registry
-from app.llm.router import invalidate_router_cache, resolve_openrouter, validate_openrouter_model
+from app.llm.router import invalidate_router_cache, resolve_openrouter
 from app.models import LlmProvider, Secret
 from app.services import vault
 from app.services.audit import audit
@@ -48,7 +48,6 @@ class OpenRouterOut(BaseModel):
     model: str
     monthly_budget_usd: float
     budget_cap_usd: float
-    allow_paid: bool
     spent_this_month_usd: float
     cloud_max_classification: str
 
@@ -115,7 +114,6 @@ async def _openrouter_out(db: AsyncSession) -> OpenRouterOut:
         model=conf.model,
         monthly_budget_usd=conf.budget_usd,
         budget_cap_usd=s.openrouter_monthly_budget_usd,
-        allow_paid=s.openrouter_allow_paid,
         spent_this_month_usd=await month_spend(db, "openrouter"),
         cloud_max_classification=s.cloud_max_classification,
     )
@@ -143,15 +141,21 @@ async def put_openrouter(
     conf = await get_setting(db, OPENROUTER_KEY)
     if body.model is not None:
         try:
-            validate_openrouter_model(body.model, s.openrouter_allow_paid)
+            registry.validate_model_name(body.model)
         except ValueError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
         conf["model"] = body.model
     if body.monthly_budget_usd is not None:
-        if body.monthly_budget_usd > s.openrouter_monthly_budget_usd:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT,
-                f"The ceiling cannot exceed ERAG_OPENROUTER_MONTHLY_BUDGET_USD ({s.openrouter_monthly_budget_usd})",
+        # The environment value is the initial default; the admin may lower or raise it (ADR 0026).
+        if body.monthly_budget_usd != row.monthly_budget_usd:
+            audit(
+                db,
+                "admin.limits.provider",
+                user_id=auth.user.id,
+                resource="provider:openrouter",
+                details={
+                    "changes": {"monthly_budget_usd": {"from": row.monthly_budget_usd, "to": body.monthly_budget_usd}}
+                },
             )
         conf["monthly_budget_usd"] = body.monthly_budget_usd
     if body.enabled is not None:

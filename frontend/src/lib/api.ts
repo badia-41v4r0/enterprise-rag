@@ -85,7 +85,6 @@ export interface OpenRouterSettings {
   model: string;
   monthly_budget_usd: number;
   budget_cap_usd: number;
-  allow_paid: boolean;
   spent_this_month_usd: number;
   cloud_max_classification: string;
 }
@@ -128,6 +127,12 @@ export interface ModelInfo {
   max_classification: Classification;
   is_default: boolean;
 }
+export interface UsageFigures {
+  requests: number;
+  tokens: number;
+  cost_usd: number;
+  estimated_requests?: number;
+}
 export interface ProviderModel {
   id: string;
   model_id: string;
@@ -135,6 +140,20 @@ export interface ProviderModel {
   enabled: boolean;
   env_managed: boolean;
   is_default: boolean;
+  max_output_tokens: number | null;
+  max_input_tokens: number | null;
+  tokens_per_day: number | null;
+  tokens_per_month: number | null;
+  monthly_budget_usd: number | null;
+  input_usd_per_mtok: number | null;
+  output_usd_per_mtok: number | null;
+  price_source: string | null;
+  supports_tools: boolean;
+  requested_classification: Classification | null;
+  is_jev_router: boolean;
+  jev_router: { cost_tier?: "low" | "medium" | "high"; allowed_models?: string[]; excluded_models?: string[] };
+  today: UsageFigures;
+  month: UsageFigures;
 }
 export interface ProviderRow {
   id: string;
@@ -158,7 +177,14 @@ export interface ProviderRow {
   daily_request_limit: number | null;
   daily_cap_env: number | null;
   requests_today: number;
-  free_only: boolean;
+  max_output_tokens: number | null;
+  default_max_output_tokens: number;
+  max_input_tokens: number | null;
+  tokens_per_day: number | null;
+  tokens_per_month: number | null;
+  max_turn_tokens: number | null;
+  today: UsageFigures;
+  month: UsageFigures;
   available: boolean;
   status_reason: string;
   models: ProviderModel[];
@@ -289,7 +315,7 @@ export type ChatEvent =
   | { type: "tool_call"; id: string; name: string; arguments: string }
   | { type: "tool_result"; id: string; name: string; ok: boolean; classification: Classification }
   | { type: "refusal"; reason: string; classification: Classification }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; code?: "quota_exceeded" | "limit_reached" }
   | { type: "done"; message_id: string; model: string | null; classification: Classification; answer: string };
 
 /** POST /api/chat and parse the SSE stream with fetch (cookie auth, CSRF header). */
@@ -398,4 +424,51 @@ export interface RegistryServer {
   runtime: Record<string, unknown>;
   last_discovered_at: string | null;
   tools: RegistryTool[];
+}
+
+export type QuotaLimits = {
+  tokens_per_day: number | null;
+  tokens_per_month: number | null;
+  usd_per_day: number | null;
+  usd_per_month: number | null;
+};
+export interface QuotaRow extends QuotaLimits {
+  id: string;
+  subject: "user" | "role";
+  user_id: string | null;
+  role_id: string | null;
+  subject_name: string;
+  kind: "standard" | "collective";
+  provider: string | null;
+  used: Record<keyof QuotaLimits, number> | null;
+}
+export interface Allowance {
+  kind: "standard" | "collective";
+  provider: string | null;
+  source: string;
+  limits: QuotaLimits;
+  used?: Record<keyof QuotaLimits, number>;
+  exhausted: (keyof QuotaLimits)[];
+}
+export interface MyUsage {
+  day: string;
+  month: string;
+  today: UsageFigures;
+  this_month: UsageFigures;
+  daily: { day: string; requests: number; tokens: number; cost_usd: number }[];
+  allowances: Allowance[];
+}
+export interface AdminUsage {
+  day: string;
+  month: string;
+  models: { provider: string; model: string; today: UsageFigures; month: UsageFigures }[];
+  users: { user_id: string | null; email: string; today: UsageFigures; month: UsageFigures }[];
+  pools: (QuotaRow & { members: number })[];
+}
+export interface HistoryRow {
+  ts: string;
+  who: string | null;
+  action: string;
+  resource: string;
+  details: Record<string, unknown>;
 }

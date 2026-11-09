@@ -1,0 +1,19 @@
+# 0029. Model router: permitted set first, deciders and lanes second, an instant kill switch
+
+**Status:** Accepted (2026-11-11), implements PLAN-v0.3 section 5 (R7) and decisions D5, D7.
+
+## Decision
+- **Where it runs.** In `ChatOrchestrator.prepare`, after retrieval, history re-validation, the effective classification and the visible tools (ADR 0003, 0021), and only when no model was requested explicitly (an explicit user choice keeps the previous behaviour: honoured when cleared). Turned off (the default), it is not called at all apart from reading its setting: the behaviour is exactly v0.2's.
+- **Permitted set** (existing code only): `ModelRouter.permitted(classification)` (cleared, enabled models of available providers), minus models over any provider/model budget or any of the user's quotas for this request's worst case (ADR 0026/0027, read-only, nothing reserved), over their daily request cap, or without tool support when tools are offered (`llm_models.supports_tools`, default true).
+- **Deciders** (`router_deciders`, ADR 0030) are tried in order. A decider is skipped when the request's classification is above its clearance, when it is unavailable or over its own budget, fails, times out (`ERAG`-independent setting, default 3000 ms, per decider overridable) or returns anything that does not validate. The deterministic **rules** decider (question shape, context size, tools offered) is built in and always last.
+- **Lanes** (`router_lanes`): conditions on the answers (task types, difficulty range, needs tools, needs long context, classifications) and an ordered list of target model ids. The first matching enabled lane with a *permitted* target wins; then the default lane; then the admin's default model if permitted; then the existing rules (`ModelRouter.choose`). After every tool result the existing re-routing (ADR 0003) still applies.
+- **Invariant.** The chosen model is always in the permitted set (checked in code before it is used). Prompt injection in the question can only influence which *permitted* model answers; it cannot raise clearance, reveal tools or exceed budgets and quotas.
+- **Failure isolation.** Any exception inside the router is logged and the existing rules decide; the chat never fails because of the router.
+- **Decision log** (`router_decisions`): time, dry-run flag, classification, tools offered, permitted set, decider attempts (name, ok, error, latency, cost), answers, lane, chosen model, reason, latency and cost. Never the question or any context, nor the user.
+- **Settings** live in `app_settings` (`router`: enabled, timeout, long-context threshold) instead of a separate `router_settings` table (same effect, fewer tables).
+- **Panel** (Admin > **Model router**): enable/disable toggle (disabling needs only an admin session: an instant kill switch; enabling and every other change need step-up and are audited as `admin.router.*`, also shown in the change history), deciders (add, order, test, enable, delete), lanes, dry run (permitted set, answers, chosen model and reason without generating an answer; with a non-local decider in play the caller must confirm the text is sample text) and the decision log.
+
+## Consequences
+- Each routed chat costs a few small queries and, with a configured decider, one decider call (the prompted decider on the local 4B model took about 3 s on this machine; the rules decider is instantaneous).
+- The route event of the chat stream carries `router: {decider, lane, reason}` when the router chose the model.
+- Tests: `tests/security/test_model_router.py` (router off identical to v0.2, permitted-set invariant with confidential context and an injection, failing/hung/down/uncleared deciders fall back to the rules, the prompted decider on the real local model, decision log without text, admin API policy and step-up, dry run).

@@ -135,3 +135,80 @@ async def test_add_ollama_and_api_providers_discover_set_default_and_answer(acme
         await admin.aclose()
         await hire.aclose()
         invalidate_router_cache()
+
+
+async def test_tokens_prices_max_tokens_and_quota_with_the_real_model(acme: None) -> None:
+    """R6 against the real local model: reported tokens are recorded per user, `max_tokens` is sent and
+    honoured, cost = tokens x price, and an exhausted allowance refuses before anything is sent."""
+    from app.models import LlmUsage
+
+    invalidate_router_cache()
+    admin = await _client("admin@acme.test")
+    hire = await _client("newhire@acme.test")
+    pid = None
+    qid = None
+    try:
+        r = await admin.post(
+            "/api/admin/providers",
+            json={
+                "name": "Metered API",
+                "slug": "metered-api",
+                "kind": "api",
+                "base_url": "http://127.0.0.1:11434/v1",
+                "self_hosted": True,
+                "models": [QWEN],
+                "monthly_budget_usd": 1.0,
+            },
+        )
+        assert r.status_code == 201, r.text
+        prov = r.json()
+        pid = prov["id"]
+        mid = prov["models"][0]["id"]
+        r = await admin.patch(
+            f"/api/admin/providers/{pid}/models/{mid}",
+            json={"max_output_tokens": 8, "input_usd_per_mtok": 1.0, "output_usd_per_mtok": 2.0},
+        )
+        assert r.status_code == 200, r.text
+        assert (
+            await admin.put("/api/admin/models/default", json={"model_id": f"metered-api:{QWEN}"})
+        ).status_code == 200
+
+        events = await _chat(hire, PUBLIC_Q)
+        assert events[-1]["type"] == "done" and events[-1]["model"] == f"metered-api:{QWEN}", events
+        async with get_sessionmaker()() as db:
+            hire_id = await db.scalar(select(User.id).where(User.email == "newhire@acme.test"))
+            row = await db.scalar(select(LlmUsage).where(LlmUsage.provider == "metered-api"))
+            assert row is not None and row.user_id == hire_id and row.requests == 1
+            assert row.estimated_requests == 0, "Ollama reports usage when asked with stream_options.include_usage"
+            assert row.prompt_tokens > 50 and 1 <= row.completion_tokens <= 8  # max_tokens honoured
+            assert row.cost_usd == pytest.approx((row.prompt_tokens * 1.0 + row.completion_tokens * 2.0) / 1e6)
+            spend = await db.get(ProviderSpend, ("metered-api", month_key()))
+            assert spend is not None and spend.cost_usd == pytest.approx(row.cost_usd)
+            sent_before = await requests_today(db, "metered-api")
+
+        me = (await hire.get("/api/usage/me")).json()
+        used = me["today"]["tokens"]  # this user's own usage today, across every model (earlier tests too)
+        assert used >= row.prompt_tokens + row.completion_tokens
+        # A personal allowance just above what was used: the next request's worst case does not fit.
+        r = await admin.post(
+            "/api/admin/quotas",
+            json={"subject": "user", "user_id": str(hire_id), "kind": "standard", "tokens_per_day": used + 1},
+        )
+        assert r.status_code == 201, r.text
+        qid = r.json()["id"]
+        events = await _chat(hire, PUBLIC_Q)
+        err = next(e for e in events if e["type"] == "error")
+        assert err["code"] == "quota_exceeded"
+        assert err["message"] == "Your daily allowance is used up; it resets at 00:00 UTC.", err
+        assert not any(e["type"] == "delta" for e in events)
+        async with get_sessionmaker()() as db:
+            assert await requests_today(db, "metered-api") == sent_before  # nothing was sent
+    finally:
+        if qid:
+            await admin.delete(f"/api/admin/quotas/{qid}")
+        await admin.put("/api/admin/models/default", json={"model_id": None})
+        if pid:
+            await admin.delete(f"/api/admin/providers/{pid}")
+        await admin.aclose()
+        await hire.aclose()
+        invalidate_router_cache()

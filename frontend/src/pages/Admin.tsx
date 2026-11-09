@@ -22,11 +22,13 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import Connectors from "@/pages/Connectors";
+import ModelRouter from "@/pages/ModelRouter";
 import Providers from "@/pages/Providers";
 import Registry from "@/pages/Registry";
 import { ContainerContent } from "@/pages/Content";
+import { RoleQuotas, UsageOverview, UserQuotas } from "@/pages/Quotas";
 
-const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Audit", "Jobs"] as const;
+const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Model router", "Audit", "Jobs"] as const;
 type Tab = (typeof TABS)[number];
 const CLASSIFICATIONS = ["public", "internal", "confidential"] as const;
 const CLASSES: Classification[] = ["public", "internal", "confidential"];
@@ -974,6 +976,16 @@ function Jobs() {
   );
 }
 
+function UsersQuotas() {
+  const users = useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/api/admin/users") });
+  return <UserQuotas users={users.data ?? []} />;
+}
+
+function RolesQuotas() {
+  const roles = useRoles();
+  return <RoleQuotas roles={roles.data ?? []} />;
+}
+
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("Users");
   const containers = useContainers();
@@ -1000,8 +1012,19 @@ export default function AdminPage() {
           ))}
         </div>
       </div>
-      {tab === "Users" && <Users />}
-      {tab === "Roles" && <Roles />}
+      {tab === "Users" && (
+        <div className="space-y-4">
+          <Users />
+          <UsersQuotas />
+        </div>
+      )}
+      {tab === "Roles" && (
+        <div className="space-y-4">
+          <Roles />
+          <RolesQuotas />
+          <UsageOverview />
+        </div>
+      )}
       {tab === "Containers" && <Containers />}
       {tab === "Grants" && (
         <div className="space-y-4">
@@ -1015,6 +1038,7 @@ export default function AdminPage() {
       {tab === "MCP registry" && <Registry />}
       {tab === "Secrets" && <Secrets />}
       {tab === "Providers" && <Providers />}
+      {tab === "Model router" && <ModelRouter />}
       {tab === "Audit" && <Audit />}
       {tab === "Jobs" && <Jobs />}
     </div>

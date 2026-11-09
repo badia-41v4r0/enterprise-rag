@@ -85,6 +85,7 @@ class ClaudeCodeProvider:
         *,
         tools: list[ToolSpec] | None = None,
         classification: Classification,
+        max_tokens: int | None = None,  # not supported by `claude -p`; dev-only provider
     ) -> AsyncIterator[StreamEvent]:
         check_clearance(self.max_classification, classification, self.model_id)
         exe = shutil.which(self.binary)
