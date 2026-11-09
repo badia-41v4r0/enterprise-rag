@@ -304,6 +304,34 @@ async def update_user(
     return _user_out(user)
 
 
+@router.delete("/users/{user_id}", status_code=204)
+async def delete_user(
+    user_id: uuid.UUID, auth: AuthContext = Depends(require_step_up), db: AsyncSession = Depends(get_db)
+) -> None:
+    """Permanently delete a deactivated user (ADR 0033).
+
+    Deactivate first (a second, deliberate step). Their sessions, role memberships, personal quotas, MFA codes
+    and conversations go with them (database cascades); rows that only record who created something keep the
+    record with the creator unset; the audit log and the token usage figures (numbers only) are kept.
+    """
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if user.id == auth.user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot delete yourself")
+    if user.is_active:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Deactivate the user before deleting them")
+    details = {
+        "email": user.email,
+        "display_name": user.display_name,
+        "was_admin": user.is_admin,
+        "roles": sorted(r.name for r in user.roles),
+    }
+    await db.execute(delete(User).where(User.id == user_id))
+    audit(db, "admin.user.delete", user_id=auth.user.id, resource=f"user:{user_id}", details=details)
+    await db.commit()
+
+
 @router.post("/users/{user_id}/reset-mfa", status_code=204)
 async def reset_user_mfa(
     user_id: uuid.UUID, auth: AuthContext = Depends(require_step_up), db: AsyncSession = Depends(get_db)

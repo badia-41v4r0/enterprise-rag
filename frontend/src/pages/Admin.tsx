@@ -71,6 +71,10 @@ function Users() {
     mutationFn: (id: string) => api(`/api/admin/users/${id}/reset-mfa`, { method: "POST" }),
     onSuccess: () => inv("users"),
   });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/api/admin/users/${id}`, { method: "DELETE" }),
+    onSuccess: () => inv("users"),
+  });
 
   return (
     <div className="space-y-4">
@@ -126,6 +130,7 @@ function Users() {
               <Th>Admin</Th>
               <Th>Active</Th>
               <Th>MFA</Th>
+              <Th> </Th>
             </tr>
           </thead>
           <tbody>
@@ -185,6 +190,21 @@ function Users() {
                     </Button>
                   )}
                 </td>
+                <td className="whitespace-nowrap text-xs">
+                  {!u.is_active && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Delete user ${u.email}`}
+                      onClick={() => {
+                        if (confirm(`Permanently delete ${u.email}? Their conversations and personal quotas are removed. This cannot be undone.`))
+                          remove.mutate(u.id);
+                      }}
+                    >
+                      delete
+                    </Button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -192,6 +212,7 @@ function Users() {
         <div className="px-3 pb-2">
           <ErrorLine error={patch.error} />
           <ErrorLine error={resetMfa.error} />
+          <ErrorLine error={remove.error} />
         </div>
       </Card>
     </div>
