@@ -40,7 +40,13 @@ def _print_summary(report: dict[str, Any]) -> None:
         f"  latency ms: embed p50 {lat['embed_p50']} p95 {lat['embed_p95']}, "
         f"search p50 {lat['search_p50']} p95 {lat['search_p95']}"
     )
-    print(f"  leaks {m['leaks']}")
+    print(f"  leaks {m['leaks']}  reranker fallbacks {m.get('reranker_fallbacks', 0)}")
+    if "answers" in m:
+        a = m["answers"]
+        print(
+            f"  answers ({a['model']}, {a['judged']} judged, indicative): citation precision "
+            f"{a['citation_precision']:.3f}  faithfulness {a['faithfulness']:.3f}"
+        )
     for leak in m["leaked"][:20]:
         print(f"    LEAK {leak}")
     print("  by tag (answerable):")
@@ -57,7 +63,9 @@ def _write_report(report: dict[str, Any], path: Path | None) -> Path:
     return path
 
 
-async def _run(set_name: str, label: str, mode: str) -> dict[str, Any]:
+async def _run(
+    set_name: str, label: str, mode: str, overrides: list[str] | None = None, with_answers: bool = False
+) -> dict[str, Any]:
     from app.core.db import dispose_engine, get_sessionmaker
     from app.eval.prepare import build_embedder
     from app.eval.runner import run_set
@@ -67,7 +75,17 @@ async def _run(set_name: str, label: str, mode: str) -> dict[str, Any]:
     embedder = build_embedder("record" if mode == "record" else "strict")
     try:
         async with get_sessionmaker()() as db:
-            report = await run_set(db, eval_set, embedder, label=label)
+            from app.rag.settings import load as load_retrieval
+
+            cfg = await load_retrieval(db)
+            if overrides:
+                cfg = cfg.merged(dict(o.split("=", 1) for o in overrides))
+            answers = None
+            if with_answers:
+                from app.llm.router import build_providers
+
+                answers = build_providers()[0]  # the local Ollama chat model; never a cloud provider
+            report = await run_set(db, eval_set, embedder, label=label, retrieval=cfg, answers=answers)
     finally:
         await dispose_engine()
     if embedder.recorded:
@@ -95,7 +113,9 @@ def _cmd_prepare(args: argparse.Namespace) -> int:
 def _cmd_run(args: argparse.Namespace) -> int:
     if (rc := _switch()) is not None:
         return rc
-    report = asyncio.run(_run(args.set, args.label, "record" if args.live else "strict"))
+    report = asyncio.run(
+        _run(args.set, args.label, "record" if args.live else "strict", args.retrieval, args.with_answers)
+    )
     path = _write_report(report, Path(args.json) if args.json else None)
     _print_summary(report)
     print(f"report: {path}")
@@ -201,6 +221,14 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p.add_argument("--label", default="")
     p.add_argument("--json", help="report path (default eval/runs/<time>-<set>.json)")
     p.add_argument("--live", action="store_true", help="embed missing questions with Ollama and record them")
+    p.add_argument(
+        "--retrieval", action="append", metavar="KEY=VALUE", help="override a retrieval setting for this run only"
+    )
+    p.add_argument(
+        "--with-answers",
+        action="store_true",
+        help="also generate answers with the local chat model: citation precision and a faithfulness judge",
+    )
     p.set_defaults(func=_cmd_run)
     p = sp.add_parser("compare", help="compare two reports (paths, or a run id fragment under eval/runs)")
     p.add_argument("a")

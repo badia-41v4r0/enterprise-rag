@@ -126,6 +126,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 TABLES = [
+    "answer_feedback",
     "eval_results",
     "eval_runs",
     "eval_items",

@@ -175,6 +175,51 @@ def _cmd_bootstrap(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_reindex(args: argparse.Namespace) -> int:
+    async def run() -> int:
+        from app.core.db import dispose_engine, get_sessionmaker
+        from app.services.reindex import queue_reindex
+
+        try:
+            async with get_sessionmaker()() as db:
+                return await queue_reindex(db, container_slug=args.container, stale_only=not args.all)
+        finally:
+            await dispose_engine()
+
+    n = asyncio.run(run())
+    print(f"queued {n} document version(s) for re-indexing; the worker processes them in the background")
+    return 0
+
+
+def _cmd_models_list(_: argparse.Namespace) -> int:
+    from app.ml.models import MODELS, installed, models_dir
+
+    print(f"model directory: {models_dir()}")
+    for m in MODELS.values():
+        state = "installed" if installed(m.name) else "not installed"
+        print(f"  {m.name:<20} {m.kind:<9} {m.size_mb:>5} MB  {m.license:<12.12}  {state}  {m.description}")
+    return 0
+
+
+def _cmd_models_install(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from app.ml.models import MODELS, ModelError, install
+
+    spec = MODELS.get(args.name)
+    if spec is None:
+        print(f"unknown model {args.name}; see `erag models list`", file=sys.stderr)
+        return 2
+    print(f"{spec.name}: {spec.repo} at {spec.revision[:12]}, {spec.size_mb} MB, license {spec.license}")
+    try:
+        path = install(args.name, source_dir=Path(args.from_dir) if args.from_dir else None)
+    except (ModelError, OSError) as exc:
+        print(f"install failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"installed and verified (SHA-256) in {path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erag")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -214,6 +259,21 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("bootstrap", help="start-up hook (seeds the demo when ERAG_SEED_DEMO=true)")
     p.set_defaults(func=_cmd_bootstrap)
+
+    p = sub.add_parser("reindex", help="re-index current document versions in the background (no downtime)")
+    p.add_argument("--container", help="only this container (slug)")
+    p.add_argument("--all", action="store_true", help="every document, not only those made by an older chunker")
+    p.set_defaults(func=_cmd_reindex)
+
+    sp = sub.add_parser("models", help="local model files (reranker, tokenizer)").add_subparsers(
+        dest="models_cmd", required=True
+    )
+    p = sp.add_parser("list", help="known models and whether they are installed")
+    p.set_defaults(func=_cmd_models_list)
+    p = sp.add_parser("install", help="download a pinned model (or copy it with --from-dir) and verify its hash")
+    p.add_argument("name")
+    p.add_argument("--from-dir", help="a directory holding the files, for offline installations")
+    p.set_defaults(func=_cmd_models_install)
 
     from app.eval.cli import register as register_eval
 

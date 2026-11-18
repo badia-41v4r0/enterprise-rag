@@ -316,6 +316,7 @@ export type ChatEvent =
   | { type: "tool_result"; id: string; name: string; ok: boolean; classification: Classification }
   | { type: "refusal"; reason: string; classification: Classification }
   | { type: "error"; message: string; code?: "quota_exceeded" | "limit_reached" }
+  | { type: "notice"; code: string; message: string }
   | { type: "done"; message_id: string; model: string | null; classification: Classification; answer: string };
 
 /** POST /api/chat and parse the SSE stream with fetch (cookie auth, CSRF header). */

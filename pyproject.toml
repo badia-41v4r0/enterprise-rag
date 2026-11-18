@@ -15,6 +15,8 @@ dependencies = [
     "httpx>=0.28.1",
     "jsonschema>=4.26.0",
     "mcp>=2.3.0",
+    "numpy>=2.3",
+    "onnxruntime>=1.22",
     "openpyxl>=3.1.5",
     "pgvector>=0.5.1",
     "pydantic-settings>=2.16.2",
@@ -26,6 +28,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "segno>=1.6.6",
     "sqlalchemy[asyncio]>=2.1.8",
+    "tokenizers>=0.21",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -39,7 +42,6 @@ packages = ["backend/app", "mcp_servers", "demo"]
 [dependency-groups]
 dev = [
     "mypy>=2.4.1",
-    "numpy>=2.3",
     "pip-licenses>=5.5.5",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
@@ -78,7 +80,7 @@ warn_unused_ignores = true
 disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
-module = ["pgvector.*", "docx.*", "openpyxl.*", "argon2.*"]
+module = ["pgvector.*", "docx.*", "openpyxl.*", "argon2.*", "onnxruntime.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

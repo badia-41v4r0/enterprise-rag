@@ -145,7 +145,7 @@ def aggregate(scores: list[RunScore]) -> dict[str, Any]:
     return out
 
 
-GATE_METRICS = ("recall@8", "mrr")
+GATE_METRICS = ("recall@8", "mrr", "abstention")
 
 
 def gate(current: dict[str, Any], baseline: dict[str, Any], max_drop: float = 0.02) -> list[str]:

@@ -25,7 +25,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 EMBED_DIM = 1024  # bge-m3. Changing the embedding model means a new migration + reindex.
@@ -123,6 +123,7 @@ class User(TimestampMixin, Base):
     mfa_key_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Highest TOTP time step accepted so far: a code can never be used twice.
     mfa_last_step: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     roles: Mapped[list[Role]] = relationship(secondary="user_roles", lazy="selectin", back_populates="users")
 
@@ -139,6 +140,8 @@ class Session(TimestampMixin, Base):
     mfa_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Last time the user proved who they are (login or step-up); sensitive actions need it recent.
     reauth_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Last request seen on this session, written at most once a minute; drives the idle timeout (R16).
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RecoveryCode(Base):
@@ -214,6 +217,7 @@ class Chunk(Base):
             postgresql_using="hnsw",
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
+        Index("ix_chunks_tsv", "tsv", postgresql_using="gin"),
     )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
     version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_versions.id", ondelete="CASCADE"), index=True)
@@ -224,6 +228,11 @@ class Chunk(Base):
     token_count: Mapped[int] = mapped_column(Integer, default=0)
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBED_DIM))
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", default=dict)
+    # Full-text leg (R14): Postgres text-search configuration of the document, and the tsvector the indexer
+    # computes from title, heading and text (see app.rag.lexical). Never holds ACLs.
+    lang: Mapped[str] = mapped_column(String(16), default="simple", server_default="simple")
+    tsv: Mapped[Any] = mapped_column(TSVECTOR, nullable=True, deferred=True)
+    chunker_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
 class Grant(TimestampMixin, Base):
@@ -717,3 +726,33 @@ class EvaluationResult(Base):
     leaked: Mapped[bool] = mapped_column(Boolean, default=False)
     embed_ms: Mapped[float] = mapped_column(Float, default=0.0)
     search_ms: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class AnswerFeedback(TimestampMixin, Base):
+    """Thumbs up or down on an answer (R15). A thumbs down may be proposed as an evaluation item; an administrator
+    who can read the cited sources reviews it. The comment is the user's own text about their own answer."""
+
+    __tablename__ = "answer_feedback"
+    __table_args__ = (UniqueConstraint("message_id", "user_id", name="uq_feedback_message_user"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    rating: Mapped[int] = mapped_column(Integer)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    review_state: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, index=True
+    )  # proposed|accepted|rejected
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    eval_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("eval_items.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class AuthzState(Base):
+    """Singleton row: `epoch` increases in the same transaction as any change that can alter someone's
+    permissions, so every replica's permission cache is invalidated at commit (R16, ADR 0034)."""
+
+    __tablename__ = "authz_state"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    epoch: Mapped[int] = mapped_column(BigInteger, default=0)

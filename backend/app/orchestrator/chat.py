@@ -156,9 +156,7 @@ class ChatOrchestrator:
     ) -> PreparedChat:
         conv = await self._conversation(user, conversation_id, question)
         retriever = Retriever(self.db, self.embedder)
-        retrieval = await retriever.retrieve(
-            perms, question, self.settings.retrieval_top_k, self.settings.retrieval_min_score
-        )
+        retrieval = await retriever.retrieve(perms, question)  # runtime settings: Admin > Retrieval
         context = build_context(retrieval.hits, self.settings.context_token_budget)
         history, history_cls, withheld = await self._history(perms, conv)
         classification = Classification.max(context.classification, history_cls)
@@ -251,6 +249,9 @@ class ChatOrchestrator:
         citations = [i.citation() for i in prep.context.items]
         yield {"type": "meta", "conversation_id": str(conv.id)}
         yield {"type": "citations", "items": citations}
+        if prep.retrieval.reranker_fallback:
+            # Degraded mode (ADR 0039): the answer uses the fused order; say so instead of hiding it.
+            yield {"type": "notice", "code": "reranker_fallback", "message": "Results were not reranked this time."}
 
         classification = prep.classification
         provider = prep.provider
@@ -392,6 +393,11 @@ class ChatOrchestrator:
             details={
                 "chunk_ids": [str(c) for c in prep.context.chunk_ids],
                 "dropped_chunk_ids": [str(c) for c in prep.retrieval.dropped_chunk_ids],
+                "retrieval": {
+                    "mode": prep.retrieval.mode,
+                    "reranked": prep.retrieval.reranked,
+                    "reranker_fallback": prep.retrieval.reranker_fallback,
+                },
                 "withheld_messages": [str(m) for m in prep.withheld_message_ids],
                 "classification": classification.value,
                 "models": models_used,

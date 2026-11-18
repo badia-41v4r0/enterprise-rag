@@ -82,6 +82,15 @@ class Settings(BaseSettings):
     claude_code_enabled: bool = False
     claude_code_bin: str = "claude"
 
+    # Local model files (reranker, tokenizer), installed only with `erag models install` (ADR 0039).
+    models_dir: Path = REPO_ROOT / "data" / "models"
+    # In-process reranker: concurrent rerank batches per process, ONNX Runtime threads (0 = its default),
+    # how long a request may wait for a slot plus scoring before falling back to the fused order.
+    reranker_concurrency: int = 2
+    reranker_threads: int = 0
+    reranker_timeout_seconds: float = 8.0
+    reranker_use_cuda: bool = False
+
     # Retrieval / context
     retrieval_top_k: int = 8
     # Cosine similarity floor for bge-m3 (calibrated on the ACME corpus: relevant >= ~0.48, noise ~0.25-0.45).

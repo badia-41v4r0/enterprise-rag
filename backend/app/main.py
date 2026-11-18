@@ -16,11 +16,13 @@ from app.api import (
     chat,
     connectors,
     documents,
+    evaluation,
     health,
     mcp_registry,
     model_router,
     providers,
     quotas,
+    retrieval,
     secrets,
     tools,
 )
@@ -57,6 +59,9 @@ def create_app() -> FastAPI:
     app.include_router(mcp_registry.router)
     app.include_router(quotas.router)
     app.include_router(model_router.router)
+    app.include_router(retrieval.router)
+    app.include_router(evaluation.router)
+    app.include_router(evaluation.chat_router)
 
     _mount_frontend(app, settings.frontend_dist)
     return app

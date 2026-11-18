@@ -122,8 +122,10 @@ def _docx(data: bytes) -> list[Section]:
             heading = text
         buf.append(text)
     for table in document.tables:
-        rows = [" | ".join(cell.text.strip() for cell in row.cells) for row in table.rows]
-        buf.append("\n".join(rows))
+        rows = ["| " + " | ".join(cell.text.strip() for cell in row.cells) + " |" for row in table.rows]
+        if rows:
+            # A blank line around the table keeps it one block for the chunker (split by rows, header repeated).
+            buf.append("\n" + "\n".join(rows) + "\n")
     if buf:
         sections.append(Section("\n".join(buf), {"heading": heading} if heading else {}))
     return sections

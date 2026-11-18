@@ -38,4 +38,6 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0031](0031-open-decider-spike.md) | Open decider spike: Open-Jev 2B runs on this machine's CPU (about 1 minute per decision) | Accepted, Owner review |
 | [0032](0032-official-jev-api-and-openrouter-jev-router.md) | Official Jev API decider and the OpenRouter Jev Router as a virtual model | Accepted, Owner review |
 | [0033](0033-delete-users.md) | Deleting users: deactivate first, step-up, what is kept | Accepted |
+| [0038](0038-hybrid-search-and-rank-fusion.md) | Hybrid search (pgvector + Postgres full text), one authorization clause for both legs, reciprocal rank fusion | Accepted |
+| [0039](0039-reranker-in-process.md) | A cross-encoder reranker inside the app process (ONNX Runtime), pinned models installed explicitly, degraded mode | Accepted |
 | [0040](0040-permission-aware-evaluation.md) | Permission-aware retrieval evaluation: personas, an independent oracle, recorded embeddings, a separate database, a CI gate | Accepted |

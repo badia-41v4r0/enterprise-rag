@@ -25,10 +25,12 @@ import Connectors from "@/pages/Connectors";
 import ModelRouter from "@/pages/ModelRouter";
 import Providers from "@/pages/Providers";
 import Registry from "@/pages/Registry";
+import Retrieval from "@/pages/Retrieval";
+import Evaluation from "@/pages/Evaluation";
 import { ContainerContent } from "@/pages/Content";
 import { RoleQuotas, UsageOverview, UserQuotas } from "@/pages/Quotas";
 
-const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Model router", "Audit", "Jobs"] as const;
+const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Model router", "Retrieval", "Evaluation", "Audit", "Jobs"] as const;
 type Tab = (typeof TABS)[number];
 const CLASSIFICATIONS = ["public", "internal", "confidential"] as const;
 const CLASSES: Classification[] = ["public", "internal", "confidential"];
@@ -1060,6 +1062,8 @@ export default function AdminPage() {
       {tab === "Secrets" && <Secrets />}
       {tab === "Providers" && <Providers />}
       {tab === "Model router" && <ModelRouter />}
+      {tab === "Retrieval" && <Retrieval />}
+      {tab === "Evaluation" && <Evaluation />}
       {tab === "Audit" && <Audit />}
       {tab === "Jobs" && <Jobs />}
     </div>
