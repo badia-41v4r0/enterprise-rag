@@ -143,9 +143,11 @@ class Retriever:
                 return checked
         # No reranker (or its fallback): fused order with the per-leg floors.
         out = []
+        best_text = max((c.text_rank for c in candidates if c.text_rank is not None), default=0.0)
+        text_floor = max(cfg.text_min_rank, cfg.text_relative_floor * best_text)
         for c in candidates:
             vec_ok = c.vector_score is not None and c.vector_score >= cfg.vector_min_score
-            text_ok = c.text_rank is not None and c.text_rank >= cfg.text_min_rank
+            text_ok = c.text_rank is not None and c.text_rank >= text_floor
             if vec_ok or text_ok:
                 c.hit.score = c.vector_score if c.vector_score is not None else c.fused
                 out.append(c.hit)

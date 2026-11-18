@@ -6,9 +6,10 @@ import enum
 import re
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -33,8 +34,9 @@ from app.models import (
     User,
     UserRole,
 )
-from app.services import mfa
+from app.services import mfa, user_directory
 from app.services.audit import audit
+from app.services.user_directory import UserQuery
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -49,6 +51,44 @@ class UserOut(BaseModel):
     is_active: bool
     role_ids: list[uuid.UUID]
     mfa_enabled: bool = False
+    last_login_at: datetime | None = None
+
+
+class UserPage(BaseModel):
+    items: list[UserOut]
+    next_cursor: str | None
+    total: int
+
+
+class BulkIn(BaseModel):
+    action: Literal["add_role", "remove_role", "deactivate", "activate", "sign_out"]
+    user_ids: list[uuid.UUID] = Field(min_length=1, max_length=user_directory.MAX_BULK)
+    role_id: uuid.UUID | None = None
+
+
+class BulkOut(BaseModel):
+    changed: int
+
+
+class ImportIn(BaseModel):
+    csv: str = Field(max_length=5_000_000)
+    dry_run: bool = True
+
+
+class ImportRowOut(BaseModel):
+    line: int
+    email: str
+    action: str
+    added_roles: list[str]
+    temporary_password: str | None = None
+
+
+class ImportOut(BaseModel):
+    applied: bool
+    created: int
+    updated: int
+    rows: list[ImportRowOut]
+    errors: list[str]
 
 
 class UserIn(BaseModel):
@@ -192,6 +232,11 @@ class AuditOut(BaseModel):
     details: dict[str, Any]
 
 
+class AuditPage(BaseModel):
+    items: list[AuditOut]
+    next_cursor: int | None
+
+
 VALID_GRANTS = {
     ResourceType.container: {Action.read, Action.contribute, Action.manage},
     ResourceType.document: {Action.read},
@@ -208,6 +253,7 @@ def _user_out(u: User) -> UserOut:
         is_active=u.is_active,
         role_ids=sorted((r.id for r in u.roles), key=str),
         mfa_enabled=u.mfa_enabled,
+        last_login_at=u.last_login_at,
     )
 
 
@@ -241,6 +287,109 @@ def _require_recent_auth(auth: AuthContext) -> None:
 async def list_users(_: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> list[UserOut]:
     users = (await db.scalars(select(User).order_by(User.email))).all()
     return [_user_out(u) for u in users]
+
+
+def _user_query(
+    q: str = Query("", max_length=200),
+    role_id: uuid.UUID | None = None,
+    status_filter: Literal["active", "inactive"] | None = Query(None, alias="status"),
+    is_admin: bool | None = None,
+    last_login_before: datetime | None = None,
+    never_logged_in: bool = False,
+) -> UserQuery:
+    return UserQuery(q, role_id, status_filter, is_admin, last_login_before, never_logged_in)
+
+
+@router.get("/users/page")
+async def page_users(
+    query: UserQuery = Depends(_user_query),
+    cursor: str | None = Query(None, max_length=320),
+    limit: int = Query(50, ge=1, le=500),
+    _: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UserPage:
+    """The Users screen at company scale (R16): keyset pagination by email, search and filters."""
+    users, next_cursor, total = await user_directory.page(db, query, after=cursor, limit=limit)
+    return UserPage(items=[_user_out(u) for u in users], next_cursor=next_cursor, total=total)
+
+
+@router.post("/users/bulk")
+async def bulk_users(
+    body: BulkIn, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> BulkOut:
+    """Add or remove a role, deactivate, activate, or sign out many users at once. One audit entry lists them."""
+    try:
+        changed = await user_directory.bulk(db, body.action, body.user_ids, actor_id=auth.user.id, role_id=body.role_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    audit(
+        db,
+        f"admin.user.bulk.{body.action}",
+        user_id=auth.user.id,
+        resource=f"role:{body.role_id}" if body.role_id else "users",
+        details={"requested": len(body.user_ids), "changed": [str(u) for u in changed]},
+    )
+    await db.commit()
+    return BulkOut(changed=len(changed))
+
+
+@router.get("/users/export.csv")
+async def export_users(
+    query: UserQuery = Depends(_user_query),
+    auth: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    chunks = await user_directory.export_rows(db, query)
+    audit(db, "admin.user.export", user_id=auth.user.id, details={"filters": repr(query)})
+    await db.commit()
+    return StreamingResponse(
+        iter(chunks),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="users.csv"'},
+    )
+
+
+@router.post("/users/import")
+async def import_users(
+    body: ImportIn, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> ImportOut:
+    """Validate a CSV (`dry_run`, the default) or apply it. Applying creates accounts in bulk, so it needs a
+    recent re-authentication, like other account-level changes (ADR 0019). Temporary passwords of the created
+    users are in this response only; they are never stored or logged in clear."""
+    if not body.dry_run:
+        _require_recent_auth(auth)
+    result = await user_directory.import_csv(db, body.csv, dry_run=body.dry_run)
+    if result.applied:
+        audit(
+            db,
+            "admin.user.import",
+            user_id=auth.user.id,
+            details={
+                "created": [r.email for r in result.rows if r.action == "create"],
+                "updated": [r.email for r in result.rows if r.action == "update"],
+            },
+        )
+        await db.commit()
+    else:
+        await db.rollback()
+    return ImportOut(
+        applied=result.applied,
+        created=result.created,
+        updated=result.updated,
+        rows=[
+            ImportRowOut(
+                line=r.line,
+                email=r.email,
+                action=r.action,
+                added_roles=r.added_roles,
+                temporary_password=r.temporary_password,
+            )
+            for r in result.rows
+        ],
+        errors=result.errors,
+    )
 
 
 @router.post("/users", status_code=201)
@@ -774,15 +923,52 @@ async def list_audit(
         q = q.where(AuditLog.action.startswith(action))
     if user_id:
         q = q.where(AuditLog.user_id == user_id)
-    return [
-        AuditOut(
-            id=a.id,
-            ts=a.ts,
-            user_id=a.user_id,
-            action=a.action,
-            resource=a.resource,
-            decision=a.decision,
-            details=a.details,
-        )
-        for a in (await db.scalars(q)).all()
-    ]
+    return [_audit_out(a) for a in (await db.scalars(q)).all()]
+
+
+def _audit_out(a: AuditLog) -> AuditOut:
+    return AuditOut(
+        id=a.id,
+        ts=a.ts,
+        user_id=a.user_id,
+        action=a.action,
+        resource=a.resource,
+        decision=a.decision,
+        details=a.details,
+    )
+
+
+@router.get("/audit/page")
+async def page_audit(
+    before: int | None = Query(None, ge=1, description="cursor: return entries with a smaller id"),
+    limit: int = Query(100, ge=1, le=1000),
+    action: str | None = Query(None, max_length=100),
+    user_id: uuid.UUID | None = None,
+    resource: str | None = Query(None, max_length=300),
+    decision: str | None = Query(None, max_length=20),
+    since: datetime | None = None,
+    until: datetime | None = None,
+    _: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AuditPage:
+    """Audit log at scale (R16): newest first, keyset pagination on the id, prefix filters on action and
+    resource (index-friendly), and a date range."""
+    q = select(AuditLog)
+    if before is not None:
+        q = q.where(AuditLog.id < before)
+    if action:
+        q = q.where(AuditLog.action.startswith(action, autoescape=True))
+    if user_id:
+        q = q.where(AuditLog.user_id == user_id)
+    if resource:
+        q = q.where(AuditLog.resource.startswith(resource, autoescape=True))
+    if decision:
+        q = q.where(AuditLog.decision == decision)
+    if since:
+        q = q.where(AuditLog.ts >= since)
+    if until:
+        q = q.where(AuditLog.ts < until)
+    rows = list((await db.scalars(q.order_by(AuditLog.id.desc()).limit(limit + 1))).all())
+    more = len(rows) > limit
+    rows = rows[:limit]
+    return AuditPage(items=[_audit_out(a) for a in rows], next_cursor=rows[-1].id if more and rows else None)

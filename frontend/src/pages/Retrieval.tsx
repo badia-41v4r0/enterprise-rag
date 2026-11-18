@@ -36,6 +36,7 @@ const NUMBERS: [string, string][] = [
   ["rerank_min_score", "Reranker relevance floor"],
   ["vector_min_score", "Cosine floor without reranker"],
   ["text_min_rank", "Full-text floor without reranker"],
+  ["text_relative_floor", "Full-text floor relative to the best match (0-1)"],
 ];
 
 export default function Retrieval() {

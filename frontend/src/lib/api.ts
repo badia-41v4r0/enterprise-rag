@@ -217,6 +217,23 @@ export interface UserRow {
   is_active: boolean;
   role_ids: string[];
   mfa_enabled: boolean;
+  last_login_at?: string | null;
+}
+export interface UserPage {
+  items: UserRow[];
+  next_cursor: string | null;
+  total: number;
+}
+export interface ImportResult {
+  applied: boolean;
+  created: number;
+  updated: number;
+  rows: { line: number; email: string; action: string; added_roles: string[]; temporary_password: string | null }[];
+  errors: string[];
+}
+export interface AuditPage {
+  items: AuditRow[];
+  next_cursor: number | null;
 }
 export interface RoleRow {
   id: string;

@@ -33,9 +33,12 @@ class RetrievalSettings:
     rerank_candidates: int = 30
     rerank_min_score: float = 0.02  # calibrated on the acme set (R14, docs/benchmarks/r14-retrieval.md)
     # Without a reranker (none configured, or the fallback): cosine floor for vector hits; text-only hits need a
-    # normalized ts_rank_cd of at least `text_min_rank`.
+    # normalized ts_rank_cd of at least `text_min_rank` and of at least `text_relative_floor` times the best
+    # full-text match of the query: a term every document shares (the company name in every title) is not
+    # enough on its own to bring an unrelated chunk into the context.
     vector_min_score: float = 0.45
     text_min_rank: float = 0.05
+    text_relative_floor: float = 0.5
     final_k: int = 8
 
     def validate(self) -> RetrievalSettings:
@@ -51,7 +54,7 @@ class RetrievalSettings:
         for name in ("vector_weight", "text_weight"):
             if not 0 <= getattr(self, name) <= 10:
                 problems.append(f"{name} must be between 0 and 10")
-        for name in ("rerank_min_score", "vector_min_score", "text_min_rank"):
+        for name in ("rerank_min_score", "vector_min_score", "text_min_rank", "text_relative_floor"):
             if not 0 <= getattr(self, name) <= 1:
                 problems.append(f"{name} must be between 0 and 1")
         if self.reranker and (self.reranker not in MODELS or MODELS[self.reranker].kind != "reranker"):

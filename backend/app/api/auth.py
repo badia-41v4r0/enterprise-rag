@@ -133,6 +133,8 @@ async def login(body: LoginIn, request: Request, response: Response, db: AsyncSe
     now = datetime.now(UTC)
     await db.execute(delete(Session).where(Session.user_id == user.id, Session.expires_at <= now))
     token, sess = _new_session(db, user, pending=user.mfa_enabled)
+    if not user.mfa_enabled:
+        user.last_login_at = now
     audit(
         db,
         "auth.login",
@@ -177,6 +179,7 @@ async def mfa_verify(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid code")
     await db.delete(sess)
     token, new = _new_session(db, user, pending=False)
+    user.last_login_at = datetime.now(UTC)
     audit(db, "auth.mfa", user_id=user.id, details={"recovery_code": used_recovery})
     await db.commit()
     _set_cookie(response, token)
