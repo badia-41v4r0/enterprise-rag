@@ -191,6 +191,44 @@ def _cmd_reindex(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_maintenance(_: argparse.Namespace) -> int:
+    async def run() -> int:
+        from app.core.db import dispose_engine
+        from app.services.maintenance import run_once
+
+        try:
+            r = await run_once()
+        finally:
+            await dispose_engine()
+        if not r.ran:
+            print("another process is running maintenance right now; nothing done")
+            return 1
+        print(f"deleted {r.sessions_deleted} session(s) and {r.conversations_deleted} conversation(s)")
+        return 0
+
+    return asyncio.run(run())
+
+
+def _cmd_blobs_migrate(_: argparse.Namespace) -> int:
+    from app.core.config import get_settings
+    from app.ingestion.blobstore import LocalBlobStore, migrate_blobs
+    from app.ingestion.s3 import S3BlobStore
+
+    s = get_settings()
+    target = S3BlobStore(
+        s.s3_endpoint,
+        s.s3_bucket,
+        s.s3_access_key_id,
+        s.s3_secret_access_key,
+        region=s.s3_region,
+        prefix=s.s3_prefix,
+        sse=s.s3_sse,
+    )
+    copied, present = asyncio.run(migrate_blobs(LocalBlobStore(s.blob_dir), target))
+    print(f"copied {copied} blob(s), {present} already in the bucket; now set ERAG_BLOB_BACKEND=s3 and restart")
+    return 0
+
+
 def _cmd_models_list(_: argparse.Namespace) -> int:
     from app.ml.models import MODELS, installed, models_dir
 
@@ -264,6 +302,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--container", help="only this container (slug)")
     p.add_argument("--all", action="store_true", help="every document, not only those made by an older chunker")
     p.set_defaults(func=_cmd_reindex)
+
+    p = sub.add_parser("maintenance", help="delete expired/idle sessions and apply conversation retention now")
+    p.set_defaults(func=_cmd_maintenance)
+
+    sp = sub.add_parser("blobs", help="blob storage").add_subparsers(dest="blobs_cmd", required=True)
+    p = sp.add_parser("migrate", help="copy local blobs to S3 (configured with ERAG_S3_*), verifying each hash")
+    p.add_argument("--to", choices=["s3"], required=True)
+    p.set_defaults(func=_cmd_blobs_migrate)
 
     sp = sub.add_parser("models", help="local model files (reranker, tokenizer)").add_subparsers(
         dest="models_cmd", required=True

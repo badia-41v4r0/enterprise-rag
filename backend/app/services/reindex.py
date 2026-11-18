@@ -27,7 +27,7 @@ async def queue_reindex(db: AsyncSession, *, container_slug: str | None = None, 
     q = q.where(Document.current_version_id.not_in(pending))
     n = 0
     for (version_id,) in (await db.execute(q)).all():
-        db.add(IngestionJob(version_id=version_id))
+        db.add(IngestionJob(version_id=version_id, priority=-10))  # after uploads and syncs (R18)
         n += 1
     audit(
         db,

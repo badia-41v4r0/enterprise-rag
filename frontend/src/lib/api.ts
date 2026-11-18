@@ -322,6 +322,8 @@ export interface JobRow {
   attempts: number;
   error: string | null;
   created_at: string;
+  priority?: number;
+  next_attempt_at?: string | null;
 }
 
 export type ChatEvent =
@@ -334,6 +336,7 @@ export type ChatEvent =
   | { type: "refusal"; reason: string; classification: Classification }
   | { type: "error"; message: string; code?: "quota_exceeded" | "limit_reached" }
   | { type: "notice"; code: string; message: string }
+  | { type: "queue"; position: number }
   | { type: "done"; message_id: string; model: string | null; classification: Classification; answer: string };
 
 /** POST /api/chat and parse the SSE stream with fetch (cookie auth, CSRF header). */

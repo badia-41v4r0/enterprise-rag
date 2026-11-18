@@ -19,6 +19,7 @@ import app.mcp.gateway as gateway_module
 from app.authz.policy import effective_permissions
 from app.core.config import get_settings
 from app.core.db import get_sessionmaker
+from app.core.ratelimit import reset_limits
 from app.llm.providers.base import ToolCall
 from app.llm.providers.openai_compat import OpenAICompatProvider
 from app.llm.router import ModelRouter, RoutingRefused
@@ -48,6 +49,7 @@ async def acme_tools() -> AsyncIterator[None]:
 @pytest.fixture
 async def db(acme_tools: None) -> AsyncIterator[AsyncSession]:
     gateway_module._limiter = None
+    await reset_limits("tool")
     async with get_sessionmaker()() as s:
         yield s
         await s.rollback()
@@ -254,11 +256,13 @@ async def test_oversized_result_is_refused(db: AsyncSession) -> None:
 async def test_tool_rate_limit(db: AsyncSession) -> None:
     settings = get_settings().model_copy(update={"tool_rate_limit_per_minute": 2})
     gateway_module._limiter = None
+    await reset_limits("tool")
     rt = McpToolRuntime(settings=settings)
     results = [await call(db, "newhire@acme.test", "files__list_files", {}, runtime=rt) for _ in range(3)]
     assert [r.ok for r in results] == [True, True, False]
     assert "rate limit" in body(results[2])["error"]
     gateway_module._limiter = None
+    await reset_limits("tool")
 
 
 # --- re-routing after tool results ----------------------------------------------------------------

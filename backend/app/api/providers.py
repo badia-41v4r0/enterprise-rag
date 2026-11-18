@@ -16,6 +16,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import STEP_UP_REQUIRED, AuthContext, recently_authenticated, require_admin, require_step_up
@@ -24,7 +25,7 @@ from app.core.db import get_db
 from app.core.netguard import BlockedDestination
 from app.llm import registry
 from app.llm.router import invalidate_router_cache, load_router
-from app.models import Classification, LlmModel, LlmProvider
+from app.models import Classification, LlmEndpoint, LlmModel, LlmProvider
 from app.services import usage, vault
 from app.services.audit import audit
 from app.services.spend import day_key, month_key, month_spend, requests_today
@@ -65,6 +66,18 @@ class ModelOut(BaseModel):
     month: UsageFigures = Field(default_factory=UsageFigures)
 
 
+class EndpointOut(BaseModel):
+    id: uuid.UUID
+    base_url: str
+    max_concurrency: int | None
+    enabled: bool
+
+
+class EndpointIn(BaseModel):
+    base_url: str = Field(min_length=8, max_length=1000)
+    max_concurrency: int | None = Field(default=None, ge=1, le=10_000)
+
+
 class ProviderOut(BaseModel):
     id: uuid.UUID
     slug: str
@@ -94,6 +107,8 @@ class ProviderOut(BaseModel):
     tokens_per_day: int | None
     tokens_per_month: int | None
     max_turn_tokens: int | None
+    max_concurrency: int | None = None
+    endpoints: list[EndpointOut] = Field(default_factory=list)
     today: UsageFigures
     month: UsageFigures
     available: bool
@@ -123,6 +138,7 @@ class ProviderIn(BaseModel):
     tokens_per_day: int | None = Field(default=None, ge=0)
     tokens_per_month: int | None = Field(default=None, ge=0)
     max_turn_tokens: int | None = Field(default=None, ge=1)
+    max_concurrency: int | None = Field(default=None, ge=1, le=10_000)
     models: list[str] = Field(default_factory=list, max_length=100)
     enabled: bool = True
 
@@ -144,6 +160,7 @@ class ProviderPatch(BaseModel):
     tokens_per_day: int | None = Field(default=None, ge=0)
     tokens_per_month: int | None = Field(default=None, ge=0)
     max_turn_tokens: int | None = Field(default=None, ge=1)
+    max_concurrency: int | None = Field(default=None, ge=1, le=10_000)
 
 
 class ModelIn(BaseModel):
@@ -174,6 +191,7 @@ PROVIDER_LIMITS = (
     "tokens_per_day",
     "tokens_per_month",
     "max_turn_tokens",
+    "max_concurrency",
 )
 MODEL_LIMITS = ("max_output_tokens", "max_input_tokens", "tokens_per_day", "tokens_per_month", "monthly_budget_usd")
 MODEL_PRICES = ("input_usd_per_mtok", "output_usd_per_mtok")
@@ -262,6 +280,8 @@ async def _out(
         tokens_per_day=row.tokens_per_day,
         tokens_per_month=row.tokens_per_month,
         max_turn_tokens=row.max_turn_tokens,
+        max_concurrency=row.max_concurrency,
+        endpoints=[_endpoint_out(e) for e in await _endpoints(db, row.id)],
         today=_figures(await usage.totals(db, provider=row.slug, day=day_key())),
         month=_figures(await usage.totals(db, provider=row.slug, month=month_key())),
         available=bool(state and state.available),
@@ -364,6 +384,7 @@ async def create_provider(
         tokens_per_day=body.tokens_per_day,
         tokens_per_month=body.tokens_per_month,
         max_turn_tokens=body.max_turn_tokens,
+        max_concurrency=body.max_concurrency,
         created_by=auth.user.id,
     )
     row.models = [LlmModel(model=m) for m in dict.fromkeys(models)]
@@ -806,3 +827,72 @@ async def set_default_model(
     )
     await _changed(db)
     return {"default_model_id": body.model_id}
+
+
+# --- Endpoint pools (R17) ------------------------------------------------------------------------------------
+
+
+def _endpoint_out(e: LlmEndpoint) -> EndpointOut:
+    return EndpointOut(id=e.id, base_url=e.base_url, max_concurrency=e.max_concurrency, enabled=e.enabled)
+
+
+async def _endpoints(db: AsyncSession, provider_id: uuid.UUID) -> list[LlmEndpoint]:
+    q = select(LlmEndpoint).where(LlmEndpoint.provider_id == provider_id).order_by(LlmEndpoint.base_url)
+    return list((await db.scalars(q)).all())
+
+
+@router.post("/providers/{provider_id}/endpoints", status_code=201)
+async def add_endpoint(
+    provider_id: uuid.UUID,
+    body: EndpointIn,
+    auth: AuthContext = Depends(require_step_up),
+    db: AsyncSession = Depends(get_db),
+) -> EndpointOut:
+    """Another replica of the same model server (e.g. one Ollama per GPU). A new destination for data, so it
+    needs a recent re-authentication, and its address must have the provider's locality: a pool shares one
+    clearance."""
+    row = await db.get(LlmProvider, provider_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Provider not found")
+    url = body.base_url.strip().rstrip("/")
+    primary, _ = await registry.current_endpoint(row)
+    locality, problem = await registry.current_endpoint(row, url)
+    if locality == "blocked" or problem:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Endpoint refused: {problem or locality}")
+    if locality != primary:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Endpoint is {locality} but the provider is {primary}; every endpoint of a pool shares one clearance",
+        )
+    ep = LlmEndpoint(provider_id=row.id, base_url=url, max_concurrency=body.max_concurrency)
+    db.add(ep)
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Endpoint already exists") from exc
+    audit(
+        db,
+        "admin.provider.endpoint.add",
+        user_id=auth.user.id,
+        resource=f"provider:{row.slug}",
+        details={"base_url": url, "max_concurrency": body.max_concurrency},
+    )
+    await db.commit()
+    invalidate_router_cache()
+    return _endpoint_out(ep)
+
+
+@router.delete("/providers/{provider_id}/endpoints/{endpoint_id}", status_code=204)
+async def delete_endpoint(
+    provider_id: uuid.UUID,
+    endpoint_id: uuid.UUID,
+    auth: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    ep = await db.get(LlmEndpoint, endpoint_id)
+    if ep is None or ep.provider_id != provider_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    await db.delete(ep)
+    audit(db, "admin.provider.endpoint.delete", user_id=auth.user.id, details={"base_url": ep.base_url})
+    await db.commit()
+    invalidate_router_cache()

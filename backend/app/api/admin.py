@@ -132,6 +132,7 @@ class RoleIn(BaseModel):
 class RolePatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = None
+    priority: int | None = Field(default=None, ge=-100, le=100)  # generation queue (R17)
 
 
 class RoleClone(BaseModel):
@@ -165,6 +166,7 @@ class RoleOut(BaseModel):
     description: str
     user_count: int = 0
     grant_count: int = 0
+    priority: int = 0
 
 
 class EffectiveContainer(BaseModel):
@@ -501,7 +503,14 @@ async def reset_user_mfa(
 async def _role_out(db: AsyncSession, r: Role) -> RoleOut:
     users = await db.scalar(select(func.count()).select_from(UserRole).where(UserRole.role_id == r.id))
     grants = await db.scalar(select(func.count()).select_from(Grant).where(Grant.role_id == r.id))
-    return RoleOut(id=r.id, name=r.name, description=r.description, user_count=users or 0, grant_count=grants or 0)
+    return RoleOut(
+        id=r.id,
+        name=r.name,
+        description=r.description,
+        user_count=users or 0,
+        grant_count=grants or 0,
+        priority=r.priority,
+    )
 
 
 async def _role_or_404(db: AsyncSession, role_id: uuid.UUID) -> Role:

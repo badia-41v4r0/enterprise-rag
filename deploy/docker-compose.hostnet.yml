@@ -15,7 +15,7 @@ services:
       ERAG_SSRF_ALLOWLIST: 127.0.0.1:8791
       ERAG_DEMO_OFFICE_MCP_URL: http://127.0.0.1:8791/mcp
       ERAG_RUNNER_URL: http://127.0.0.1:8790
-    command: ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && uvicorn app.main:app --host 127.0.0.1 --port ${APP_PORT:-8000}"]
+    command: ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && uvicorn app.main:app --host 127.0.0.1 --port ${APP_PORT:-8000} --timeout-graceful-shutdown 60"]
   runner:
     network_mode: host
     environment:

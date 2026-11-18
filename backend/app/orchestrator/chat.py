@@ -14,21 +14,32 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policy import EffectivePermissions, readable_document_ids
 from app.core.config import Settings, get_settings
+from app.core.db import get_sessionmaker
 from app.ingestion.embedder import Embedder
 from app.llm.prompt_builder import NO_INFO_ANSWER, HistoryTurn, build_messages, render_tool_result
 from app.llm.providers.base import Done, LLMProvider, ProviderError, TextDelta, ToolCall, ToolCallsEvent, ToolSpec
 from app.llm.router import ModelRouter, RoutingRefused
-from app.models import Classification, Conversation, Message, User
+from app.models import Classification, Conversation, Message, Role, User
 from app.rag.context_builder import BuiltContext, build_context
 from app.rag.retrieval import RetrievalResult, Retriever
+from app.services import genqueue, reservations
 from app.services.audit import audit
 from app.services.spend import BudgetExceeded, record_spend, reserve_request
-from app.services.usage import charge_pools, measure, preflight, preventive_input_tokens, record_usage
+from app.services.usage import (
+    Measured,
+    ModelLimits,
+    Preflight,
+    charge_pools,
+    measure,
+    preventive_input_tokens,
+    record_usage,
+    reserve,
+)
 
 log = logging.getLogger(__name__)
 
@@ -284,39 +295,63 @@ class ChatOrchestrator:
                     lim = self.router.limits_for(provider)
                     # Preventive checks before anything leaves the process (ADR 0026, ADR 0027): request size,
                     # per-turn cap, provider/model budgets on the worst case of this request, then the user's
-                    # quotas; then the daily request counter (counted even if the request then fails).
-                    pre = await preflight(
-                        self.db,
+                    # quotas, all reserved atomically across replicas (R17); then the daily request counter
+                    # (counted even if the request then fails).
+                    pre = await reserve(
                         lim,
                         user_id=user.id,
                         role_ids=perms.role_ids,
                         input_tokens=preventive_input_tokens(messages, offer_tools),
                         turn_tokens=turn_tokens,
                     )
-                    if lim.metered or lim.daily_requests is not None:
-                        await reserve_request(self.db, provider.provider, lim.daily_requests)
-                    await self._audit_egress(user, provider, classification, prep, iteration)
-                    models_used.append(provider.model_id)
-                    usage: dict[str, Any] = {}
-                    async for ev in provider.stream_chat(
-                        messages, tools=offer_tools, classification=classification, max_tokens=lim.max_output_tokens
-                    ):
-                        if isinstance(ev, TextDelta):
-                            step_text += ev.text
-                            yield {"type": "delta", "text": ev.text}
-                        elif isinstance(ev, ToolCallsEvent):
-                            calls = ev.calls
-                        elif isinstance(ev, Done):
-                            usage = ev.usage
-                    out_chars = len(step_text) + sum(len(c.name) + len(c.arguments) for c in calls)
-                    used = measure(usage, lim, messages, offer_tools, out_chars)
-                    await record_usage(
-                        self.db, provider=provider.provider, model=provider.model, user_id=user.id, measured=used
-                    )
-                    if lim.metered or lim.provider_monthly_usd is not None:
-                        await record_spend(self.db, provider.provider, used.cost_usd)
-                    await charge_pools(self.db, pre.caps, used.tokens, used.cost_usd)
-                    await self.db.commit()
+                    settled = False
+                    try:
+                        if lim.metered or lim.daily_requests is not None:
+                            await reserve_request(self.db, provider.provider, lim.daily_requests)
+                        # A generation slot on the model's endpoint pool (R17): fair queue when it is full.
+                        endpoints = getattr(provider, "endpoints", None) or [genqueue.Endpoint(provider.model_id, None)]
+                        priority = await self._priority(perms) if genqueue.limited(endpoints) else 0
+                        lease: genqueue.Lease | None = None
+                        async for slot in genqueue.acquire(provider.provider, endpoints, user.id, priority=priority):
+                            if isinstance(slot, genqueue.Lease):
+                                lease = slot
+                            else:
+                                yield {"type": "queue", "position": slot}
+                        assert lease is not None
+                        await self._audit_egress(user, provider, classification, prep, iteration)
+                        models_used.append(provider.model_id)
+                        usage: dict[str, Any] = {}
+                        target = {"endpoint": lease.endpoint} if lease.id is not None else {}
+                        try:
+                            async with genqueue.held(lease):
+                                async for ev in provider.stream_chat(
+                                    messages,
+                                    tools=offer_tools,
+                                    classification=classification,
+                                    max_tokens=lim.max_output_tokens,
+                                    **target,
+                                ):
+                                    if isinstance(ev, TextDelta):
+                                        step_text += ev.text
+                                        yield {"type": "delta", "text": ev.text}
+                                    elif isinstance(ev, ToolCallsEvent):
+                                        calls = ev.calls
+                                    elif isinstance(ev, Done):
+                                        usage = ev.usage
+                        except ProviderError:
+                            # Failed mid-stream: what was sent (and any partial answer) is counted, estimated.
+                            await self._settle(
+                                pre, provider, lim, user, measure({}, lim, messages, offer_tools, len(step_text))
+                            )
+                            settled = True
+                            raise
+                        out_chars = len(step_text) + sum(len(c.name) + len(c.arguments) for c in calls)
+                        used = measure(usage, lim, messages, offer_tools, out_chars)
+                        await self._settle(pre, provider, lim, user, used)
+                        settled = True
+                    finally:
+                        if not settled and pre.request_id is not None:
+                            await _release_reservation(pre.request_id)
                     turn_tokens += used.tokens
                     answer += step_text
                     if not calls or self.tools is None:
@@ -362,6 +397,10 @@ class ChatOrchestrator:
                 # A limit or quota: nothing was sent for this step. Shown as such, not as a model failure.
                 await self.db.commit()  # keep the refused attempt in the daily request counter
                 yield {"type": "error", "code": getattr(exc, "code", "limit_reached"), "message": str(exc)}
+            except genqueue.QueueTimeout as exc:
+                # Nothing was sent: every slot of the model stayed busy for the whole wait.
+                await self.db.commit()
+                yield {"type": "error", "code": exc.code, "message": str(exc)}
             except ProviderError as exc:
                 log.warning("provider error", extra={"error": str(exc)})
                 yield {"type": "error", "message": f"The model failed to answer: {exc}"}
@@ -414,6 +453,25 @@ class ChatOrchestrator:
             "answer": msg.content,
         }
 
+    async def _settle(
+        self, pre: Preflight, provider: LLMProvider, lim: ModelLimits, user: User, used: Measured
+    ) -> None:
+        """Record the real usage and drop the reservation in one transaction: never counted twice or not at all."""
+        await record_usage(self.db, provider=provider.provider, model=provider.model, user_id=user.id, measured=used)
+        if lim.metered or lim.provider_monthly_usd is not None:
+            await record_spend(self.db, provider.provider, used.cost_usd)
+        await charge_pools(self.db, pre.caps, used.tokens, used.cost_usd)
+        if pre.request_id is not None:
+            await reservations.release(self.db, pre.request_id)
+        await self.db.commit()
+
+    async def _priority(self, perms: EffectivePermissions) -> int:
+        """The highest generation-queue priority among the user's roles (R17)."""
+        if not perms.role_ids:
+            return 0
+        value = await self.db.scalar(select(func.max(Role.priority)).where(Role.id.in_(perms.role_ids)))
+        return int(value or 0)
+
     async def _audit_egress(
         self, user: User, provider: LLMProvider, classification: Classification, prep: PreparedChat, iteration: int
     ) -> None:
@@ -444,3 +502,10 @@ def reroute(router: ModelRouter, current: LLMProvider, classification: Classific
 
 def sse(event: dict[str, Any]) -> str:
     return f"event: {event['type']}\ndata: {json.dumps(event)}\n\n"
+
+
+async def _release_reservation(request_id: uuid.UUID) -> None:
+    """Drop the reservation of a step that never reached the model (refused, timed out, cancelled)."""
+    async with get_sessionmaker()() as db:
+        await reservations.release(db, request_id)
+        await db.commit()

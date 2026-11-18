@@ -3,20 +3,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policy import EffectivePermissions, effective_permissions
 from app.core.config import get_settings
-from app.core.db import get_db
+from app.core.db import get_db, get_sessionmaker
 from app.core.security import constant_time_equals, sha256_hex
 from app.models import Session, User
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 CSRF_HEADER = "X-CSRF-Token"
+# `sessions.last_seen_at` is written at most this often per session: idle detection needs minutes, not requests.
+TOUCH_EVERY = timedelta(minutes=1)
+
+
+async def _touch(session_id: str, now: datetime) -> None:
+    """Record activity in its own short transaction, so read-only requests (which never commit) count too and
+    the request's own transaction is not affected. Best effort: if another transaction holds the row (a login
+    step, a step-up), skip instead of waiting, which could wait on this very request."""
+    locked = select(Session.id).where(Session.id == session_id).with_for_update(skip_locked=True).scalar_subquery()
+    async with get_sessionmaker()() as s:
+        await s.execute(update(Session).where(Session.id == locked).values(last_seen_at=now))
+        await s.commit()
 
 
 @dataclass
@@ -35,8 +47,17 @@ async def _session_and_user(request: Request, db: AsyncSession) -> tuple[Session
     if not raw:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     sess = await db.get(Session, sha256_hex(raw))
-    if sess is None or sess.expires_at <= datetime.now(UTC):
+    now = datetime.now(UTC)
+    if sess is None or sess.expires_at <= now:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired")
+    if settings.session_idle_minutes and not sess.mfa_pending:
+        seen = sess.last_seen_at or sess.created_at
+        if now - seen > timedelta(minutes=settings.session_idle_minutes):
+            await db.execute(delete(Session).where(Session.id == sess.id))
+            await db.commit()
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired")
+    if sess.last_seen_at is None or now - sess.last_seen_at >= TOUCH_EVERY:
+        await _touch(sess.id, now)
     user = await db.scalar(select(User).where(User.id == sess.user_id))
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account disabled")

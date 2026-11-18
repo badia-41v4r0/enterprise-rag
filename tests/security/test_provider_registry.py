@@ -43,8 +43,8 @@ QWEN = "qwen3:4b-instruct-2507-q4_K_M"
 
 
 @pytest.fixture(autouse=True)
-def _reset_limiter() -> None:
-    login_limiter.reset()
+async def _reset_limiter() -> None:
+    await login_limiter.reset()
 
 
 class CountingSocket:

@@ -30,4 +30,5 @@ RUN uv sync --frozen --no-dev \
     && mkdir -p /data/blobs && chown -R erag /data
 USER erag
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# SIGTERM: stop accepting, let chat streams finish (up to 60 s), then stop (graceful shutdown, R18).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "60"]

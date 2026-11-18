@@ -29,6 +29,7 @@ import app.mcp.gateway as gateway_module
 from app.api.auth import login_limiter
 from app.authz.policy import effective_permissions
 from app.core.config import get_settings
+from app.core.ratelimit import reset_limits
 from app.llm.providers.base import ToolCall
 from app.mcp.gateway import HttpEndpoint, McpGateway
 from app.mcp.registry import SERVERS
@@ -81,8 +82,9 @@ def office() -> Iterator[Proc]:
 
 
 @pytest.fixture(autouse=True)
-def _reset(monkeypatch: pytest.MonkeyPatch) -> None:
-    login_limiter.reset()
+async def _reset(monkeypatch: pytest.MonkeyPatch) -> None:
+    await login_limiter.reset()
+    await reset_limits("tool")
     gateway_module._limiter = None
     gateway_module._tool_limiters.clear()
     # Only these tests may reach loopback: the allowlist is an operator setting (environment).

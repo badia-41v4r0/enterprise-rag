@@ -1,0 +1,1 @@
+{"identities": [{"name": "erag", "credentials": [{"accessKey": "erag-test-ak", "secretKey": "erag-test-sk-0123456789"}], "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}

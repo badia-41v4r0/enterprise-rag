@@ -184,7 +184,7 @@ class McpToolRuntime:
                 perms, server, tool, args, readable_slugs=set(scope.containers), excluded_paths=scope.excluded_paths
             )
             check_clearance(server, classification)
-            self.gateway.check_rate(str(user.id), call.name)
+            await self.gateway.check_rate(str(user.id), call.name)
         except ToolDenied as exc:
             return self._deny(db, user, call, exc.reason)
         except GatewayError as exc:
@@ -243,7 +243,7 @@ class McpToolRuntime:
         limits = server.limits or {}
         try:
             final = authorize_registered(perms, server, tool, args, classification)
-            self.gateway.check_rate(str(user.id), call.name, limits.get("rate_limit_per_minute"))
+            await self.gateway.check_rate(str(user.id), call.name, limits.get("rate_limit_per_minute"))
         except ToolDenied as exc:
             return self._deny(db, user, call, exc.reason, {"classification": classification.value})
         except GatewayError as exc:

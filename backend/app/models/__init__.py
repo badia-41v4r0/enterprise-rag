@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from pgvector.sqlalchemy import Vector
+from pgvector.sqlalchemy import HALFVEC
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -85,7 +85,8 @@ class VersionStatus(enum.StrEnum):
     pending = "pending"
     processing = "processing"
     ready = "ready"
-    failed = "failed"
+    failed = "failed"  # a permanent error (unparseable file): retrying cannot help
+    dead = "dead"  # retries exhausted (R18 dead letter): visible with a Retry button
     superseded = "superseded"
 
 
@@ -93,7 +94,8 @@ class JobState(enum.StrEnum):
     queued = "queued"
     running = "running"
     done = "done"
-    failed = "failed"
+    failed = "failed"  # a permanent error (unparseable file): retrying cannot help
+    dead = "dead"  # retries exhausted (R18 dead letter): visible with a Retry button
 
 
 def _enum(e: type[enum.Enum], name: str) -> Enum:
@@ -157,6 +159,8 @@ class Role(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(100), unique=True)
     description: Mapped[str] = mapped_column(Text, default="")
+    # Generation queue priority (R17): higher goes first when a model endpoint is full (e.g. a support team).
+    priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     users: Mapped[list[User]] = relationship(secondary="user_roles", lazy="raise", back_populates="roles")
 
@@ -215,7 +219,7 @@ class Chunk(Base):
             "ix_chunks_embedding_hnsw",
             "embedding",
             postgresql_using="hnsw",
-            postgresql_ops={"embedding": "vector_cosine_ops"},
+            postgresql_ops={"embedding": "halfvec_cosine_ops"},
         ),
         Index("ix_chunks_tsv", "tsv", postgresql_using="gin"),
     )
@@ -226,7 +230,8 @@ class Chunk(Base):
     ordinal: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text)
     token_count: Mapped[int] = mapped_column(Integer, default=0)
-    embedding: Mapped[list[float]] = mapped_column(Vector(EMBED_DIM))
+    # halfvec (R18): half the size of vector; recall checked on the evaluation set (docs/benchmarks).
+    embedding: Mapped[list[float]] = mapped_column(HALFVEC(EMBED_DIM))
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", default=dict)
     # Full-text leg (R14): Postgres text-search configuration of the document, and the tsvector the indexer
     # computes from title, heading and text (see app.rag.lexical). Never holds ACLs.
@@ -340,6 +345,12 @@ class IngestionJob(TimestampMixin, Base):
     state: Mapped[JobState] = mapped_column(_enum(JobState, "job_state"), default=JobState.queued, index=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+    # R18: higher first (an upload someone waits for before a connector sync, a re-index last); retries wait
+    # until `next_attempt_at` (exponential backoff); a running job holds `locked_until` by heartbeat and goes
+    # back to the queue when its worker dies.
+    priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
@@ -468,6 +479,8 @@ class LlmProvider(TimestampMixin, Base):
     tokens_per_day: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     tokens_per_month: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     max_turn_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)  # across the tool loop
+    # Concurrent generations the primary endpoint accepts; NULL = no limit, no queue (R17).
+    max_concurrency: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     models: Mapped[list[LlmModel]] = relationship(
@@ -661,6 +674,7 @@ class SyncRun(TimestampMixin, Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     counts: Mapped[dict[str, Any]] = mapped_column(default=dict)
     errors: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"items": [{"item": ..., "error": ...}]}
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # heartbeat (R18)
 
 
 class AuditLog(Base):
@@ -756,3 +770,67 @@ class AuthzState(Base):
     __tablename__ = "authz_state"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     epoch: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+# --- Shared limits and the generation queue (R17, PLAN-v0.5 3.2 and 3.3) ------------------------------------
+
+
+class RateLimitCounter(Base):
+    """Rate-limit hits per key and fixed window. UNLOGGED in the migration: a crash resets them (accepted)."""
+
+    __tablename__ = "rate_limit_counters"
+    key: Mapped[str] = mapped_column(String(300), primary_key=True)
+    window_start: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    hits: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class BudgetReservation(Base):
+    """The worst case of an in-flight request, held on one budget scope until it settles (app.services.reservations)."""
+
+    __tablename__ = "budget_reservations"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    scope: Mapped[str] = mapped_column(String(200), index=True)
+    tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    usd: Mapped[float] = mapped_column(Float, default=0.0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now())
+
+
+class LlmEndpoint(TimestampMixin, Base):
+    """An extra endpoint of a provider (one more Ollama or vLLM replica, e.g. one per GPU). It serves the same
+    models with the same locality and clearance as the provider; the egress guard checks each request's
+    destination as for the primary URL."""
+
+    __tablename__ = "llm_endpoints"
+    __table_args__ = (UniqueConstraint("provider_id", "base_url", name="uq_llm_endpoint_url"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    provider_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("llm_providers.id", ondelete="CASCADE"), index=True)
+    base_url: Mapped[str] = mapped_column(String(1000))
+    max_concurrency: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class GenerationLease(Base):
+    """A generation slot on one endpoint of a pool, held while a request streams. A heartbeat extends it; a dead
+    replica's leases expire and the slots come back."""
+
+    __tablename__ = "generation_leases"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    pool: Mapped[str] = mapped_column(String(100), index=True)
+    endpoint: Mapped[str] = mapped_column(String(1000))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now())
+
+
+class GenerationWaiter(Base):
+    """A request waiting for a slot. `seen_at` is its heartbeat: a waiter whose replica died stops counting."""
+
+    __tablename__ = "generation_waiters"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    pool: Mapped[str] = mapped_column(String(100), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    enqueued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

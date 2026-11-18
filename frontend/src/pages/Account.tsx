@@ -57,8 +57,24 @@ export default function AccountPage({ me }: { me: Me }) {
     <div className="h-full overflow-y-auto p-6">
       <h2 className="mb-4 text-lg font-semibold">Account</h2>
       <Card className="max-w-xl space-y-3 p-4">
-        <div className="text-sm">
-          Signed in as <strong>{me.email}</strong>
+        <div className="flex items-center gap-3 text-sm">
+          <span>
+            Signed in as <strong>{me.email}</strong>
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            onClick={() =>
+              run(async () => {
+                if (!confirm("Sign out on every device, including this one?")) return;
+                await api("/api/auth/logout-all", { method: "POST" });
+                window.location.reload();
+              })
+            }
+          >
+            Sign out everywhere
+          </Button>
         </div>
         <h3 className="text-sm font-semibold">Two-factor authentication (TOTP)</h3>
         {status.data?.enabled ? (

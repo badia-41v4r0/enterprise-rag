@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -30,12 +31,19 @@ from app.core.config import get_settings, warn_removed_settings
 from app.core.db import dispose_engine
 from app.core.logging import configure_logging
 from app.core.middleware import SecurityHeadersMiddleware
+from app.services import maintenance
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    yield
-    await dispose_engine()
+    housekeeping = asyncio.create_task(maintenance.loop(), name="maintenance")
+    try:
+        yield
+    finally:
+        housekeeping.cancel()
+        with suppress(asyncio.CancelledError):
+            await housekeeping
+        await dispose_engine()
 
 
 def create_app() -> FastAPI:

@@ -77,13 +77,13 @@ def tool_hash(name: str, description: str | None, input_schema: dict[str, Any] |
 def limiter(settings: Settings) -> RateLimiter:
     global _limiter
     if _limiter is None:
-        _limiter = RateLimiter(settings.tool_rate_limit_per_minute)
+        _limiter = RateLimiter("tool-user", settings.tool_rate_limit_per_minute)
     return _limiter
 
 
 def tool_limiter(per_minute: int) -> RateLimiter:
     if per_minute not in _tool_limiters:
-        _tool_limiters[per_minute] = RateLimiter(per_minute)
+        _tool_limiters[per_minute] = RateLimiter(f"tool-{per_minute}", per_minute)
     return _tool_limiters[per_minute]
 
 
@@ -140,10 +140,10 @@ class McpGateway:
         except TimeoutError as exc:
             raise GatewayError("server did not answer in time") from exc
 
-    def check_rate(self, user_id: str, tool_key: str, per_tool_per_minute: int | None = None) -> None:
-        if not limiter(self.settings).allow(f"{user_id}:{tool_key}"):
+    async def check_rate(self, user_id: str, tool_key: str, per_tool_per_minute: int | None = None) -> None:
+        if not await limiter(self.settings).allow(f"{user_id}:{tool_key}"):
             raise RateLimited("tool rate limit exceeded")
-        if per_tool_per_minute and not tool_limiter(per_tool_per_minute).allow(tool_key):
+        if per_tool_per_minute and not await tool_limiter(per_tool_per_minute).allow(tool_key):
             raise RateLimited("tool rate limit exceeded (all users)")
 
     async def call(

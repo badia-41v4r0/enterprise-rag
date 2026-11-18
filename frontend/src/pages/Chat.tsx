@@ -36,6 +36,7 @@ interface UiMessage {
   error?: string;
   errorCode?: string;
   notice?: string;
+  queuePosition?: number;
   messageId?: string;
   pending?: boolean;
 }
@@ -154,7 +155,7 @@ export default function ChatPage() {
           patch((m) => ({ ...m, model: e.model, classification: e.classification }));
           break;
         case "delta":
-          patch((m) => ({ ...m, content: m.content + e.text }));
+          patch((m) => ({ ...m, content: m.content + e.text, queuePosition: undefined }));
           break;
         case "tool_call":
           patch((m) => ({ ...m, tools: [...m.tools, { name: e.name, args: e.arguments }] }));
@@ -169,6 +170,9 @@ export default function ChatPage() {
           break;
         case "refusal":
           patch((m) => ({ ...m, refusal: e.reason, classification: e.classification }));
+          break;
+        case "queue":
+          patch((m) => ({ ...m, queuePosition: e.position }));
           break;
         case "notice":
           patch((m) => ({ ...m, notice: e.message }));
@@ -278,6 +282,11 @@ export default function ChatPage() {
                   <AnswerText text={m.content} citations={m.citations} onCite={openCitation} />
                 )}
                 {m.notice && <p className="mt-2 text-xs text-muted-foreground" data-testid="retrieval-notice">{m.notice}</p>}
+                {m.pending && m.queuePosition !== undefined && (
+                  <p className="mt-2 text-xs text-muted-foreground" data-testid="queue-position" aria-live="polite">
+                    All model slots are busy: waiting, position {m.queuePosition}.
+                  </p>
+                )}
                 {m.error &&
                   (m.errorCode === "quota_exceeded" || m.errorCode === "limit_reached" ? (
                     <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900" data-testid="limit-message">

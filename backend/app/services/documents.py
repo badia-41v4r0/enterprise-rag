@@ -111,7 +111,8 @@ async def upload_document(
     )
     db.add(version)
     await db.flush()
-    db.add(IngestionJob(version_id=version.id))
+    # An upload someone waits for goes before connector syncs (R18; see app.ingestion.worker priorities).
+    db.add(IngestionJob(version_id=version.id, priority=10 if user_id is not None else 0))
     audit(
         db,
         "document.upload",
@@ -133,7 +134,7 @@ async def requeue_version(db: AsyncSession, version: DocumentVersion, user_id: u
     """Retry a failed version: back to pending with a fresh ingestion job. The caller commits."""
     version.status = VersionStatus.pending
     version.error = None
-    db.add(IngestionJob(version_id=version.id))
+    db.add(IngestionJob(version_id=version.id, priority=10))
     audit(
         db,
         "document.retry",

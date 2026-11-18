@@ -30,7 +30,7 @@ import Retrieval from "@/pages/Retrieval";
 import Users from "@/pages/Users";
 import Evaluation from "@/pages/Evaluation";
 import { ContainerContent } from "@/pages/Content";
-import { RoleQuotas, UsageOverview, UserQuotas } from "@/pages/Quotas";
+import { RoleQuotas, UsageByRole, UsageOverview, UserQuotas } from "@/pages/Quotas";
 
 const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Model router", "Retrieval", "Evaluation", "Audit", "Jobs"] as const;
 type Tab = (typeof TABS)[number];
@@ -836,7 +836,12 @@ function Audit() {
 }
 
 function Jobs() {
+  const qc = useQueryClient();
   const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => api<JobRow[]>("/api/admin/jobs"), refetchInterval: 3000 });
+  const retry = useMutation({
+    mutationFn: (id: string) => api(`/api/admin/jobs/${id}/retry`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
+  });
   return (
     <Card>
       <Table>
@@ -845,8 +850,10 @@ function Jobs() {
             <Th>Created</Th>
             <Th>Version</Th>
             <Th>State</Th>
+            <Th>Priority</Th>
             <Th>Attempts</Th>
             <Th>Error</Th>
+            <Th> </Th>
           </tr>
         </thead>
         <tbody>
@@ -854,13 +861,31 @@ function Jobs() {
             <tr key={j.id} className="border-t border-border">
               <td className="text-xs">{new Date(j.created_at).toLocaleString()}</td>
               <td className="font-mono text-xs">{j.version_id.slice(0, 8)}</td>
-              <td>{j.state}</td>
+              <td className={cn(j.state === "dead" && "font-semibold text-red-600")}>
+                {j.state}
+                {j.state === "queued" && j.next_attempt_at && (
+                  <span className="block text-[11px] text-muted-foreground">
+                    retry at {new Date(j.next_attempt_at).toLocaleTimeString()}
+                  </span>
+                )}
+              </td>
+              <td>{j.priority ?? 0}</td>
               <td>{j.attempts}</td>
               <td className="text-xs text-red-600">{j.error}</td>
+              <td>
+                {(j.state === "dead" || j.state === "failed") && (
+                  <Button size="sm" variant="outline" onClick={() => retry.mutate(j.id)} disabled={retry.isPending}>
+                    Retry
+                  </Button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
       </Table>
+      <div className="px-3 pb-2">
+        <ErrorLine error={retry.error} />
+      </div>
     </Card>
   );
 }
@@ -912,6 +937,7 @@ export default function AdminPage() {
           <Roles />
           <RolesQuotas />
           <UsageOverview />
+          <UsageByRole />
         </div>
       )}
       {tab === "Containers" && <Containers />}

@@ -8,6 +8,7 @@ import uuid
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.ingestion.blobstore import BlobStore
 from app.ingestion.chunker import CHUNKER_VERSION, chunk_sections
 from app.ingestion.embedder import Embedder
@@ -43,8 +44,18 @@ async def index_version(db: AsyncSession, version_id: uuid.UUID, blobs: BlobStor
     if doc is None:
         raise IngestionError(f"document {version.document_id} not found")
 
+    cap_mb = get_settings().ingest_max_blob_mb
+    if version.size_bytes and version.size_bytes > cap_mb * 1024 * 1024:
+        # Memory cap per job (R18): refused before the blob is read; a permanent error, not retried.
+        raise ValueError(f"file is larger than the ingestion limit of {cap_mb} MB")
     data = await blobs.get(version.blob_key)
-    sections = parse(data, doc.filename)
+    try:
+        sections = parse(data, doc.filename)
+    except ValueError:
+        raise
+    except Exception as exc:
+        # A file the parser cannot read will not parse on a retry either (R18: no backoff for it).
+        raise IngestionError(f"could not read {doc.filename}: {type(exc).__name__}: {exc}"[:500]) from exc
     drafts = chunk_sections(sections)
     if not drafts:
         raise IngestionError("no extractable text")
