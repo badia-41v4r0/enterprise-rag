@@ -20,6 +20,10 @@ class Settings(BaseSettings):
 
     # Database (asyncpg driver; psycopg is avoided because it is LGPL, see ADR 0004)
     database_url: str = "postgresql+asyncpg://erag:erag@localhost:55432/erag"
+    # Evaluation and benchmark databases (ADR 0040). Default: the application's server with the database names
+    # `erag_eval` / `erag_bench`. The eval and bench commands refuse to run against the application database.
+    eval_database_url: str | None = None
+    bench_database_url: str | None = None
 
     # Secrets. The defaults are only usable in dev; the app refuses to start with them in prod.
     secret_key: SecretStr = SecretStr("dev-insecure-secret-change-me")
@@ -136,6 +140,14 @@ class Settings(BaseSettings):
     job_max_attempts: int = 3
 
     allowed_hosts: list[str] = Field(default_factory=lambda: ["*"])
+
+    @property
+    def eval_db_url(self) -> str:
+        return self.eval_database_url or self.database_url.rsplit("/", 1)[0] + "/erag_eval"
+
+    @property
+    def bench_db_url(self) -> str:
+        return self.bench_database_url or self.database_url.rsplit("/", 1)[0] + "/erag_bench"
 
     @property
     def is_prod(self) -> bool:

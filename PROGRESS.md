@@ -1,5 +1,69 @@
 # EnterpriseRAG: progress report
 
+## v0.5, branch `feat/v0.5`
+
+Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from `docs/plan-v0.5`, so the plan travels with the code. Releases R13 to R20; this section is updated at each release boundary.
+
+### R13: permission-aware evaluation, evaluation corpus, baseline and synthetic benchmark
+
+**What was built**
+- **`app.eval` package** (ADR 0040):
+  - `corpus.py`: an evaluation structure that extends ACME. Three new containers (`sales-contracts` confidential, `support-kb` internal, `product-catalog` public), two new personas (`sales@`, `support@`), two more restricted HR files, and an independent `Oracle` built from the declared structure.
+  - A deterministic generator (fixed seed) writes 252 documents to `eval/corpus/acme-eval/` and 100 exact-identifier questions to `eval/sets/acme.generated.yaml`:
+    - 80 Spanish contracts in near-duplicate pairs;
+    - 60 support articles alternating Spanish and English;
+    - 80 product sheets;
+    - 30 invoices.
+  - `schema.py`: the YAML format (`as_users`, per-persona `documents` / `match` / `answerable` / `must_not_see`, `tags`, `include`), validated against the structure. Unknown personas or documents, an expected document the persona cannot read, a `must_not_see` the persona can read, and malformed items are all rejected.
+  - `embed_cache.py`: recorded real `bge-m3` embeddings (`eval/cache/bge-m3.bin`, float16, keyed by `sha256(model, text)`) with a strict mode (a miss is an error) and a record mode (misses go to Ollama).
+  - `prepare.py`: the database guard (refuses the application database), creation and migration of `erag_eval`, and loading. It seeds through `demo.acme.seed`, with personas given a random discarded password and blobs in a temporary directory, then indexes synchronously through the real worker path (`drain`).
+  - `runner.py`: asks every item as every persona through `effective_permissions` and `Retriever.retrieve_by_vector`, the chat's path. It stores the run with a configuration snapshot and the commit, and writes a JSON report. `compare()` shows metric, per-tag and per-run differences.
+  - `metrics.py`: document-level recall@5/8, MRR, nDCG@10, abstention, leakage (`must_not_see` plus the oracle), per-tag figures, latency percentiles and `gate()`.
+- **CLI:** `erag eval generate | prepare [--live] | run | compare | baseline | gate | embed-cache`.
+- **Migration 0012:** `eval_sets`, `eval_items`, `eval_runs`, `eval_results` (document keys and scores only, never text).
+- `demo.acme.seed`: `seed_structure`, `seed_documents`, `readable_slugs` and `readable_restricted` take optional structure arguments (default ACME, so the demo is unchanged).
+- `rag.vector_store.HNSW_EF_SEARCH`: a constant instead of a literal, recorded in every run's snapshot.
+- **Set `acme`:** 146 items, 247 persona runs (146 answerable, 101 unanswerable or forbidden). 46 items are written by hand: paraphrases, acronyms, cross-lingual, multi-document, bare identifiers, a prompt injection, restricted HR files, unanswerable questions.
+- **Baseline** `eval/baselines/acme.json` (vector search only).
+- **Benchmark scripts:** `scripts/synth_corpus.py` (synthetic clustered vectors via `COPY` into `erag_bench`, 500 containers, 1 percent restricted documents) and `scripts/bench_search.py` (production search for users who see 90, 10 and 1 percent of the containers, k = 8 and 50, p50/p95 latency, short results, recall against an exact scan).
+- **CI:** `erag eval prepare && erag eval gate` after pytest, with the report uploaded as an artifact.
+- **Dependencies:** `pyyaml` (MIT) declared. Dev group: `numpy` (BSD, benchmark scripts only) and `types-PyYAML`.
+- **Docs:** README (status, the "Retrieval evaluation" bullet, an Evaluation section, configuration, development commands), ADR 0040.
+
+**Verified (R13)**
+- `erag eval prepare --live`: 264 documents and 701 chunks indexed with the real `bge-m3` in 2 min 37 s on this machine.
+- `erag eval embed-cache`: 847 vectors (701 chunk texts + 146 questions), 1.7 MB.
+- A **live** run and a **strict** run (recorded embeddings only, a freshly prepared database) give identical metrics (`erag eval compare live strict`: every delta 0.000).
+- **Baseline:** recall@5 0.973, recall@8 0.980, MRR 0.899, nDCG@10 0.921, abstention 0.307, leaks 0. Search p50 7.4 ms, p95 10.7 ms; embedding p50 172 ms with Ollama on CPU.
+  - Weak spots: Spanish contract questions by identifier (MRR 0.57 for duration, 0.65 for amount, 0.76 for payment term).
+  - Abstention 0.307: vector similarity above 0.45 returns something for most questions that have no answer for that persona.
+- `erag eval gate` passes against the baseline. With a planted `Employee read` grant on Sales Contracts in `erag_eval`, the gate fails with "leakage: 71 run(s) retrieved documents the persona may not read" and exit code 1.
+- `tests/eval/` (22 tests):
+  - metrics on hand-computed cases;
+  - seven invalid-set cases;
+  - the generator matches the committed files byte for byte;
+  - oracle cases;
+  - the recorded embeddings cover every question;
+  - cache round trip and strict miss;
+  - the database guard for eval and bench;
+  - end to end on `erag_test` with the recorded embeddings: load, mini set without leaks, results without text, then a planted grant makes the run leak and the gate fail.
+- `uv run pytest`: **303 passed, 4 skipped** (238 s), run on its own after the Postgres restart described below. Migration 0012: downgrade/upgrade round trip on `erag_test`.
+- `ruff check`, `ruff format --check`, `mypy` (strict, 112 files): pass.
+- **Synthetic benchmark** (`docs/benchmarks/r13-baseline.md`, 60,000 chunks, 500 containers, Ryzen 3 3100):
+
+  | Readable | p50 at k=8 |
+  |---|---|
+  | 90 percent | 1,046 ms |
+  | 10 percent | 55 ms |
+  | 1 percent | 9 ms |
+
+  `EXPLAIN` shows that **the production query does not use the HNSW index**: a sequential scan and a sort, because the planner estimates one row after the joins. Harmless at ACME size, a blocker at scale. This is recorded as the first item of R16: reshape the query so the index scan on `chunks.embedding` drives it, then re-measure. It is not fixed in R13, by the rule that retrieval changes come after measurement.
+
+**Known issues / not done (R13)**
+- Benchmark size is limited by this machine. The HNSW build needs the graph in `maintenance_work_mem` (about 4.5 KB per vector), and the Compose Postgres has 1 GB of memory and 64 MB of `/dev/shm`. 200,000 chunks fell back to the slow build. During that attempt, the old build, the new one and a full test run together took Postgres down (it stayed in recovery mode until restarted). The test results quoted above come from a clean run afterwards. `synth_corpus.py` now builds serially and takes `--maintenance-work-mem`.
+- `--with-answers` (citation correctness with a local chat model) is moved to R15, together with the faithfulness judge. The R13 gate measures retrieval only, as planned.
+- While developing, `erag_test` was once found stamped at 0012 without the evaluation tables. Re-applying the migration fixed it and the cause could not be reproduced. The migration round trip below runs on a clean state.
+
 ## v0.3, branch `feat/v0.3` (built autonomously overnight, not pushed)
 
 Plan: [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md). Branch created from `main` (d615639). Open questions became ADRs from 0026 on. Sections below are per release (R6 to R9) and are updated at each release boundary.

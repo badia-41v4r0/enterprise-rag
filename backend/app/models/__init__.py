@@ -663,3 +663,57 @@ class AuditLog(Base):
     resource: Mapped[str] = mapped_column(String(300), default="")
     decision: Mapped[str] = mapped_column(String(20), default="allow")
     details: Mapped[dict[str, Any]] = mapped_column(default=dict)
+
+
+# --- Evaluation (ADR 0040) ----------------------------------------------------------------------------
+
+
+class EvaluationSet(TimestampMixin, Base):
+    """A question set. `repo` sets come from eval/sets; `db` sets (R15) are a company's own and classified."""
+
+    __tablename__ = "eval_sets"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    source: Mapped[str] = mapped_column(String(10), default="repo")  # repo | db
+    classification: Mapped[Classification] = mapped_column(
+        _enum(Classification, "classification"), default=Classification.confidential
+    )
+    digest: Mapped[str] = mapped_column(String(64), default="")
+
+
+class EvaluationItem(Base):
+    __tablename__ = "eval_items"
+    __table_args__ = (UniqueConstraint("set_id", "key", name="uq_eval_item_set_key"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    set_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("eval_sets.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(200))
+    question: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict[str, Any]] = mapped_column(default=dict)  # as_users, expect, tags
+
+
+class EvaluationRun(Base):
+    __tablename__ = "eval_runs"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    set_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("eval_sets.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(200), default="")
+    status: Mapped[str] = mapped_column(String(20), default="running")  # running | done | failed
+    config: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    commit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    metrics: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EvaluationResult(Base):
+    """One item asked as one persona. Holds document keys and scores, never document text."""
+
+    __tablename__ = "eval_results"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("eval_runs.id", ondelete="CASCADE"), index=True)
+    item_key: Mapped[str] = mapped_column(String(200))
+    persona: Mapped[str] = mapped_column(String(320))
+    retrieved: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"documents": [{"key", "rank", "score"}]}
+    metrics: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    leaked: Mapped[bool] = mapped_column(Boolean, default=False)
+    embed_ms: Mapped[float] = mapped_column(Float, default=0.0)
+    search_ms: Mapped[float] = mapped_column(Float, default=0.0)

@@ -58,6 +58,7 @@ These numbers are **what the benchmarks measure, not a ceiling**. The design mus
 ## 3. Many users in one company
 
 ### 3.1 Permission resolution at scale
+- **First, make the index drive the query** (found by the R13 benchmark, `docs/benchmarks/r13-baseline.md`). Today the planner runs `PgVectorStore.search` as a sequential scan plus a sort, because it estimates one row after the joins. A user who reads 90 percent of 60,000 chunks waits about 1 s. The query is reshaped so that an ordered HNSW scan on `chunks` (filters on `chunks` columns only) feeds the top k, the documents are joined afterwards, and it is re-measured.
 - **Cache with invalidation:**
   - An `authz_state.epoch` counter in Postgres is increased **in the same transaction** as any change to grants, roles, memberships, restricted documents or user status.
   - Every app replica keeps effective permissions in memory, keyed by (user, epoch).

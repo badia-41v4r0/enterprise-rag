@@ -29,6 +29,16 @@ jobs:
       - run: uv run python scripts/check_licenses.py
       # No Ollama in CI: tests marked `embeddings` / `provider_*` skip themselves.
       - run: uv run pytest -q
+      # Retrieval evaluation gate (ADR 0040): real recorded bge-m3 embeddings, no Ollama needed.
+      - run: uv run erag eval prepare && uv run erag eval gate --json eval-report.json
+        env:
+          ERAG_EVAL_DATABASE_URL: postgresql+asyncpg://erag:erag@localhost:5432/erag_eval
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: eval-report.json
+          if-no-files-found: ignore
 
   frontend:
     runs-on: ubuntu-latest

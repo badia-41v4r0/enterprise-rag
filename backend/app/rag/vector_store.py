@@ -42,6 +42,10 @@ class VectorHit:
     score: float
 
 
+# HNSW candidate list size per query; part of the configuration snapshot of every evaluation run.
+HNSW_EF_SEARCH = 100
+
+
 class VectorStore(Protocol):
     async def upsert_chunks(self, chunks: list[Chunk]) -> None: ...
     async def delete_versions(self, version_ids: list[uuid.UUID]) -> None: ...
@@ -65,7 +69,7 @@ class PgVectorStore:
             return []
         # Keep scanning the HNSW index until k rows pass the filter (pgvector >= 0.8).
         await self.db.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
-        await self.db.execute(text("SET LOCAL hnsw.ef_search = 100"))
+        await self.db.execute(text(f"SET LOCAL hnsw.ef_search = {HNSW_EF_SEARCH:d}"))
         distance = Chunk.embedding.cosine_distance(query_vector).label("distance")
         restricted_ok = (
             or_(Document.restricted.is_(False), Document.id.in_(access.restricted_document_ids))

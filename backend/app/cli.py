@@ -215,6 +215,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("bootstrap", help="start-up hook (seeds the demo when ERAG_SEED_DEMO=true)")
     p.set_defaults(func=_cmd_bootstrap)
 
+    from app.eval.cli import register as register_eval
+
+    register_eval(sub)
+
     args = parser.parse_args(argv)
     result: int = args.func(args)
     return result

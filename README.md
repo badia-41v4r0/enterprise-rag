@@ -2,7 +2,7 @@
 
 **Permission-aware RAG + MCP for enterprise generative AI.** A self-hosted reference implementation by [Badia Partners](https://badiapartners.com).
 
-> **Status: v0.3 in development** (branch `feat/v0.3`, on top of v0.2). Runnable end to end with a seeded demo company. Progress and verification notes: [`PROGRESS.md`](PROGRESS.md). Plans: [`docs/PLAN.md`](docs/PLAN.md) (MVP), [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md) (administration, connectors, MCP extensibility), [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md) (cost limits and quotas, paid models, model router).
+> **Status: v0.5 in development** (branch `feat/v0.5`, on top of v0.3). Runnable end to end with a seeded demo company. Progress and verification notes: [`PROGRESS.md`](PROGRESS.md). Plans: [`docs/PLAN.md`](docs/PLAN.md) (MVP), [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md) (administration, connectors, MCP extensibility), [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md) (cost limits and quotas, paid models, model router), [`docs/PLAN-v0.4.md`](docs/PLAN-v0.4.md) (guided first-run setup, planned), [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (many users, hybrid search with a reranker and evaluation, scale and operations; R13 evaluation done).
 
 ## The idea
 
@@ -26,6 +26,7 @@ Most enterprise RAG and agent setups let the model see (or reach) more than the 
 - **Connectors:** `folder` (below allowed roots, no symlink escapes) and `web` (URLs or a sitemap, SSRF-guarded) sync into one container and inherit its permissions; scheduled or manual, with dry-run preview and run history.
 - **Ingestion:** PDF, DOCX, XLSX, HTML, Markdown and text; SHA-256 dedupe, versioning, a Postgres-backed job queue, local `bge-m3` embeddings.
 - **Authorized retrieval:** the user's permissions are resolved from PostgreSQL on every request and pushed into the pgvector query as a filter, then re-checked. Revocation is immediate.
+- **Retrieval evaluation:** a permission-aware question set asked as personas (expected documents, unanswerable questions, documents a persona must never get), an independent leakage oracle, recall/MRR/nDCG per tag, and a CI gate that fails on any leak or a quality drop ([Evaluation](#evaluation), [ADR 0040](docs/adr/0040-permission-aware-evaluation.md)).
 - **Classification routing:** after retrieval (and after every tool result) the effective classification decides which models may answer. Confidential data only ever goes to local models. OpenRouter is optional and bounded by the same budgets as any paid provider.
 - **Model providers from the admin panel:** add Ollama instances and any OpenAI-compatible API (OpenAI, Together, Groq, vLLM, LM Studio, ...), test the connection, discover models, and choose the default model for the chat. Locality is derived from the address (only private networks are local), clearance is capped by locality, keys live in the credential store, every provider is re-checked on every request, and paid APIs have a monthly ceiling and a daily request cap.
 - **Cost limits and quotas:** token accounting per provider, model and user; a price table (synced from OpenRouter, entered by hand elsewhere); limits per provider and model (output tokens per request sent as `max_tokens`, input size, tokens per day and month, USD per month, requests per day, a per-turn cap across the tool loop) checked on the worst case **before** a request is sent; quotas per user and per role (a standard allowance per member or a collective pool); admins may raise or lower limits with step-up, and every change is in a change history. Users see their own usage; admins see aggregates and per-user figures, never prompts or answers.
@@ -169,6 +170,7 @@ All settings use the `ERAG_` prefix (full list in [`backend/app/core/config.py`]
 | `ERAG_RUNNER_SOCKET_DIR` | `/tmp/erag-runner-sockets` | Per-MCP Unix socket directories, shared by runner and app at the same path. |
 | `ERAG_RUNNER_MOUNT_ROOTS` | none | Host folders an MCP may mount read-only. |
 | `ERAG_RUNNER_IDLE_MINUTES`, `ERAG_RUNNER_MAX_CPUS`, `ERAG_RUNNER_MAX_MEMORY_MB`, `ERAG_RUNNER_DOCKER_SOCKET` | `15`, `2`, `2048`, `/var/run/docker.sock` | Idle shutdown, per-MCP resource ceilings, engine socket. |
+| `ERAG_EVAL_DATABASE_URL`, `ERAG_BENCH_DATABASE_URL` | the app's server, databases `erag_eval` / `erag_bench` | Where `erag eval` and the benchmark scripts work. They refuse to run against the application database, because the evaluation corpus creates personas and confidential documents (ADR 0040). |
 
 ### Production settings
 
@@ -189,6 +191,35 @@ Known boundaries, documented rather than hidden:
 - **Budgets are checked, not reserved.** Concurrent requests can each pass the worst-case check and overshoot a budget or a pool by at most their own worst cases. A provider whose price is unknown and that does not report cost is bounded by requests and tokens, not money.
 - **The model can still be wrong** or repeat what it was legitimately given.
 
+## Evaluation
+
+Retrieval changes are measured before they are made (ADR 0040). A question set is asked **as personas**, through the same retrieval path as the chat:
+
+```bash
+uv run erag eval prepare        # create, migrate and load the evaluation database (erag_eval), never the app's
+uv run erag eval run            # ask every question as every persona; writes eval/runs/<time>-acme.json
+uv run erag eval compare A B    # metric, per-tag and per-question differences between two reports
+uv run erag eval gate           # fails on any leak, or a drop of more than 0.02 in recall@8 or MRR
+uv run erag eval baseline       # store eval/baselines/acme.json (a deliberate commit)
+```
+
+- **The set** (`eval/sets/acme.yaml`, about 150 questions and 250 runs) covers the ACME demo plus a generated evaluation corpus (`eval/corpus/acme-eval/`, about 250 documents: Spanish contracts with near-duplicates, support articles in two languages, product sheets with near-identical specifications, invoices, restricted HR files). Every item says, per persona, which documents should come back, whether it is answerable, and what the persona must never see:
+
+  ```yaml
+  - id: hw-040
+    question: What is the salary band for a senior engineer?
+    as_users: [hr@acme.test, engineer@acme.test]
+    expect:
+      hr@acme.test: { documents: [hr-confidential/salary-bands-2026.md] }
+      engineer@acme.test: { answerable: false, must_not_see: [hr-confidential/salary-bands-2026.md] }
+    tags: [forbidden, en]
+  ```
+- **Leakage** is checked twice: against `must_not_see`, and against an oracle built from the declared structure (not from the permission code). Any leak fails the run.
+- **Metrics:** recall@5/8, MRR and nDCG@10 at document level (a document's rank is its first chunk's rank, so recall@8 means "in the chat's context"), abstention on unanswerable questions, per-tag figures and latency.
+- **No Ollama in CI:** `eval/cache/bge-m3.bin` holds the real `bge-m3` embeddings of the corpus and the questions, keyed by text hash. Live and recorded runs give identical numbers. After changing the corpus, the chunker or the questions, re-record them on a machine with Ollama: `uv run erag eval embed-cache` (or `erag eval prepare --live`), and commit the file. `uv run erag eval generate` rewrites the generated corpus and questions.
+- **Current baseline** (vector search only, R13): recall@8 0.980, MRR 0.899, nDCG@10 0.921, abstention 0.307, no leaks. The weak spots are exact identifiers in Spanish contracts (MRR 0.57 to 0.76 on duration and payment-term questions) and abstention: vector similarity returns *something* for most questions that have no answer. These are what hybrid search and the reranker (R14) must improve.
+- **At scale:** `scripts/synth_corpus.py --chunks N` loads synthetic vectors into `erag_bench`, and `scripts/bench_search.py --out docs/benchmarks/<name>.md` measures filtered search latency and recall for users who see 90, 10 and 1 percent of the corpus.
+
 ## Development
 
 ```bash
@@ -197,10 +228,11 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 uv run alembic upgrade head
 uv run pytest                                            # needs Postgres; Ollama- and Docker-backed tests skip without them
 uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run python scripts/check_licenses.py
+uv run erag eval prepare && uv run erag eval gate           # retrieval quality and leakage gate (no Ollama needed)
 cd frontend && npm ci && npm run build
 ```
 
-Useful commands: `uv run erag create-admin --email you@example.com`, `uv run erag seed-acme`, `uv run erag worker`, `uv run erag secrets init|set|list|rotate-master`, `uv run erag reset-mfa --email ...`, `uv run python -m app.runner.service`. Architecture decisions are in [`docs/adr/`](docs/adr/README.md).
+Useful commands: `uv run erag create-admin --email you@example.com`, `uv run erag seed-acme`, `uv run erag worker`, `uv run erag secrets init|set|list|rotate-master`, `uv run erag reset-mfa --email ...`, `uv run python -m app.runner.service`, `uv run erag eval prepare|run|compare|gate|baseline|embed-cache|generate`. Architecture decisions are in [`docs/adr/`](docs/adr/README.md).
 
 ## License
 
