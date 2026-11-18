@@ -71,7 +71,8 @@ async def run(queries: int, exact_queries: int, seed: int) -> tuple[str, list[st
     base = [np.array(json.loads(r[0]) if isinstance(r[0], str) else r[0], dtype=np.float32) for r in sample]
     qvecs = []
     for v in base:
-        q = v + 0.3 * rng.standard_normal(dim).astype(np.float32)
+        # Noise of norm ~0.3 relative to a unit vector: a paraphrase, not a random point.
+        q = v + 0.3 * rng.standard_normal(dim).astype(np.float32) / np.sqrt(dim)
         qvecs.append((q / np.linalg.norm(q)).tolist())
 
     rows = []

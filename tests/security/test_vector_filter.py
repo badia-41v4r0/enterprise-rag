@@ -169,3 +169,21 @@ async def test_acl_recheck_drops_hits_that_changed_after_search(db: AsyncSession
     result = await recheck(db, perms, hits)
     assert hits[0].chunk_id in result.dropped_chunk_ids
     assert all(h.document_id != doc.id for h in result.hits)
+
+
+async def test_restricted_neighbours_are_compensated_by_over_fetching(db: AsyncSession) -> None:
+    """The HNSW-driven query filters chunks by container first and documents afterwards (R16). When the
+    nearest chunks belong to restricted documents the user may not read, it must fetch further instead of
+    returning fewer than k hits, and never return a restricted chunk."""
+    c = await make_container(db, "Mixed", Classification.internal)
+    q = vec(9000)
+    # 30 restricted documents whose chunks are all near the query, then 12 open ones further away.
+    for i in range(30):
+        d, chunks = await add_doc(db, c, f"secret-{i}", 9100 + i, restricted=True, n_chunks=1)
+        chunks[0].embedding = [a + 0.001 * b for a, b in zip(q, vec(9500 + i), strict=True)]
+    for i in range(12):
+        await add_doc(db, c, f"open-{i}", 9700 + i, n_chunks=1)
+    await db.flush()
+    hits = await PgVectorStore(db).search(q, AccessFilter(frozenset({c.id})), 8)
+    assert len(hits) == 8
+    assert all(not h.restricted for h in hits)
