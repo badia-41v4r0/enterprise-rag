@@ -4,9 +4,9 @@
 
 | Component | Scales by | Shared state |
 |---|---|---|
-| App replicas (API, chat streams, reranker) | more replicas behind the proxy | Postgres: sessions, permission epoch, rate limits, budget reservations, generation queue (ADR 0041) |
+| App replicas (API, chat streams, reranker) | more replicas behind the proxy | Postgres: sessions, permission epoch, rate limits, budget reservations, generation queue (ADR 0049) |
 | Workers (ingestion, connector syncs) | more workers, `ERAG_WORKER_CONCURRENCY` jobs each | the job queue (`SKIP LOCKED`), heartbeats, a reaper |
-| Chat models | more endpoints per provider (Admin > Providers > endpoints), `max_concurrency` each | leases and the fair queue (ADR 0037) |
+| Chat models | more endpoints per provider (Admin > Providers > endpoints), `max_concurrency` each | leases and the fair queue (ADR 0045) |
 | Query embeddings | a dedicated endpoint: `ERAG_QUERY_EMBED_URL` | |
 | Ingestion embeddings | a pool: `ERAG_INGEST_EMBED_URLS` (comma-separated), `ERAG_INGEST_EMBED_CONCURRENCY` in flight per worker | |
 | Postgres connections | PgBouncer in transaction mode (`ERAG_DB_PGBOUNCER=true`, `ERAG_DB_DIRECT_URL` for LISTEN) | |
@@ -38,7 +38,7 @@ Target: 50,000 documents per day on one GPU host (PLAN-v0.5 5.2). Embedding is t
 ## Postgres
 
 - Reference size: 20 million chunks of 1,024 dimensions. As `halfvec` that is about 41 GB of vectors plus the HNSW index; give Postgres memory for the index (shared buffers + page cache) and set `maintenance_work_mem` high (several GB) with `max_parallel_maintenance_workers` for index builds.
-- Selective users (who read under 20,000 chunks and 10% of the corpus) are served by an exact scan of their containers; others by the HNSW index with iterative scan (ADR 0034).
+- Selective users (who read under 20,000 chunks and 10% of the corpus) are served by an exact scan of their containers; others by the HNSW index with iterative scan (ADR 0042).
 - Pool per replica: `ERAG_DB_POOL_SIZE` (10) + `ERAG_DB_MAX_OVERFLOW` (10); behind PgBouncer, size PgBouncer's `DEFAULT_POOL_SIZE` to what Postgres handles (a few per CPU core).
 
 ## Upgrades without downtime

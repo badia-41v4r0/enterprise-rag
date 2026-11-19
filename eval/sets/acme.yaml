@@ -1,4 +1,4 @@
-# ACME evaluation set (ADR 0040).
+# ACME evaluation set (ADR 0048).
 #
 # Every item runs once per persona in `as_users`, with that persona's real permissions. Per persona:
 #   documents     container/filename keys that should be retrieved (empty = nothing relevant exists for them)

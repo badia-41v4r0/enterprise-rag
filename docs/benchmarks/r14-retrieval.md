@@ -2,7 +2,7 @@
 
 Set `acme`: 247 runs (146 answerable, 101 unanswerable or forbidden), every question asked as each persona, strict mode (recorded `bge-m3` embeddings). PostgreSQL 16.15, pgvector 0.8.7, `halfvec` embeddings. Hardware: AMD Ryzen 3 3100 (4 cores, 8 threads), 16 GB RAM, no GPU. Reranker `mmarco-minilm-l12` (int8 ONNX, installed with `erag models install`), 30 candidates.
 
-This file was cited by ADR 0039 before it existed; the numbers below are the first recorded measurement of the default pipeline.
+This file was cited by ADR 0047 before it existed; the numbers below are the first recorded measurement of the default pipeline.
 
 | Pipeline | recall@5 | recall@8 | MRR | nDCG@10 | abstention | leaks | search p50 / p95 |
 |---|---|---|---|---|---|---|---|

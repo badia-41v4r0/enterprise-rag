@@ -1,4 +1,4 @@
-"""Admin > Evaluation (R15, ADR 0040): evaluation sets, runs against the live installation, the review queue of
+"""Admin > Evaluation (R15, ADR 0048): evaluation sets, runs against the live installation, the review queue of
 user feedback, and applying a better retrieval configuration.
 
 Who sees what:

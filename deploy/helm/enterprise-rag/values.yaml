@@ -10,7 +10,8 @@ image:
 secrets:
   # Keys: ERAG_DATABASE_URL (through PgBouncer if enabled), ERAG_DB_DIRECT_URL (direct to Postgres: LISTEN and
   # migrations), ERAG_SECRET_KEY, ERAG_MCP_CONTEXT_SECRET, ERAG_SECRETS_KEY (the master key; back it up apart
-  # from the database), and when used ERAG_S3_ACCESS_KEY_ID, ERAG_S3_SECRET_ACCESS_KEY, ERAG_RUNNER_TOKEN.
+  # from the database), optionally ERAG_SETUP_TOKEN_SHA256 (first-run setup), and when used ERAG_S3_ACCESS_KEY_ID,
+  # ERAG_S3_SECRET_ACCESS_KEY, ERAG_RUNNER_TOKEN.
   existingSecret: enterprise-rag
 
 # Non-secret settings (ERAG_*), passed to app, worker and the migration job.
@@ -25,6 +26,9 @@ env:
   ERAG_S3_BUCKET: ""
   ERAG_METRICS_HOST: 0.0.0.0
   ERAG_METRICS_PORT: "9464"
+  # Setup mode (v0.4): a generated setup token is written here (the root filesystem is read-only). With several
+  # replicas prefer ERAG_SETUP_TOKEN_SHA256 in the Secret, so every replica accepts the same token.
+  ERAG_SETUP_TOKEN_FILE: /tmp/setup-token
 
 app:
   replicas: 2
@@ -52,7 +56,7 @@ worker:
   # The worker finishes the jobs it holds on SIGTERM; give it time.
   terminationGracePeriodSeconds: 130
 
-# Reranker model files (ADR 0039): installed by an init container into an emptyDir at each start (pinned by
+# Reranker model files (ADR 0047): installed by an init container into an emptyDir at each start (pinned by
 # hash), or mounted from a volume you prepare (offline clusters: `erag models install --from-dir`).
 models:
   install: [mmarco-minilm-l12]

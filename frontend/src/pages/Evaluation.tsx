@@ -5,7 +5,7 @@ import { Badge, Card, Table, Th } from "@/components/ui/card";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { api, json } from "@/lib/api";
 
-// Admin > Evaluation (R15, ADR 0040): company question sets, runs against this installation as real users, the
+// Admin > Evaluation (R15, ADR 0048): company question sets, runs against this installation as real users, the
 // comparison of two runs, applying a better retrieval configuration, and the review queue of user feedback.
 
 interface SetRow {

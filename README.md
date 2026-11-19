@@ -2,7 +2,7 @@
 
 **Permission-aware RAG + MCP for enterprise generative AI.** A self-hosted reference implementation by [Badia Partners](https://badiapartners.com).
 
-> **Status: v0.5 in development** (on top of v0.3). Runnable end to end with a seeded demo company. v0.5 adds many users in one company, hybrid search with a reranker and a permission-aware evaluation set, and scale and operations (R13 to R20 built; see [`PROGRESS.md`](PROGRESS.md) for what is verified and what is not). Progress and verification notes: [`PROGRESS.md`](PROGRESS.md). Plans: [`docs/PLAN.md`](docs/PLAN.md) (MVP), [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md) (administration, connectors, MCP extensibility), [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md) (cost limits and quotas, paid models, model router), [`docs/PLAN-v0.4.md`](docs/PLAN-v0.4.md) (guided first-run setup, planned), [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md).
+> **Status: v0.5 in development** (on top of v0.4, released). Runnable end to end: install it for a company with `erag init` and the setup wizard, or explore the seeded demo company. v0.5 adds many users in one company, hybrid search with a reranker and a permission-aware evaluation set, and scale and operations (R13 to R20 built). What changed in each version, and how to upgrade: [`CHANGELOG.md`](CHANGELOG.md). Progress and verification notes: [`PROGRESS.md`](PROGRESS.md). Plans: [`docs/PLAN.md`](docs/PLAN.md) (MVP), [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md) (administration, connectors, MCP extensibility), [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md) (cost limits and quotas, paid models, model router), [`docs/PLAN-v0.4.md`](docs/PLAN-v0.4.md) (guided first-run setup), [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md).
 
 ## The idea
 
@@ -26,18 +26,44 @@ Most enterprise RAG and agent setups let the model see (or reach) more than the 
 - **Connectors:** `folder` (below allowed roots, no symlink escapes) and `web` (URLs or a sitemap, SSRF-guarded) sync into one container and inherit its permissions; scheduled or manual, with dry-run preview and run history.
 - **Ingestion:** PDF, DOCX, XLSX, HTML, Markdown and text; SHA-256 dedupe, versioning, local `bge-m3` embeddings. A Postgres-backed job queue with priorities (an upload before a connector sync), retries with backoff, dead letters with a Retry button, a heartbeat and a reaper, several jobs per worker and back-pressure on connectors. Blobs on local disk or any S3-compatible store.
 - **Authorized retrieval:** the user's permissions are resolved from PostgreSQL (cached per replica and invalidated in the same transaction as any change, so revocation stays immediate) and pushed into the search as a filter, then re-checked.
-- **Hybrid search with a reranker:** pgvector and Postgres full text under one authorization clause, reciprocal rank fusion, and a cross-encoder reranker inside the app process with a degraded mode ([ADR 0038](docs/adr/0038-hybrid-search-and-rank-fusion.md), [ADR 0039](docs/adr/0039-reranker-in-process.md)). Settings in Admin > Retrieval. Users who read little of the corpus get an exact search; everyone else an index-driven one.
+- **Hybrid search with a reranker:** pgvector and Postgres full text under one authorization clause, reciprocal rank fusion, and a cross-encoder reranker inside the app process with a degraded mode ([ADR 0046](docs/adr/0046-hybrid-search-and-rank-fusion.md), [ADR 0047](docs/adr/0047-reranker-in-process.md)). Settings in Admin > Retrieval. Users who read little of the corpus get an exact search; everyone else an index-driven one.
 - **Many users in one company:** paginated and searchable user admin with filters, bulk actions and CSV import and export; a paginated, filterable audit log; idle and absolute session lifetimes and "sign out everywhere"; conversation retention; usage reports per role.
 - **Fair use across replicas:** rate limits shared through Postgres, budgets **reserved** before each model call (never overspent by concurrent requests), and a fair generation queue over pools of model endpoints: a free slot goes to the user with the fewest requests in flight, and the chat shows the queue position ([Fair use and capacity](#fair-use-and-capacity)).
 - **Operations:** stateless app replicas, PgBouncer support, Prometheus metrics with security alerts, correlation ids in logs, audit and traces, liveness and readiness, `erag backup verify` and a restore drill ([Operations](#operations-scaling-metrics-and-backups)).
-- **Retrieval evaluation:** a permission-aware question set asked as personas (expected documents, unanswerable questions, documents a persona must never get), an independent leakage oracle, recall/MRR/nDCG per tag, and a CI gate that fails on any leak or a quality drop ([Evaluation](#evaluation), [ADR 0040](docs/adr/0040-permission-aware-evaluation.md)).
+- **Retrieval evaluation:** a permission-aware question set asked as personas (expected documents, unanswerable questions, documents a persona must never get), an independent leakage oracle, recall/MRR/nDCG per tag, and a CI gate that fails on any leak or a quality drop ([Evaluation](#evaluation), [ADR 0048](docs/adr/0048-permission-aware-evaluation.md)).
 - **Classification routing:** after retrieval (and after every tool result) the effective classification decides which models may answer. Confidential data only ever goes to local models. OpenRouter is optional and bounded by the same budgets as any paid provider.
 - **Model providers from the admin panel:** add Ollama instances and any OpenAI-compatible API (OpenAI, Together, Groq, vLLM, LM Studio, ...), test the connection, discover models, and choose the default model for the chat. Locality is derived from the address (only private networks are local), clearance is capped by locality, keys live in the credential store, every provider is re-checked on every request, and paid APIs have a monthly ceiling and a daily request cap.
 - **Cost limits and quotas:** token accounting per provider, model and user; a price table (synced from OpenRouter, entered by hand elsewhere); limits per provider and model (output tokens per request sent as `max_tokens`, input size, tokens per day and month, USD per month, requests per day, a per-turn cap across the tool loop) checked on the worst case **before** a request is sent; quotas per user and per role (a standard allowance per member or a collective pool); admins may raise or lower limits with step-up, and every change is in a change history. Users see their own usage; admins see aggregates and per-user figures, never prompts or answers.
 - **Model router** (off by default): chooses, per question, among the models the request is already allowed to use, with a decider (a prompted registry model, an open Jev-style decision model you run, or TypeSafe's hosted Jev API) and lanes; it can never widen the permitted set, falls back to the default model and the existing rules on any failure, and logs decisions without the question.
 - **MCP:** a gateway with tool authorization, a signed permission context for the built-in servers, a result validator; a **registry** for remote MCP servers (tools discovered disabled, approved one by one, per-role grants, argument constraints, rug-pull detection, a clearance per server and a label on everything it returns); and an **isolated runner** that runs approved MCP images with no network, a read-only filesystem and no capabilities.
+- **Guided installation:** `erag init` prepares a production environment (random secrets, master key, a one-time setup token); a token-protected **setup wizard** (license notice, environment check, administrator with MFA, empty or demo installation, organization and cloud policy, models with explicit downloads, access structure, people with temporary passwords, first documents, a "Does it work?" check as a chosen user, review with a security checklist and a setup report), then a setup checklist and a Setup assistant in the admin area. See the [installation guide](docs/installation.md).
 - **Frontend:** React chat with streaming answers and clickable citations, a Content page for managers, an Account page (MFA), and an admin panel.
 - **ACME Corp demo** and a security test suite (canary leakage matrix, revocation, routing, tools, delegation, vault/MFA, connectors/SSRF, MCP registry, runner confinement). See [`demo/acme/README.md`](demo/acme/README.md).
+
+## Installing for a company
+
+Full walkthrough, backups and upgrades: [docs/installation.md](docs/installation.md); problems: [docs/troubleshooting.md](docs/troubleshooting.md).
+
+```bash
+git clone https://github.com/badia-41v4r0/enterprise-rag && cd enterprise-rag
+deploy/install.sh            # = uv run erag init: checks Docker, Compose, Ollama, models and port; writes deploy/.env
+                             # (mode 0600: production settings, random secrets, master key) and deploy/master.key
+                             # (back it up), and prints a one-time setup token
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.hostnet.yml up -d --build
+```
+
+Open `http://127.0.0.1:8000` and enter the setup token. Until the setup is finished the application is in **setup mode**: only `/health` and the wizard answer, everything else is `503 setup required`, and nothing works without the token ([ADR 0034](docs/adr/0034-setup-mode-and-setup-token.md)). The wizard, about half an hour:
+
+| | |
+|---|---|
+| ![Setup token](docs/media/setup-token.png) | ![Environment check](docs/media/setup-environment.png) |
+| 0 License notice with an acceptance checkbox (recorded, nothing sent anywhere), 1 environment check with the exact fix for each problem | |
+| ![Models](docs/media/setup-models.png) | ![Does it work?](docs/media/setup-check.png) |
+| 5 models: pick the chat model, Test, download only after a confirmation with name, size and source | 9 "Does it work?": the same question as two people with different roles |
+
+The steps: **0** license notice, **1** environment check (database, master key, production mode, secrets, HTTPS, storage, worker, Ollama and its models, runner), **2** administrator (strong password, optional MFA right away), **3** installation type (**empty** by default, or **Demo with mock data**: ACME Corp without a demo administrator, a "Demo installation, not for real data" banner, removable later), **4** organization (company name, and whether internal data may go to approved cloud providers; confidential never leaves), **5** models (nothing is ever downloaded automatically, [ADR 0039](docs/adr/0039-explicit-ollama-downloads.md)), **6** access structure built by hand with an effective-permissions preview (no templates), **7** people one by one or from a CSV, with temporary passwords they must change at the first login ([ADR 0037](docs/adr/0037-forced-password-change.md)), **8** first documents or a connector with live progress, **9** "Does it work?", **10** tools and router (optional), **11** review, security checklist, a Markdown setup report without secrets, and Finish (the token is destroyed and setup endpoints answer 404). Afterwards a **setup checklist** card and **Admin > Setup assistant** remain.
+
+Server-side commands: `erag setup --status | --new-token | --reset --yes`, `erag create-admin --email ...` (headless installation; completes a pending setup).
 
 ## Quick start (demo)
 
@@ -55,12 +81,15 @@ Then, from the repo root:
 docker build -f deploy/mcp-office.Dockerfile -t erag-mcp-office:0.2 .
 export ERAG_RUNNER_IMAGES="office=$(docker image inspect erag-mcp-office:0.2 --format '{{.Id}}')"
 
-# Ollama on the host listening on 127.0.0.1 (default install): share the host network
-docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.hostnet.yml up -d --build
+# Ollama on the host listening on 127.0.0.1 (default install): share the host network.
+# ERAG_SEED_DEMO=true seeds the whole demo at start-up and skips the setup wizard (development only, ADR 0040).
+ERAG_SEED_DEMO=true docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.hostnet.yml up -d --build
 
 # or, if your Ollama listens on 0.0.0.0 (OLLAMA_HOST=0.0.0.0):
-docker compose up -d --build
+ERAG_SEED_DEMO=true docker compose up -d --build
 ```
+
+Without `ERAG_SEED_DEMO=true` a fresh installation starts the setup wizard, where **Demo with mock data** installs the same company minus `admin@acme.test` (your own administrator is used instead).
 
 Open http://127.0.0.1:8000 and log in as `hr@acme.test`, `engineer@acme.test`, `finance@acme.test`, `newhire@acme.test`, `exec@acme.test`, `hr.assistant@acme.test` or `admin@acme.test` (password `acme-demo-password`). The demo is seeded on start-up: documents, a folder connector over an engineering wiki, and a demo remote MCP server (`acme-office`) registered as *pending* for the admin to review. Then run the scripted scenarios:
 
@@ -168,20 +197,34 @@ Sessions end after `ERAG_SESSION_IDLE_MINUTES` without use (default 120) and at 
 
 ### Fair use and capacity
 
-- **Rate limits** (login, MFA, chat, tools) hold across every replica ([ADR 0035](docs/adr/0035-shared-limits-in-postgres.md)).
-- **Budgets are reserved.** Before each model call the worst case is reserved on every budget and pool that applies, under locks taken in a fixed order, and settled at the real cost when the answer ends; a request that fails half-way still records what it used ([ADR 0036](docs/adr/0036-budget-reservations.md)).
-- **Endpoint pools and the generation queue** ([ADR 0037](docs/adr/0037-endpoint-pools-and-fair-generation-queue.md)). Give a provider a **maximum concurrency** and extra **endpoints** (one Ollama or vLLM per GPU; Admin > Providers; each must have the provider's locality). When every slot is busy, requests wait: a slot goes first to roles with a higher **priority** (Admin > Roles), then to the user with the fewest generations in flight, then to the oldest request. The chat shows "waiting, position N"; after `ERAG_GENERATION_QUEUE_TIMEOUT_SECONDS` (120) the request stops with a clear message. Providers without a limit skip the queue entirely.
+- **Rate limits** (login, MFA, chat, tools) hold across every replica ([ADR 0043](docs/adr/0043-shared-limits-in-postgres.md)).
+- **Budgets are reserved.** Before each model call the worst case is reserved on every budget and pool that applies, under locks taken in a fixed order, and settled at the real cost when the answer ends; a request that fails half-way still records what it used ([ADR 0044](docs/adr/0044-budget-reservations.md)).
+- **Endpoint pools and the generation queue** ([ADR 0045](docs/adr/0045-endpoint-pools-and-fair-generation-queue.md)). Give a provider a **maximum concurrency** and extra **endpoints** (one Ollama or vLLM per GPU; Admin > Providers; each must have the provider's locality). When every slot is busy, requests wait: a slot goes first to roles with a higher **priority** (Admin > Roles), then to the user with the fewest generations in flight, then to the oldest request. The chat shows "waiting, position N"; after `ERAG_GENERATION_QUEUE_TIMEOUT_SECONDS` (120) the request stops with a clear message. Providers without a limit skip the queue entirely.
 - **Embeddings:** chat questions can use their own endpoint (`ERAG_QUERY_EMBED_URL`) so a large ingestion never slows the chat; ingestion spreads over `ERAG_INGEST_EMBED_URLS`.
 - Sizing: [`docs/operations/capacity.md`](docs/operations/capacity.md).
 
 ## Operations: scaling, metrics and backups
 
-- **Kubernetes** ([ADR 0045](docs/adr/0045-helm-and-zero-downtime-upgrades.md), [`docs/operations/kubernetes.md`](docs/operations/kubernetes.md)): a Helm chart (`deploy/helm/enterprise-rag`: app with autoscaler and probes, workers, PgBouncer, migrations as a pre-upgrade hook) and a CloudNativePG example. Validated with `helm lint` and `kubeconform`, not yet installed on a real cluster.
+- **Kubernetes** ([ADR 0053](docs/adr/0053-helm-and-zero-downtime-upgrades.md), [`docs/operations/kubernetes.md`](docs/operations/kubernetes.md)): a Helm chart (`deploy/helm/enterprise-rag`: app with autoscaler and probes, workers, PgBouncer, migrations as a pre-upgrade hook) and a CloudNativePG example. Validated with `helm lint` and `kubeconform`, not yet installed on a real cluster.
 - **Load test** (`loadtest/`, [`docs/benchmarks/r20-load.md`](docs/benchmarks/r20-load.md)): with a stand-in model server, a second replica took chat throughput from 9.6 to 18.1 per second, and a limit of 8 model slots held exactly across replicas.
-- **Scaling** ([ADR 0041](docs/adr/0041-horizontal-scaling-pgbouncer-and-advisory-locks.md)): app replicas and workers share everything through Postgres; singleton tasks (connector scheduler, maintenance) elect themselves with advisory locks. `docker compose --profile scale up -d` adds PgBouncer, a second app and a second worker. Behind PgBouncer (transaction mode) set `ERAG_DB_PGBOUNCER=true` and a direct `ERAG_DB_DIRECT_URL` for the queue's LISTEN.
-- **Storage** ([ADR 0042](docs/adr/0042-s3-blob-store-and-vector-scaling-path.md)): `ERAG_BLOB_BACKEND=s3` with `ERAG_S3_*` for any S3-compatible store; `erag blobs migrate --to s3` moves an existing installation. Embeddings are stored as `halfvec` (half the size, the same retrieval quality on the evaluation set). **Upgrading to this release rebuilds the vector index: stop the app during the migration.**
-- **Metrics and alerts** ([ADR 0044](docs/adr/0044-observability-without-content.md)): Prometheus metrics on an internal port (9464 app, 9465 worker), alert rules in [`deploy/monitoring/alerts.yml`](deploy/monitoring/alerts.yml), reference in [`docs/operations/metrics.md`](docs/operations/metrics.md). No metric, log field or span carries a question or document text. `/health/live` and `/health/ready` for probes. Every response has an `X-Request-ID` that is also in the logs, on the audit entries and on the traces.
-- **Backups** ([ADR 0043](docs/adr/0043-backup-and-recovery.md), [`docs/operations/backup.md`](docs/operations/backup.md)): pgBackRest with point-in-time recovery (RPO 15 min, RTO 4 h), blobs in a versioned bucket, keys kept apart from the backups. After any restore run `erag backup verify` (schema, master key, blobs, embeddings); rehearse with `scripts/restore_drill.py`.
+- **Scaling** ([ADR 0049](docs/adr/0049-horizontal-scaling-pgbouncer-and-advisory-locks.md)): app replicas and workers share everything through Postgres; singleton tasks (connector scheduler, maintenance) elect themselves with advisory locks. `docker compose --profile scale up -d` adds PgBouncer, a second app and a second worker. Behind PgBouncer (transaction mode) set `ERAG_DB_PGBOUNCER=true` and a direct `ERAG_DB_DIRECT_URL` for the queue's LISTEN.
+- **Storage** ([ADR 0050](docs/adr/0050-s3-blob-store-and-vector-scaling-path.md)): `ERAG_BLOB_BACKEND=s3` with `ERAG_S3_*` for any S3-compatible store; `erag blobs migrate --to s3` moves an existing installation. Embeddings are stored as `halfvec` (half the size, the same retrieval quality on the evaluation set). **Upgrading to this release rebuilds the vector index: stop the app during the migration.**
+- **Metrics and alerts** ([ADR 0052](docs/adr/0052-observability-without-content.md)): Prometheus metrics on an internal port (9464 app, 9465 worker), alert rules in [`deploy/monitoring/alerts.yml`](deploy/monitoring/alerts.yml), reference in [`docs/operations/metrics.md`](docs/operations/metrics.md). No metric, log field or span carries a question or document text. `/health/live` and `/health/ready` for probes. Every response has an `X-Request-ID` that is also in the logs, on the audit entries and on the traces.
+- **Backups** ([ADR 0051](docs/adr/0051-backup-and-recovery.md), [`docs/operations/backup.md`](docs/operations/backup.md)): pgBackRest with point-in-time recovery (RPO 15 min, RTO 4 h), blobs in a versioned bucket, keys kept apart from the backups. After any restore run `erag backup verify` (schema, master key, blobs, embeddings); rehearse with `scripts/restore_drill.py`.
+## Configuration reference (new in v0.4)
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `ERAG_SETUP_TOKEN_SHA256` | unset (written by `erag init`) | SHA-256 of the one-time setup token printed by `erag init`. Without it a token is generated at the first start and written to the log and to `ERAG_SETUP_TOKEN_FILE`. Ignored once setup is completed. |
+| `ERAG_SETUP_TOKEN_FILE` | next to the blob directory (Compose: `/data/setup-token`) | Where a generated setup token is written (mode 0600); removed when setup is finished. |
+| `ERAG_SETUP_TOKEN_TTL_HOURS` | `24` | Lifetime of a setup token from the first start; an expired one is replaced at the next start. |
+| `ERAG_SEED_DEMO` | `false` | `true` seeds the full ACME demo (with `admin@acme.test`) at start-up and counts as a completed setup; development and `scripts/demo_scenarios.py` only, ignored in production ([ADR 0040](docs/adr/0040-seed-demo-and-the-wizard.md)). |
+| `ERAG_DEMO_PASSWORD` | `acme-demo-password` | Password of the demo personas (wizard demo and `ERAG_SEED_DEMO`). |
+| `ERAG_CLOUD_MAX_CLASSIFICATION` | `internal` (`erag init`: `public`) | Now the **initial default** only: the wizard's organization step (and Admin > Setup assistant, with step-up) stores the cloud ceiling in the database. A skipped step stores `public`. |
+| `ERAG_SECRETS_KEY` | unset (`erag init` sets it) | The credential store master key as a value; Compose now passes it through. Takes precedence over `ERAG_SECRETS_KEY_FILE`. |
+| `ERAG_OLLAMA_REGISTRY_URL` | `https://registry.ollama.ai` | Where the models step reads a model's size before the administrator confirms a download. |
+| `ERAG_WORKER_HEARTBEAT_SECONDS` | `20` | How often the worker reports that it is alive (environment check). |
+| `ERAG_IMAGE` (Compose) | `enterprise-rag:dev` | Image tag of the app, worker, runner and demo MCP services (lets a second, throw-away installation use its own tag). |
 
 ## Configuration reference (new in v0.2)
 
@@ -205,7 +248,7 @@ All settings use the `ERAG_` prefix (full list in [`backend/app/core/config.py`]
 | `ERAG_RUNNER_SOCKET_DIR` | `/tmp/erag-runner-sockets` | Per-MCP Unix socket directories, shared by runner and app at the same path. |
 | `ERAG_RUNNER_MOUNT_ROOTS` | none | Host folders an MCP may mount read-only. |
 | `ERAG_RUNNER_IDLE_MINUTES`, `ERAG_RUNNER_MAX_CPUS`, `ERAG_RUNNER_MAX_MEMORY_MB`, `ERAG_RUNNER_DOCKER_SOCKET` | `15`, `2`, `2048`, `/var/run/docker.sock` | Idle shutdown, per-MCP resource ceilings, engine socket. |
-| `ERAG_EVAL_DATABASE_URL`, `ERAG_BENCH_DATABASE_URL` | the app's server, databases `erag_eval` / `erag_bench` | Where `erag eval` and the benchmark scripts work. They refuse to run against the application database, because the evaluation corpus creates personas and confidential documents (ADR 0040). |
+| `ERAG_EVAL_DATABASE_URL`, `ERAG_BENCH_DATABASE_URL` | the app's server, databases `erag_eval` / `erag_bench` | Where `erag eval` and the benchmark scripts work. They refuse to run against the application database, because the evaluation corpus creates personas and confidential documents (ADR 0048). |
 | `ERAG_SESSION_TTL_HOURS`, `ERAG_SESSION_IDLE_MINUTES` | `12`, `120` | Absolute session lifetime; idle timeout (0 turns it off). |
 | `ERAG_CONVERSATION_RETENTION_DAYS` | `0` (keep) | Delete conversations with no activity for this many days. |
 | `ERAG_MAINTENANCE_INTERVAL_MINUTES` | `15` | Expired sessions, retention, expired reservations and leases (one replica at a time). Also `erag maintenance`. |
@@ -221,7 +264,7 @@ All settings use the `ERAG_` prefix (full list in [`backend/app/core/config.py`]
 
 ### Production settings
 
-Set `ERAG_ENV=prod`, strong `ERAG_SECRET_KEY` and `ERAG_MCP_CONTEXT_SECRET`, a master key (`ERAG_SECRETS_KEY` or `_FILE`), a strong `ERAG_RUNNER_TOKEN` if the runner is used, `ERAG_SEED_DEMO=false`, and `ERAG_COOKIE_SECURE=true` behind HTTPS. The app refuses to start in prod with development secrets or without a master key. Enable MFA for administrators. See [`deploy/.env.example`](deploy/.env.example).
+`erag init` does all of this (see [Installing for a company](#installing-for-a-company)). By hand: set `ERAG_ENV=prod`, strong `ERAG_SECRET_KEY` and `ERAG_MCP_CONTEXT_SECRET`, a master key (`ERAG_SECRETS_KEY` or `_FILE`), a strong `ERAG_RUNNER_TOKEN` if the runner is used, `ERAG_SEED_DEMO=false`, and `ERAG_COOKIE_SECURE=true` behind HTTPS. The app refuses to start in prod with development secrets or without a master key. Enable MFA for administrators. See [`deploy/.env.example`](deploy/.env.example).
 
 ## Security model and known boundaries
 
@@ -242,7 +285,7 @@ Known boundaries, documented rather than hidden:
 
 ## Evaluation
 
-Retrieval changes are measured before they are made (ADR 0040). A question set is asked **as personas**, through the same retrieval path as the chat:
+Retrieval changes are measured before they are made (ADR 0048). A question set is asked **as personas**, through the same retrieval path as the chat:
 
 ```bash
 uv run erag eval prepare        # create, migrate and load the evaluation database (erag_eval), never the app's
@@ -285,7 +328,9 @@ uv run erag eval prepare && uv run erag eval gate           # retrieval quality 
 cd frontend && npm ci && npm run build
 ```
 
-Useful commands: `uv run erag create-admin --email you@example.com`, `uv run erag seed-acme`, `uv run erag worker`, `uv run erag secrets init|set|list|rotate-master`, `uv run erag reset-mfa --email ...`, `uv run python -m app.runner.service`, `uv run erag eval prepare|run|compare|gate|baseline|embed-cache|generate`, `uv run erag models list|install <name>`, `uv run erag reindex [--container slug] [--all]`, `uv run erag maintenance`, `uv run erag blobs migrate --to s3`, `uv run erag backup verify [--full]`, `uv run python scripts/restore_drill.py --help`. Architecture decisions are in [`docs/adr/`](docs/adr/README.md).
+Setup tests and the browser end-to-end test of a fresh installation (a throw-away Compose project with its own ports and volumes, removed afterwards): `uv run pytest tests/setup` (add `ERAG_TEST_OLLAMA_DOWNLOAD=1` to download and remove the small `all-minilm` model for real), `NODE_PATH=... CHROMIUM=/usr/bin/chromium scripts/setup_e2e.sh`.
+
+Useful commands: `uv run erag init`, `uv run erag setup --status`, `uv run erag create-admin --email you@example.com`, `uv run erag seed-acme`, `uv run erag worker`, `uv run erag secrets init|set|list|rotate-master`, `uv run erag reset-mfa --email ...`, `uv run python -m app.runner.service`, `uv run erag eval prepare|run|compare|gate|baseline|embed-cache|generate`, `uv run erag models list|install <name>`, `uv run erag reindex [--container slug] [--all]`, `uv run erag maintenance`, `uv run erag blobs migrate --to s3`, `uv run erag backup verify [--full]`, `uv run python scripts/restore_drill.py --help`. Architecture decisions are in [`docs/adr/`](docs/adr/README.md).
 
 Tests against real external servers run when their address is given: `ERAG_TEST_S3_ENDPOINT` (SeaweedFS, see `tests/integration/test_s3_seaweedfs.py`) and `ERAG_TEST_PGBOUNCER_URL` (`tests/integration/test_pgbouncer.py`).
 

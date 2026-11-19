@@ -15,13 +15,21 @@ Items outside the scope of the MVP (docs/PLAN.md section 1), v0.2 (docs/PLAN-v0.
 - An open decider on a GPU (Open-Jev 2B takes about a minute per decision on this machine's CPU, ADR 0031) and a quality benchmark of deciders on our own questions.
 - Periodic re-evaluation of provider and decider locality (today at router build and per request).
 
+## Left open in v0.4
+
+- Translations of the interface (the setup texts are already in one file, `frontend/src/lib/texts.ts`; older screens still keep theirs inline).
+- Email invitations and SSO for the people step (no mail server is assumed; temporary passwords are handed out by the administrator).
+- A legal review of the license notice shown in the wizard (ADR 0035).
+- Model downloads that survive an application restart (the progress view lives in the app process today).
+- Exporting the setup report as PDF; a signed (tamper-evident) setup record.
+
 ## Left open in v0.5
 
 - **SSO, SCIM and IdP groups** (out of v0.5 by decision 4).
-- **A Valkey `LimitStore`** for installations that outgrow rate limits in Postgres (ADR 0035).
-- **Qdrant `VectorStore`**: only if pgvector misses the target at 20 million chunks (decision 8, ADR 0042). The synthetic benchmark at that size needs a larger host than the development machine.
+- **A Valkey `LimitStore`** for installations that outgrow rate limits in Postgres (ADR 0043).
+- **Qdrant `VectorStore`**: only if pgvector misses the target at 20 million chunks (decision 8, ADR 0050). The synthetic benchmark at that size needs a larger host than the development machine.
 - **Streaming parsers** for very large PDF and DOCX files (today: a memory cap that refuses them before reading).
-- **The previous release's test suite against the new schema** in CI (today: a static expand/contract check on the migration files, ADR 0045), and the restore drill in CI.
+- **The previous release's test suite against the new schema** in CI (today: a static expand/contract check on the migration files, ADR 0053), and the restore drill in CI.
 - **A real Kubernetes install** of the Helm chart and CloudNativePG (validated with `helm lint` and `kubeconform`, not installed).
 - **Load tests against real GPUs** and the 50,000 documents per day ingestion target (the R20 load test uses a stand-in model server).
 - Finer permission-cache invalidation (today one global epoch: any permission change invalidates every cached entry).
@@ -39,4 +47,4 @@ Items outside the scope of the MVP (docs/PLAN.md section 1), v0.2 (docs/PLAN-v0.
 
 ## Done in v0.5 (removed from the lists above)
 
-Budget reservations and the tokens of a request that fails mid-stream (ADR 0036); a reaper for sync runs left running (R18); hybrid search and a reranker (ADR 0038, 0039); an S3 `BlobStore` (ADR 0042); Helm and horizontal scaling with shared rate limits (ADR 0041, 0045).
+Budget reservations and the tokens of a request that fails mid-stream (ADR 0044); a reaper for sync runs left running (R18); hybrid search and a reranker (ADR 0046, 0047); an S3 `BlobStore` (ADR 0050); Helm and horizontal scaling with shared rate limits (ADR 0049, 0053).

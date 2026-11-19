@@ -1,4 +1,4 @@
-"""Cross-encoder reranker running inside the application process (ADR 0039).
+"""Cross-encoder reranker running inside the application process (ADR 0047).
 
 ONNX Runtime and `tokenizers` score (question, chunk) pairs. Inference runs in a thread pool (ONNX Runtime
 releases the GIL), at most `reranker_concurrency` batches at a time per process, and a request that cannot get a

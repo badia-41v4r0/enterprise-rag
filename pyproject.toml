@@ -69,7 +69,7 @@ ignore = ["S101", "B008", "RUF012", "S311", "S608", "RUF001", "RUF002", "RUF003"
 known-first-party = ["app", "mcp_servers", "demo", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S105", "S106", "S108", "S603", "S607"]
+"tests/**" = ["S105", "S106", "S108", "S603", "S607", "ASYNC221"]
 "backend/migrations/**" = ["E501"]
 "backend/app/llm/prompt_builder.py" = ["E501"]
 
@@ -91,6 +91,8 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+# A coroutine that is never awaited is a bug (an un-awaited limiter check once allowed every request): fail the test.
+filterwarnings = ["error:coroutine .* was never awaited:RuntimeWarning"]
 markers = [
   "db: needs the PostgreSQL test database (skipped when unreachable)",
   "embeddings: needs the local Ollama embedding model bge-m3 (skipped when unreachable)",
@@ -100,4 +102,5 @@ markers = [
   "docker: needs a real Docker daemon (isolated runner tests; skipped when unreachable)",
   "decider_open: real open Jev-style decision server (opt-in: skipped unless ERAG_TEST_OPEN_JEV_URL answers /health)",
   "decider_official: real TypeSafe Jev API calls (opt-in: skipped without ERAG_TEST_JEV_API_KEY; costs a little)",
+  "ollama_download: really downloads the small all-minilm model through the setup API and removes it (opt-in: ERAG_TEST_OLLAMA_DOWNLOAD=1)",
 ]

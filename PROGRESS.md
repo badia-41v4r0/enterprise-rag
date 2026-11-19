@@ -4,10 +4,19 @@
 
 Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from `docs/plan-v0.5`, so the plan travels with the code. Releases R13 to R20; this section is updated at each release boundary.
 
+### Integration with v0.4 (2026-11-19)
+
+v0.5 was started from `main` before v0.4 was merged, and reused v0.4's numbers: migration 0012, ADRs 0034 to 0041 and threats T43 to T50. GitHub reported the PR as mergeable because the files had different names, but `alembic upgrade` would have failed on two revisions 0012.
+
+**What was done** (branch `fix/v0.5-integrate-v0.4`)
+- v0.5's numbers were moved on the v0.5 side, before merging, so released v0.4 installations keep their history: migrations 0012-0019 → **0013-0020** (0013 now follows v0.4's 0012), ADRs 0034-0045 → **0042-0053**, threats T43-T50 → **T51-T58**. Every reference in code, docs and this file was updated by a script that only touches ADR, migration and threat contexts (evaluation-corpus ids such as `CT-2025-0034` were left alone).
+- `main` merged; 21 conflicts in 16 files resolved by keeping both sides (v0.5's routers behind v0.4's setup gate; the worker's heartbeat, reaper and graceful shutdown in one loop; `seed_structure` with both the evaluation structure arguments and `include_admin`; Admin with the setup assistant and v0.5's tabs).
+- Fixes the merge exposed: v0.4's setup-token limiters moved to the shared, async `RateLimiter`; **v0.4's password-change limit was silently disabled** (its `allow()` was no longer awaited, and a coroutine counts as "allowed"): fixed, with a test, and pytest now fails on any never-awaited coroutine; users created by the CSV import must change their temporary password (ADR 0037), with a test; Helm writes a generated setup token to `/tmp` and documents `ERAG_SETUP_TOKEN_SHA256` for several replicas; `scripts/restamp_v05_dev_db.py` for development databases migrated from the pre-integration branch (tested on a copy of the demo database: old 0015 → v0.4's 0012 applied → stamped 0016 → `alembic upgrade head` to 0020, setup recorded as completed).
+
 ### R13: permission-aware evaluation, evaluation corpus, baseline and synthetic benchmark
 
 **What was built**
-- **`app.eval` package** (ADR 0040):
+- **`app.eval` package** (ADR 0048):
   - `corpus.py`: an evaluation structure that extends ACME. Three new containers (`sales-contracts` confidential, `support-kb` internal, `product-catalog` public), two new personas (`sales@`, `support@`), two more restricted HR files, and an independent `Oracle` built from the declared structure.
   - A deterministic generator (fixed seed) writes 252 documents to `eval/corpus/acme-eval/` and 100 exact-identifier questions to `eval/sets/acme.generated.yaml`:
     - 80 Spanish contracts in near-duplicate pairs;
@@ -20,7 +29,7 @@ Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from 
   - `runner.py`: asks every item as every persona through `effective_permissions` and `Retriever.retrieve_by_vector`, the chat's path. It stores the run with a configuration snapshot and the commit, and writes a JSON report. `compare()` shows metric, per-tag and per-run differences.
   - `metrics.py`: document-level recall@5/8, MRR, nDCG@10, abstention, leakage (`must_not_see` plus the oracle), per-tag figures, latency percentiles and `gate()`.
 - **CLI:** `erag eval generate | prepare [--live] | run | compare | baseline | gate | embed-cache`.
-- **Migration 0012:** `eval_sets`, `eval_items`, `eval_runs`, `eval_results` (document keys and scores only, never text).
+- **Migration 0013:** `eval_sets`, `eval_items`, `eval_runs`, `eval_results` (document keys and scores only, never text).
 - `demo.acme.seed`: `seed_structure`, `seed_documents`, `readable_slugs` and `readable_restricted` take optional structure arguments (default ACME, so the demo is unchanged).
 - `rag.vector_store.HNSW_EF_SEARCH`: a constant instead of a literal, recorded in every run's snapshot.
 - **Set `acme`:** 146 items, 247 persona runs (146 answerable, 101 unanswerable or forbidden). 46 items are written by hand: paraphrases, acronyms, cross-lingual, multi-document, bare identifiers, a prompt injection, restricted HR files, unanswerable questions.
@@ -28,7 +37,7 @@ Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from 
 - **Benchmark scripts:** `scripts/synth_corpus.py` (synthetic clustered vectors via `COPY` into `erag_bench`, 500 containers, 1 percent restricted documents) and `scripts/bench_search.py` (production search for users who see 90, 10 and 1 percent of the containers, k = 8 and 50, p50/p95 latency, short results, recall against an exact scan).
 - **CI:** `erag eval prepare && erag eval gate` after pytest, with the report uploaded as an artifact.
 - **Dependencies:** `pyyaml` (MIT) declared. Dev group: `numpy` (BSD, benchmark scripts only) and `types-PyYAML`.
-- **Docs:** README (status, the "Retrieval evaluation" bullet, an Evaluation section, configuration, development commands), ADR 0040.
+- **Docs:** README (status, the "Retrieval evaluation" bullet, an Evaluation section, configuration, development commands), ADR 0048.
 
 **Verified (R13)**
 - `erag eval prepare --live`: 264 documents and 701 chunks indexed with the real `bge-m3` in 2 min 37 s on this machine.
@@ -47,7 +56,7 @@ Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from 
   - cache round trip and strict miss;
   - the database guard for eval and bench;
   - end to end on `erag_test` with the recorded embeddings: load, mini set without leaks, results without text, then a planted grant makes the run leak and the gate fail.
-- `uv run pytest`: **303 passed, 4 skipped** (238 s), run on its own after the Postgres restart described below. Migration 0012: downgrade/upgrade round trip on `erag_test`.
+- `uv run pytest`: **303 passed, 4 skipped** (238 s), run on its own after the Postgres restart described below. Migration 0013: downgrade/upgrade round trip on `erag_test`.
 - `ruff check`, `ruff format --check`, `mypy` (strict, 112 files): pass.
 - **Synthetic benchmark** (`docs/benchmarks/r13-baseline.md`, 60,000 chunks, 500 containers, Ryzen 3 3100):
 
@@ -62,24 +71,24 @@ Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from 
 **Known issues / not done (R13)**
 - Benchmark size is limited by this machine. The HNSW build needs the graph in `maintenance_work_mem` (about 4.5 KB per vector), and the Compose Postgres has 1 GB of memory and 64 MB of `/dev/shm`. 200,000 chunks fell back to the slow build. During that attempt, the old build, the new one and a full test run together took Postgres down (it stayed in recovery mode until restarted). The test results quoted above come from a clean run afterwards. `synth_corpus.py` now builds serially and takes `--maintenance-work-mem`.
 - `--with-answers` (citation correctness with a local chat model) is moved to R15, together with the faithfulness judge. The R13 gate measures retrieval only, as planned.
-- While developing, `erag_test` was once found stamped at 0012 without the evaluation tables. Re-applying the migration fixed it and the cause could not be reproduced. The migration round trip below runs on a clean state.
+- While developing, `erag_test` was once found stamped at 0013 without the evaluation tables. Re-applying the migration fixed it and the cause could not be reproduced. The migration round trip below runs on a clean state.
 
 
 ### R14 and R15: hybrid search, reranker, Admin > Retrieval; Admin > Evaluation, feedback, faithfulness judge
 
-Built in the session of 2026-11-18 (morning) and committed with R16 on branch `feat/v0.5-cont` (commit `de6d315`), because that session ended before committing. Details are in ADR 0038 and ADR 0039 and the code (`app.rag.lexical`, `fusion`, `reranker`, `settings`, `app.services.reindex`, `app.eval.answers`, `app.eval.live`, `app.api.retrieval`, `app.api.evaluation`, migrations 0013 and 0014).
+Built in the session of 2026-11-18 (morning) and committed with R16 on branch `feat/v0.5-cont` (commit `de6d315`), because that session ended before committing. Details are in ADR 0046 and ADR 0047 and the code (`app.rag.lexical`, `fusion`, `reranker`, `settings`, `app.services.reindex`, `app.eval.answers`, `app.eval.live`, `app.api.retrieval`, `app.api.evaluation`, migrations 0014 and 0015).
 
 **Fixed afterwards (2026-11-18)**
 - **The full-text OR query matched almost everything.** The question was passed through both the Spanish and the English analyzer, and each keeps the other language's stop words, so "what", "is", "the", "el", "de" became search terms. Words that are stop words in either language are now dropped. Found by `test_no_authorized_context_means_no_model_call`: a new hire asking about salaries got handbook chunks as context. Not a leak (all were chunks the new hire may read), but a model call where none was needed.
 - **A term every document shares** (the company name in every title) was enough to bring an unrelated chunk into the context when the reranker is not installed, which raised the classification of public questions and blocked cloud routing (`test_public_context_may_use_cloud_even_with_the_strictest_ceiling`). Text-only hits now also need `text_relative_floor` (default 0.5) of the best full-text match; adjustable in Admin > Retrieval.
 
 **Not done / to check**
-- `docs/benchmarks/r14-retrieval.md`, cited by ADR 0039 for the reranker calibration, **does not exist**: the calibration numbers were not written down. The reranker model is not installed on this machine, so the default pipeline (hybrid + reranker) has not been measured here; every evaluation run below used the fallback (247 reranker fallbacks).
+- `docs/benchmarks/r14-retrieval.md`, cited by ADR 0047 for the reranker calibration, **does not exist**: the calibration numbers were not written down. The reranker model is not installed on this machine, so the default pipeline (hybrid + reranker) has not been measured here; every evaluation run below used the fallback (247 reranker fallbacks).
 
 ### R16: many users in one company
 
 **What was built**
-- Permission cache by (user, epoch), invalidated in the same transaction as any permission change (ADR 0034, migration 0015).
+- Permission cache by (user, epoch), invalidated in the same transaction as any permission change (ADR 0042, migration 0016).
 - The index-driven vector search (commit `69ae29d`); an exact plan for users who read little (planner estimate, cached per container set); ACL id lists as one array parameter.
 - Admin > Users: keyset pagination, search, filters (role, status, admin, never logged in), bulk actions (add/remove role, activate, deactivate, sign out), CSV export (formula cells neutralized) and CSV import (`app.services.user_directory`, reusable by the v0.4 wizard: whole-file validation, dry run by default, step-up to apply, roles only added, no admin by file, temporary passwords shown once and never audited). `users.last_login_at`.
 - Admin > Audit: keyset pagination, prefix filters (literal `%` and `_`), decision, date range.
@@ -92,7 +101,7 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 
 ### R17: shared limits, reservations, generation queue, endpoint pools
 
-**What was built** (ADR 0035, 0036, 0037; migration 0016)
+**What was built** (ADR 0043, 0044, 0045; migration 0017)
 - Rate limits in an UNLOGGED Postgres table behind `LimitStore` (login, MFA, chat, tools).
 - Budget reservations: ordered advisory locks per scope, check with others' reservations, reserve, settle with the usage record; usage of a stream that fails mid-way is recorded.
 - Fair generation queue: leases with heartbeat, waiters, role priority, fewest in flight, LISTEN/NOTIFY plus polling, position shown in the chat, timeout. Endpoint pools (`llm_endpoints`, `max_concurrency`), least-loaded endpoint, locality checked when added and at every build. Admin UI for both and for role priority.
@@ -103,7 +112,7 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 
 ### R18: ingestion at scale, storage, PgBouncer
 
-**What was built** (ADR 0041, 0042; migrations 0017 and 0018)
+**What was built** (ADR 0049, 0050; migrations 0018 and 0019)
 - Job priorities, exponential backoff, dead letters with Retry (API and Jobs tab), heartbeat and reaper for jobs and sync runs, N jobs per worker, memory cap per job, parse failures permanent, SIGTERM drains the worker. Back-pressure on connectors; `max_items` per connector. Ingestion embeddings over a pool with several batches in flight.
 - S3-compatible blob store (SigV4 on httpx) and `erag blobs migrate --to s3`.
 - `halfvec` embeddings.
@@ -116,12 +125,12 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 
 **Known issues / not done (R18)**
 - "Streaming parse" is a memory cap (refuse before reading), not a streaming parser: PDF and DOCX parsing still loads the file.
-- Migration 0018 is not rolling-update compatible (column type change); it declares `REQUIRES_DOWNTIME` and the README says to stop the app.
+- Migration 0019 is not rolling-update compatible (column type change); it declares `REQUIRES_DOWNTIME` and the README says to stop the app.
 - The 50,000 documents/day throughput target has not been measured.
 
 ### R19: observability, backups
 
-**What was built** (ADR 0043, 0044; migration 0019)
+**What was built** (ADR 0051, 0052; migration 0020)
 - Prometheus metrics from a built-in registry on an internal port (app 9464, worker 9465): stage latencies, HTTP by route template, generations, queue depth and timeouts, refusals, tokens and cost, ingestion, and security signals. Alert rules (`deploy/monitoring/alerts.yml`, 16 rules) and a reference (`docs/operations/metrics.md`).
 - Correlation id in responses, logs, audit entries (`audit_log.correlation_id`) and spans; OpenTelemetry API spans (export when an SDK is installed).
 - `/health/live`, `/health/ready`.
@@ -130,7 +139,7 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 
 **Verified (R19)**
 - `tests/integration/test_observability.py` (5: text format, internal endpoint, correlation id in header, logs and audit, no user text in a scrape, health), `tests/integration/test_backup_verify.py` (4: passes, wrong key, corrupt and missing blobs, missing embeddings).
-- **Restore drill** on `erag_eval`: dump, restore into a throw-away database, migrate 0018 → 0019, verify, 20/20 searches identical. The login step was not exercised (the evaluation personas have no known password); blobs skipped (the evaluation database keeps none, by design, and `verify` correctly reported them all missing when not skipped).
+- **Restore drill** on `erag_eval`: dump, restore into a throw-away database, migrate 0019 → 0020, verify, 20/20 searches identical. The login step was not exercised (the evaluation personas have no known password); blobs skipped (the evaluation database keeps none, by design, and `verify` correctly reported them all missing when not skipped).
 - Full suite: **363 passed, 5 skipped** (S3, PgBouncer, reranker-dependent tests skip without their servers or model).
 
 **Not done (R19)**
@@ -140,10 +149,10 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 ### R20: Helm, load tests, the reranker measured, final pass
 
 **What was built**
-- Helm chart `deploy/helm/enterprise-rag` (app with HPA, PDB and probes; workers; PgBouncer; migrations as a pre-install/pre-upgrade hook; internal metrics service; optional ingress; reranker files by init container), a CloudNativePG `Cluster` example, `docs/operations/kubernetes.md`, ADR 0045.
+- Helm chart `deploy/helm/enterprise-rag` (app with HPA, PDB and probes; workers; PgBouncer; migrations as a pre-install/pre-upgrade hook; internal metrics service; optional ingress; reranker files by init container), a CloudNativePG `Cluster` example, `docs/operations/kubernetes.md`, ADR 0053.
 - Load test: `loadtest/` (Locust, a stand-in model server, a setup that imports users through the app's CSV import).
-- `docs/benchmarks/r14-retrieval.md` (the file ADR 0039 cited) with the default pipeline measured for the first time.
-- ROADMAP, architecture, threat model (T43-T50), README final pass.
+- `docs/benchmarks/r14-retrieval.md` (the file ADR 0047 cited) with the default pipeline measured for the first time.
+- ROADMAP, architecture, threat model (T51-T58), README final pass.
 
 **Verified (R20)**
 - `helm lint` passes; the rendered chart (11 resources) validates with `kubeconform -strict`.
@@ -157,6 +166,87 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 
 **Not done (R20)**
 - No real Kubernetes install; no load test above 200 users or on real GPUs; ingestion throughput (50,000 documents/day) not measured; the previous release's suite against the new schema is approximated by a static check; the restore drill is not in CI; Qdrant not needed (and not built).
+## v0.4, branch `feat/v0.4` (built autonomously, not pushed)
+
+Plan: [`docs/PLAN-v0.4.md`](docs/PLAN-v0.4.md) (guided first-run setup). Branch created from `main` (e6227c8). Open questions became ADRs 0034 to 0041. The wizard's backend and UI were written in one pass (the steps share one API module and one page), so R10, R11 and R12 are reported separately below by scope, with one verification section for the whole.
+
+### R10: `erag init`, setup mode and token, license, environment checks, administrator and MFA, organization
+
+**What was built**
+- **`erag init`** (`backend/app/installer.py`) and **`deploy/install.sh`**: refuses to overwrite an existing environment file or master key; writes the Compose environment file with mode 0600 (`ERAG_ENV=prod`, `ERAG_SEED_DEMO=false`, random session/MCP/runner secrets and database password, the master key as `ERAG_SECRETS_KEY`, `ERAG_CLOUD_MAX_CLASSIFICATION=public`, secure cookies with `--https`, `ERAG_SETUP_TOKEN_SHA256`) and an owner-only `master.key` copy for backup; checks Docker, Compose, Ollama, `bge-m3`, the chat model and the port; prints the token, the URL, the Compose command and the backup instructions. No database, no network call except the local Ollama.
+- **Migration 0012**: `setup_state` singleton (steps, token hash and expiry, setup-session hash and CSRF, license record, installation type, completion, dismissed checklist items) and `users.must_change_password`. **Upgrade invariant:** a database with users gets a completed row (`completed_via = upgrade`, `install_type = demo` when `@acme.test` users exist); `erag bootstrap` does the same if it finds users and no row. Only a database with no user enters setup mode.
+- **Setup mode** (`app/services/setup.py`, `app/api/setup.py`, `setup_gate` in `app/api/deps.py`): every router except `/health`, `/api/info`, `/api/auth/*`, `/api/setup/*` answers `503 setup required` unless the caller is an active administrator. Token: 120 bits, typeable groups, printed by `erag init` (hash only in the env file) or generated at first start (log + `/data/setup-token`, 0600), 24 h TTL from first start, replaced when expired, `erag setup --new-token`; exchanged at `POST /api/setup/token` (10/min per address, 30/min overall, failures audited without the value) for an HttpOnly SameSite=Strict cookie on `/api/setup` plus an `X-Setup-CSRF` token. Completion destroys hash, session and file; every `/api/setup/*` answers 404 afterwards. `erag setup --status | --new-token | --reset --yes` (server only). `erag create-admin` on a pending setup completes it (headless install).
+- **Step 0 license** (ADR 0035): plain-language text from the README licensing section (PolyForm Noncommercial 1.0.0, source-available, not open source, noncommercial free, commercial license from Badia Partners, the 60-day evaluation permit, https://badiapartners.com); checkbox required; who, when and the SHA-256 of the text recorded; no key, no server, no network.
+- **Step 1 environment check** (`app/services/envcheck.py`, ADR 0038): database and migration head, master key (and its file mode), production mode, the three secrets, HTTPS/secure cookies (fail when reached remotely over HTTP), storage writable, worker heartbeat (new: the worker writes `app_settings.worker.heartbeat` every 20 s), Ollama through the provider destination guard, the embedding model and the chat model, runner (optional). Statuses, details and exact fixes; never values.
+- **Step 2 administrator** with the password policy (12+ characters, 5+ distinct, not common or the demo password, not the email) and a strength meter; signed in at once; **MFA** enrolment offered right away (the Account page's MFA card, reused).
+- **Step 4 organization**: company name (header, login page) and the cloud ceiling stored in `app_settings.organization`; the environment value is the initial default; the provider registry reads the stored value (process cache refreshed on every router load, part of the router fingerprint); raising or lowering it needs step-up; skipped or never visited = `public`.
+- **Cleanup requested by the owner**: `ERAG_OPENROUTER_ALLOW_PAID` removed from `deploy/docker-compose.yml` (it was not in `.env.example`); `ERAG_SEED_DEMO` now defaults to `false` and `true` seeds the full demo and completes setup, ignored in production (ADR 0040). Compose also passes `ERAG_SECRETS_KEY`, `ERAG_SETUP_TOKEN_SHA256`, `APP_PORT`, and takes the image tag from `ERAG_IMAGE` (default unchanged) so a throw-away installation never retags the owner's image.
+
+### R11: installation type and demo, models with explicit downloads, access structure, people, resume
+
+**What was built**
+- **Step 3** (ADR 0036): empty (default; skip = empty) or **Demo with mock data**: ACME personas without `admin@acme.test`, roles, containers, documents (queued for the worker), reference MCP tools and grants, the folder connector when mounted, the demo remote MCP server as pending. Demo presence is detected live: persistent banner, company name "ACME Corp", the review warning, the checklist item. **Remove demo data** (wizard or Setup assistant; admin, step-up, audited): a confirmation lists users, roles, containers with document count, connectors and MCP servers; removes them, their documents/versions/chunks/jobs, unused blobs, role quotas and every grant pointing at them; never the acting admin; the audit log stays.
+- **Step 5 models** (ADR 0039): installed Ollama models with sizes; "Use as chat model" (adds the model to the built-in Ollama provider and makes it the default; step-up); embedding model confirmation, locked once chunks exist; **Test** buttons (a real embedding, a real 8-token chat reply; never a pull); **Download** only after a confirmation with name, size (from the Ollama registry manifest, public HTTPS through the destination guard, 200 kB cap, no redirects) and source; the size must still match when confirmed; progress (polling) and **Cancel**; audited. Suggestions limited to permissive licenses (bge-m3 MIT, Qwen3 Apache-2.0). The optional cloud provider uses the existing Providers screen (key to the credential store, public clearance, budget).
+- **Step 6 access structure**: no templates; the existing Containers, Roles, grants matrix and effective-permissions preview screens with inline explanations, and what is still missing (a container, a role, a grant).
+- **Step 7 people** (ADR 0037): one by one or CSV (`email,name,role`, `;` for several roles, optional header) with per-row errors (line, email, reason: unknown role, duplicate, invalid email, existing user, column count); generated temporary passwords shown once, never audited. **Forced password change**: `must_change_password` set for every user whose password was chosen by someone else (wizard, CSV, Admin > Users, admin resets); `get_auth` answers `403 password_change_required` everywhere except `/me`, `/logout`, `/change-password`; the UI shows only the change-password screen; changing ends the other sessions.
+- **Resume**: the step record is server-side; a closed tab or a restart resumes at the first unfinished step (enter the token again and sign in).
+
+### R12: knowledge, "Does it work?", tools, review and finish, checklist, assistant, docs, end-to-end test
+
+**What was built**
+- **Step 8**: upload into a chosen container (the existing upload component) or a folder/web connector, with a live ingestion progress card (documents ready/pending/failed, passages).
+- **Step 9 "Does it work?"** (ADR 0041): the real pipeline as a chosen user (permissions, filtered retrieval, routing, the model; no tools): effective permissions, sources, model, classification; the answer text only during setup; after setup only metadata, with step-up; audited without the question; the test conversation deleted.
+- **Step 10**: tools and router explained, left off.
+- **Step 11**: summary (counts, organization, environment), the **security checklist** (MFA, known-password admins, second admin, master key, production, HTTPS, demo data, cloud ceiling, budgets, router), the **setup report** (Markdown download; names, counts and booleans only, provider URLs without credentials), **Finish** (refused in production while an active admin has a known or temporary password; skipped steps marked, stricter defaults applied; completion recorded; token, session and file destroyed; `setup.complete` audited; a fresh admin session).
+- **After setup**: the **setup checklist** card at the top of the admin area (MFA, master key backup, second admin, provider budgets, router review, demo removal, known-password admins; dismissable where it makes sense) and **Admin > Setup assistant** (every step except license/admin/finish re-opened with the normal admin session; the report is downloadable there too).
+- **Interface texts** of the wizard, assistant, checklist and password change live in `frontend/src/lib/texts.ts` (older screens unchanged). The login page lists the demo personas only when the demo is installed; the header shows the company name.
+- **Docs**: README ("Installing for a company", screenshots, configuration reference for the new settings, demo quick start with `ERAG_SEED_DEMO=true`), [`docs/installation.md`](docs/installation.md), [`docs/troubleshooting.md`](docs/troubleshooting.md), ADRs 0034 to 0041 (index updated; 0015's compose default marked superseded), threat model T43 to T50 and two residual risks, `docs/architecture.md` (v0.4 section), white paper 7.5 (and a link to the guide in section 8; section 9 untouched), `ROADMAP.md` ("Left open in v0.4"), `deploy/.env.example`.
+- **Scripts**: `scripts/setup_e2e.sh` + `scripts/setup_e2e.mjs` (throw-away install from scratch through the browser, `MODE=demo` for the demo path), `deploy/docker-compose.throwaway.yml` (own ports, image tag and runner socket directory on the host network), `scripts/ui_smoke.mjs` now goes through the forced password change.
+
+### Verified (R10 to R12), commands and results
+
+- `uv run pytest`: **315 passed, 5 skipped** (236 s). New `tests/setup/` (31 tests): setup mode and token (`test_setup_mode.py`: no-row = no setup mode; upgrade at bootstrap; migration 0012 downgrade/upgrade on a database with users -> completed, `install_type = demo`; fresh install -> token file 0600 with the token and only its hash in the database; 503 on five APIs with `/health` 200; wrong token 401 and audited without the value; CSRF; license checkbox/hash/name; weak admin passwords; admin session works on the admin API during setup; an employee gets 503 during setup; finish -> completion, token/session/file gone, 404 on every setup endpoint, dead token, `public` ceiling for a skipped organization step; rate limit 10 then 429; expired token refused and replaced at the next start; `erag init` hash used; resume after a restart with a new app; empty install = only the admin; `erag create-admin` completes a pending setup; `erag setup --reset --yes`; `erag bootstrap` on a fresh database prints a token once; `ERAG_SEED_DEMO=true` completes setup in dev and is ignored in prod), forced password change and CSV with bad rows, organization/ceiling with step-up, demo install without `admin@acme.test` and its removal with step-up, prod finish refused with a temporary-password admin, checklist and assistant, environment checks against real failures (closed-port Ollama, missing models in the real Ollama, default/short secrets, missing and world-readable key files, a read-only storage directory, no worker heartbeat, closed-port runner; no secret values in the endpoint output), "Does it work?" answer only during setup, setup report without secrets, models step (nothing downloaded by listing, checks, previews or Tests; chat model choice). Skips: the 4 earlier opt-in/env-key tests and the opt-in real download.
+- **Real download** (opt-in): `ERAG_TEST_OLLAMA_DOWNLOAD=1 uv run pytest tests/setup/test_models_download.py` -> 3 passed: all-minilm (45,960,996 bytes from the registry manifest, Apache-2.0) cancelled once (not installed afterwards), then downloaded with progress, then removed with `ollama rm`; `ollama list` identical before and after (checked by diff).
+- `ruff check`, `ruff format --check` (234 files), `mypy` strict (109 files), `scripts/check_licenses.py` (no new dependency), `npm run build`: pass.
+- **Browser end-to-end from scratch** (`scripts/setup_e2e.sh`, throw-away project `erag-test-setup`, app 127.0.0.1:8099, Postgres 55499, runner 8797, demo MCP 8798, image `erag-test-setup:dev`): `erag init` -> files 0600 -> stack from an empty database in setup mode (the log says to use the token printed by `erag init`) -> wrong token refused -> license (Continue disabled until ticked) -> environment all green except HTTPS (amber, localhost) -> admin + MFA (TOTP from the shown secret, recovery codes) -> empty -> "Nimbus Analytics", public -> qwen chosen, embedding Test (1024 dimensions) and chat Test OK, a download confirmation for all-minilm showing name, size in MB and "the Ollama registry", cancelled, Ollama's list unchanged -> two containers, two roles, three matrix cells by hand -> CSV with an unknown role reported for line 4 -> two uploads, live progress to "ready 2" -> "Does it work?": Ana (Staff) handbook only, Ben (Payroll team) payroll source -> report fetched and checked for the token, the admin password, both temporary passwords and the MFA secret (none present) -> Finish -> admin view with the checklist card and the company name; `/api/setup/status` 404, the token 404 -> Ana and Ben log in, are forced to change their temporary passwords, ask the same question: Ana `internal`, sources only the handbook, "confidential ... ask the payroll team"; Ben `confidential`, local model, "band B4: 78,000 to 92,000 EUR". **SETUP E2E PASSED** (twice; the final run on the final code). Demo path (`MODE=demo`): demo installed, banner, `admin@acme.test` login 401 and `hr@acme.test` 200, steps 4-10 skipped, finish with the private-network warning, checklist item, Setup assistant > Remove demo data listing users/roles/containers, step-up with TOTP, banner gone, `hr@acme.test` 401. **SETUP E2E (DEMO) PASSED.** Screenshots in `docs/media/setup-*.png`.
+- **Existing scripts on a demo-seeded throw-away** (`ERAG_SEED_DEMO=true`, dev, project `erag-test-demo`, same ports): `scripts/demo_scenarios.py` unchanged results (HR answers locally from HR Confidential, engineer and new hire get "no information"; finance's invoices tool; revocation); `scripts/ui_smoke.mjs` with `SKIP_RUNNER=1` -> **UI SMOKE PASSED** (its test user goes through the forced password change). The runner step was skipped on purpose: it creates a container named `erag-mcp-office-isolated` in the shared Docker namespace, which the owner's stack could also use; the runner code is unchanged in v0.4.
+- Both throw-away projects were removed with `down -v` for their own project names, their image and runner socket directories deleted; no `erag-test-*` containers, volumes, networks or images remain. The owner's stack (`enterprise-rag`, port 8088) was not rebuilt, restarted, stopped or migrated (its containers kept running throughout); pytest used `erag_test` as before.
+- **Bugs found by the real runs and fixed**: the worker's first heartbeat could fail before migrations and then waited 20 s (now retried every pass); `ERAG_SEED_DEMO=true` crashed the app at start (two event loops sharing the engine); an empty `ERAG_SECRETS_KEY` from Compose disabled the dev key file (empty now means unset); admin tabs wrapped (now one scrolling row).
+
+### Decisions (v0.4)
+ADR 0034 (setup mode, token, `erag init`, upgrade invariant, organization settings in the database), 0035 (license record; lawyer review), 0036 (installation type, demo without admin persona, removal), 0037 (forced password change), 0038 (environment checks), 0039 (explicit downloads), 0040 (`ERAG_SEED_DEMO`), 0041 (check as another user). Smaller: the wizard's organization step pre-selects `public` when the ceiling still comes from the environment; installing the demo is offered only in the wizard; the setup session lasts 4 hours and only one exists at a time; demo personas keep the published password without a forced change; the CLI create-admin completes a pending setup.
+
+### Not done / known issues (v0.4)
+- The setup report is Markdown only (no PDF). Download progress lives in the app process (lost on restart).
+- Only the wizard's texts are in `frontend/src/lib/texts.ts`; older screens keep inline English.
+- The wizard's Models step embeds the full Providers screen for the optional cloud provider rather than a reduced form.
+- No browser check of the Setup assistant beyond "Remove demo data" (its other steps are the same components as the wizard, exercised by the e2e test, and their APIs are tested under `/api/admin/setup`).
+- Throw-away runs need the host network (Ollama on 127.0.0.1); `deploy/docker-compose.throwaway.yml` is committed for that.
+
+### Exact commands
+```bash
+cd ~/Desktop/enterprise-rag && git checkout feat/v0.4
+uv run pytest                                                          # 315 passed, 5 skipped (~4 min)
+uv run pytest tests/setup                                              # the setup suite (~40 s)
+ERAG_TEST_OLLAMA_DOWNLOAD=1 uv run pytest tests/setup/test_models_download.py   # real 46 MB download, then ollama rm
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run python scripts/check_licenses.py
+cd frontend && npm run build && cd ..
+NODE_PATH=.scratch/e2e/node_modules CHROMIUM=/usr/bin/chromium scripts/setup_e2e.sh            # empty install, then down -v
+MODE=demo NODE_PATH=.scratch/e2e/node_modules CHROMIUM=/usr/bin/chromium scripts/setup_e2e.sh  # demo path
+# Your running stack, when you decide to redeploy it (migration 0012 marks its setup completed; nothing re-seeded):
+APP_PORT=8088 docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.hostnet.yml up -d --build
+```
+
+### Decisions for the owner (v0.4)
+1. **Master key storage with `erag init`** (ADR 0034): the containers run as uid 10001, so the key goes into the owner-only env file as `ERAG_SECRETS_KEY`, plus an owner-only `master.key` copy to take off the machine. Acceptable, or prefer a root-run step that creates a Docker secret owned by uid 10001?
+2. **License wording** (ADR 0035): written from the README section; have a lawyer review it (in particular "running it inside a company for business purposes").
+3. **"Does it work?" after setup** (ADR 0041): shows sources (titles), model and classification but not the answer, with step-up. Keep, or restrict to the permissions preview only?
+4. **Every admin-created user must change the password**, including users created in Admin > Users (no opt-out). Demo personas are exempt. Confirm.
+5. **`ERAG_SEED_DEMO` now defaults to `false`** (ADR 0040). Your running demo is unaffected (migration 0012 records it as completed and type demo; the banner will appear on it after a redeploy, because demo data is present). Use `ERAG_SEED_DEMO=true` for a new one-command demo.
+6. **Token lifetime** 24 h from the first start, then replaced at the next start. Shorter or longer?
+7. **Commit attribution**: the commits end with `Co-Authored-By: Claude Opus 5.5` (the model that did the work) instead of the `Claude Sonnet 5.5` line in the instructions; amend if you need the other line.
+8. Push, PR and tag are left to you, as instructed.
+
 ## v0.3, branch `feat/v0.3` (built autonomously overnight, not pushed)
 
 Plan: [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md). Branch created from `main` (d615639). Open questions became ADRs from 0026 on. Sections below are per release (R6 to R9) and are updated at each release boundary.

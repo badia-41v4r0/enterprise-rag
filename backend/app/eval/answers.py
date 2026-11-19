@@ -2,7 +2,7 @@
 the retrieved context, check its citations against the expected documents, and ask the same local model whether
 every statement is supported by the sources. Indicative only: model judgements are noisy and never gate CI.
 
-Only a local provider may be used: evaluation sets and sources are confidential (ADR 0040).
+Only a local provider may be used: evaluation sets and sources are confidential (ADR 0048).
 """
 
 from __future__ import annotations

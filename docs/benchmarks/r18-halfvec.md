@@ -5,7 +5,7 @@ persona), strict mode (recorded bge-m3 embeddings, no Ollama), PostgreSQL 16.15,
 
 ## halfvec against float32
 
-Same retrieval as the R13 baseline (vector leg only, no reranker), before and after migration 0018 moved
+Same retrieval as the R13 baseline (vector leg only, no reranker), before and after migration 0019 moved
 `chunks.embedding` from `vector(1024)` to `halfvec(1024)`:
 
 | metric | float32 (baseline) | halfvec | delta |

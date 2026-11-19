@@ -1,6 +1,6 @@
 # Metrics reference
 
-EnterpriseRAG exposes Prometheus metrics on an **internal** listener (ADR 0044):
+EnterpriseRAG exposes Prometheus metrics on an **internal** listener (ADR 0052):
 
 | Process | Address | Setting |
 |---|---|---|

@@ -1,4 +1,4 @@
-"""`erag eval ...`: generate, prepare, run, compare, baseline, gate and embed-cache (ADR 0040)."""
+"""`erag eval ...`: generate, prepare, run, compare, baseline, gate and embed-cache (ADR 0048)."""
 
 from __future__ import annotations
 
@@ -208,7 +208,7 @@ def _cmd_embed_cache(args: argparse.Namespace) -> int:
 
 
 def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    sp = sub.add_parser("eval", help="permission-aware retrieval evaluation (ADR 0040)").add_subparsers(
+    sp = sub.add_parser("eval", help="permission-aware retrieval evaluation (ADR 0048)").add_subparsers(
         dest="eval_cmd", required=True
     )
     p = sp.add_parser("generate", help="regenerate the evaluation corpus and the generated questions")

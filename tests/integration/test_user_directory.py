@@ -170,6 +170,9 @@ async def test_import_dry_run_then_apply_with_temporary_passwords(
     # The temporary password works, and it is not in the audit log.
     fresh = httpx.AsyncClient(transport=client._transport, base_url=str(client.base_url))
     await login(fresh, "new1@x.test", created["temporary_password"])
+    me = (await fresh.get("/api/auth/me")).json()
+    assert me["must_change_password"] is True  # a temporary password (ADR 0037)
+    assert (await fresh.get("/api/containers")).status_code == 403  # nothing else works until it is changed
     await fresh.aclose()
     entry = await db.scalar(select(AuditLog).where(AuditLog.action == "admin.user.import"))
     assert entry is not None and created["temporary_password"] not in str(entry.details)

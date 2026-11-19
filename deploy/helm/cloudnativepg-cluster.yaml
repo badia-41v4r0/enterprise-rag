@@ -27,7 +27,7 @@ spec:
       shared_buffers: 4GB
       effective_cache_size: 12GB
       max_connections: "300"
-      archive_timeout: 5min # RPO 15 minutes (ADR 0043)
+      archive_timeout: 5min # RPO 15 minutes (ADR 0051)
   resources:
     requests: { cpu: "2", memory: 16Gi }
     limits: { memory: 16Gi }
