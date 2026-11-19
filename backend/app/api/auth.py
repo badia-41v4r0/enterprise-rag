@@ -13,6 +13,7 @@ from app.api.deps import AuthContext, get_auth, get_pending_mfa, recently_authen
 from app.authz.policy import EffectivePermissions, content_containers, effective_permissions
 from app.core.config import get_settings
 from app.core.db import get_db
+from app.core.metrics import LOGIN_FAILURES, STEP_UP_FAILURES
 from app.core.ratelimit import RateLimiter
 from app.core.security import new_token, sha256_hex, verify_password
 from app.models import Session, User
@@ -127,6 +128,7 @@ async def login(body: LoginIn, request: Request, response: Response, db: AsyncSe
     ok = verify_password(user.password_hash if user else None, body.password)
     if user is None or not ok or not user.is_active:
         audit(db, "auth.login", user_id=user.id if user else None, resource=f"email:{email}", decision="deny")
+        LOGIN_FAILURES.inc(step="password")
         await db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
@@ -175,6 +177,7 @@ async def mfa_verify(
     used_recovery = bool(body.recovery_code) and not body.code
     if not await _check_second_factor(db, user, body):
         audit(db, "auth.mfa", user_id=user.id, decision="deny")
+        LOGIN_FAILURES.inc(step="mfa")
         await db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid code")
     await db.delete(sess)
@@ -222,6 +225,7 @@ async def step_up(body: StepUpIn, auth: AuthContext = Depends(get_auth), db: Asy
         ok = bool(body.password) and verify_password(user.password_hash, str(body.password))
     if not ok:
         audit(db, "auth.step_up", user_id=user.id, decision="deny")
+        STEP_UP_FAILURES.inc()
         await db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Re-authentication failed")
     auth.session.reauth_at = datetime.now(UTC)

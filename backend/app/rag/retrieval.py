@@ -10,6 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policy import EffectivePermissions, can_read_document
+from app.core.metrics import ACL_MISMATCHES, RERANKER_FALLBACKS
+from app.core.tracing import stage
 from app.ingestion.embedder import Embedder
 from app.models import Document
 from app.rag.fusion import rrf
@@ -82,6 +84,7 @@ class Retriever:
     async def _recheck(self, perms: EffectivePermissions, hits: list[VectorHit], **kw: object) -> RetrievalResult:
         result = await recheck(self.db, perms, hits)
         if result.dropped_chunk_ids:
+            ACL_MISMATCHES.inc(len(result.dropped_chunk_ids))  # expected 0; alerted (deploy/monitoring)
             audit(
                 self.db,
                 "retrieval.acl_recheck_mismatch",
@@ -113,14 +116,22 @@ class Retriever:
                 vector_min_score=min_score if min_score is not None else cfg.vector_min_score,
             )
         if vector is None:
-            vector = (await self.embedder.embed([query]))[0]
+            with stage("embed", texts=1):
+                vector = (await self.embedder.embed([query]))[0]
         access = AccessFilter.from_permissions(perms)
         use_reranker = bool(cfg.reranker)
         if cfg.mode == "vector" and not use_reranker:
-            return await self.retrieve_by_vector(perms, vector, cfg.final_k, cfg.vector_min_score)
+            with stage("vector", k=cfg.final_k, containers=len(access.container_ids)):
+                return await self.retrieve_by_vector(perms, vector, cfg.final_k, cfg.vector_min_score)
 
-        vector_hits = await self.store.search(vector, access, cfg.vector_k)
-        text_hits = await self.store.search_text(query, access, cfg.text_k) if cfg.mode == "hybrid" else []
+        with stage("vector", k=cfg.vector_k, containers=len(access.container_ids)) as span:
+            vector_hits = await self.store.search(vector, access, cfg.vector_k)
+            span.set_attribute("erag.hits", len(vector_hits))
+        text_hits = []
+        if cfg.mode == "hybrid":
+            with stage("fulltext", k=cfg.text_k) as span:
+                text_hits = await self.store.search_text(query, access, cfg.text_k)
+                span.set_attribute("erag.hits", len(text_hits))
         fused = rrf(vector_hits, text_hits, k=cfg.rrf_k, vector_weight=cfg.vector_weight, text_weight=cfg.text_weight)
         legs = {"vector": len(vector_hits), "text": len(text_hits)}
         checked = await self._recheck(perms, [c.hit for c in fused], mode=cfg.mode, legs=legs)
@@ -131,9 +142,11 @@ class Retriever:
         if use_reranker and candidates:
             pool = candidates[: cfg.rerank_candidates]
             try:
-                scores = await rerank(cfg.reranker, query, [_rerank_text(c.hit) for c in pool])
+                with stage("rerank", model=cfg.reranker, candidates=len(pool)):
+                    scores = await rerank(cfg.reranker, query, [_rerank_text(c.hit) for c in pool])
             except RerankerUnavailable as exc:
                 fallback = str(exc)
+                RERANKER_FALLBACKS.inc()
             else:
                 for c, s in zip(pool, scores, strict=True):
                     c.hit.score = s

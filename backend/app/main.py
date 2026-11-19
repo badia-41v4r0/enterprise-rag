@@ -30,19 +30,26 @@ from app.api import (
 from app.core.config import get_settings, warn_removed_settings
 from app.core.db import dispose_engine
 from app.core.logging import configure_logging
+from app.core.metrics import start as start_metrics
 from app.core.middleware import SecurityHeadersMiddleware
-from app.services import maintenance
+from app.core.tracing import configure_tracing
+from app.services import genqueue, maintenance
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    s = get_settings()
     housekeeping = asyncio.create_task(maintenance.loop(), name="maintenance")
+    metrics_server = await start_metrics(s.metrics_host, s.metrics_port)
     try:
         yield
     finally:
         housekeeping.cancel()
         with suppress(asyncio.CancelledError):
             await housekeeping
+        if metrics_server is not None:
+            metrics_server.close()
+        await genqueue.listener.close()
         await dispose_engine()
 
 
@@ -50,6 +57,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     settings.check_secrets()
     configure_logging(settings.log_level, settings.log_json)
+    configure_tracing(settings.otel_endpoint, settings.otel_service_name)
     warn_removed_settings()
 
     app = FastAPI(title="EnterpriseRAG", version="0.1.0.dev0", lifespan=lifespan)

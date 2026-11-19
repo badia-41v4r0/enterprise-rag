@@ -53,6 +53,30 @@ const useTools = () => useQuery({ queryKey: ["tools"], queryFn: () => api<ToolRo
 
 // --- Roles ---------------------------------------------------------------------------------------
 
+function RolePriority({ role }: { role: RoleRow }) {
+  const inv = useInvalidate();
+  const [value, setValue] = useState(String(role.priority ?? 0));
+  const save = useMutation({
+    mutationFn: (priority: number) => api(`/api/admin/roles/${role.id}`, { method: "PATCH", body: json({ priority }) }),
+    onSuccess: () => inv("roles"),
+  });
+  return (
+    <Input
+      className="w-16"
+      type="number"
+      min={-100}
+      max={100}
+      value={value}
+      aria-label={`queue priority of ${role.name}`}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        const n = Number(value);
+        if (Number.isInteger(n) && n !== (role.priority ?? 0)) save.mutate(n);
+      }}
+    />
+  );
+}
+
 const TEMPLATES = [
   { id: "", label: "no template" },
   { id: "reader", label: "Reader (read)" },
@@ -161,6 +185,7 @@ function Roles() {
               <Th>Role</Th>
               <Th>Users</Th>
               <Th>Grants</Th>
+              <Th title="Generation queue: when every model slot is busy, higher goes first">Priority</Th>
               <Th>Actions</Th>
             </tr>
           </thead>
@@ -171,6 +196,9 @@ function Roles() {
                   <td>{r.name}</td>
                   <td>{r.user_count}</td>
                   <td>{r.grant_count}</td>
+                  <td>
+                    <RolePriority role={r} />
+                  </td>
                   <td className="flex gap-1">
                     <Button variant="outline" size="sm" onClick={() => rename(r)}>
                       Rename
@@ -195,7 +223,7 @@ function Roles() {
                 </tr>
                 {members === r.id && (
                   <tr>
-                    <td colSpan={4} className="bg-muted/50">
+                    <td colSpan={5} className="bg-muted/50">
                       <div className="flex flex-wrap gap-3 text-xs">
                         {users.data?.map((u) => (
                           <label key={u.id} className="flex items-center gap-1">

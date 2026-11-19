@@ -47,6 +47,10 @@ x-app-env: &app-env
   # Demo: seed ACME Corp on startup (idempotent). Set to false for a real installation.
   ERAG_SEED_DEMO: ${ERAG_SEED_DEMO:-true}
   ERAG_DEMO_PASSWORD: ${ERAG_DEMO_PASSWORD:-acme-demo-password}
+  # Observability (R19): metrics on 9464 (app) and 9465 (worker) inside the compose network only, never
+  # published; point your Prometheus at them. Traces: set ERAG_OTEL_ENDPOINT (needs the OTel SDK).
+  ERAG_METRICS_HOST: 0.0.0.0
+  ERAG_OTEL_ENDPOINT: ${ERAG_OTEL_ENDPOINT:-}
 
 services:
   postgres:

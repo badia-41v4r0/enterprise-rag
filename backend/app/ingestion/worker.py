@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import logging
 import signal
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -24,6 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import get_settings
 from app.core.db import get_sessionmaker
+from app.core.metrics import INGEST_JOBS, INGEST_SECONDS, REAPED
+from app.core.metrics import start as start_metrics
 from app.ingestion.blobstore import BlobStore, get_blobstore
 from app.ingestion.embedder import Embedder, get_ingest_embedder
 from app.ingestion.indexer import index_version
@@ -96,6 +99,7 @@ async def reap(db: AsyncSession, now: datetime | None = None) -> int:
     await db.commit()
     n = int(jobs.rowcount) + int(runs.rowcount)  # type: ignore[attr-defined]
     if n:
+        REAPED.inc(n)
         log.warning("reaper re-queued %d stale jobs or sync runs", n)
     return n
 
@@ -119,10 +123,13 @@ async def process_one(
     try:
         async with sessionmaker() as db:
             try:
+                started = time.perf_counter()
                 n = await index_version(db, version_id, blobs, embedder)
                 job = await db.get(IngestionJob, job_id)
                 assert job is not None
                 job.state = JobState.done
+                INGEST_JOBS.inc(outcome="done")
+                INGEST_SECONDS.observe(time.perf_counter() - started)
                 job.error = None
                 job.locked_until = None
                 audit(db, "ingestion.indexed", resource=f"version:{version_id}", details={"chunks": n})
@@ -139,8 +146,10 @@ async def process_one(
                 if not permanent and job.attempts < s.job_max_attempts:
                     job.state = JobState.queued
                     job.next_attempt_at = datetime.now(UTC) + backoff(job.attempts)
+                    INGEST_JOBS.inc(outcome="retry")
                 else:
                     job.state = JobState.failed if permanent else JobState.dead
+                    INGEST_JOBS.inc(outcome=job.state.value)
                     if version is not None:
                         version.status = VersionStatus.failed
                         version.error = job.error
@@ -197,6 +206,9 @@ async def run_worker(once: bool = False) -> None:
             with contextlib.suppress(NotImplementedError):
                 loop.add_signal_handler(sig, request_stop)
     log.info("worker started", extra={"concurrency": settings.worker_concurrency})
+    metrics_server = await start_metrics(
+        settings.metrics_host, settings.metrics_port + 1 if settings.metrics_port else 0
+    )
     from app.connectors.sync import process_next, schedule_due
 
     last_schedule = 0.0
@@ -220,4 +232,6 @@ async def run_worker(once: bool = False) -> None:
             return
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(_stopping.wait(), settings.worker_poll_seconds)
+    if metrics_server is not None:
+        metrics_server.close()
     log.info("worker stopped")

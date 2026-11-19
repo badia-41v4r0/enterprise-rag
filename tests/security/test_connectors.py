@@ -50,8 +50,8 @@ ROOT = Path(os.environ["ERAG_CONNECTOR_ROOTS"])
 
 
 @pytest.fixture(autouse=True)
-def _reset_limiter() -> None:
-    login_limiter.reset()
+async def _reset_limiter() -> None:
+    await login_limiter.reset()
 
 
 @pytest.fixture

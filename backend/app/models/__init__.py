@@ -686,6 +686,8 @@ class AuditLog(Base):
     resource: Mapped[str] = mapped_column(String(300), default="")
     decision: Mapped[str] = mapped_column(String(20), default="allow")
     details: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    # The request that wrote it (R19): the same id as in the logs and the trace.
+    correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
 
 # --- Evaluation (ADR 0040) ----------------------------------------------------------------------------

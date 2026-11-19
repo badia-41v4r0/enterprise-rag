@@ -183,6 +183,8 @@ export interface ProviderRow {
   tokens_per_day: number | null;
   tokens_per_month: number | null;
   max_turn_tokens: number | null;
+  max_concurrency?: number | null;
+  endpoints?: { id: string; base_url: string; max_concurrency: number | null; enabled: boolean }[];
   today: UsageFigures;
   month: UsageFigures;
   available: boolean;
@@ -241,6 +243,7 @@ export interface RoleRow {
   description: string;
   user_count: number;
   grant_count: number;
+  priority?: number;
 }
 export type AccessLevel = "none" | "read" | "contribute" | "manage";
 export interface EffectivePermissions {

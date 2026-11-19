@@ -2,7 +2,7 @@
 
 The HNSW index is rebuilt with `halfvec_cosine_ops`. On a large installation this is a long, locking
 operation: run it in a maintenance window, with `maintenance_work_mem` raised and
-`max_parallel_maintenance_workers` set (docs/operations/scale.md). Recall is checked on the evaluation set
+`max_parallel_maintenance_workers` set (docs/operations/capacity.md). Recall is checked on the evaluation set
 (docs/benchmarks/r18-halfvec.md).
 
 Revision ID: 0018
@@ -20,6 +20,10 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 DIM = 1024
+
+# Not expand/contract: the column type changes in place, so a replica of the previous release (which binds
+# `vector` parameters) cannot run against the new schema. Upgrade with the app stopped (docs/operations).
+REQUIRES_DOWNTIME = "chunks.embedding changes type (vector -> halfvec) and the HNSW index is rebuilt"
 
 
 def upgrade() -> None:

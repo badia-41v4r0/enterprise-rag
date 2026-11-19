@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policy import EffectivePermissions, can_read_document
 from app.core.config import Settings, get_settings
+from app.core.metrics import TOOL_DENIALS
 from app.llm.providers.base import ToolCall, ToolSpec
 from app.mcp.gateway import GatewayError, McpGateway, ToolChanged
 from app.mcp.registry import SERVERS, ServerSpec, model_tool_name, split_model_tool_name
@@ -134,6 +135,23 @@ class McpToolRuntime:
     def _deny(
         self, db: AsyncSession, user: User, call: ToolCall, reason: str, extra: dict[str, Any] | None = None
     ) -> ToolOutcome:
+        # A bounded label for the metric (the reason itself can carry server text): see the metrics reference.
+        low = reason.lower()
+        category = next(
+            (
+                c
+                for key, c in (
+                    ("rate limit", "rate_limit"),
+                    ("unavailable", "unavailable"),
+                    ("permission", "permission"),
+                    ("not allowed", "permission"),
+                    ("classification", "classification"),
+                )
+                if key in low
+            ),
+            "other",
+        )
+        TOOL_DENIALS.inc(reason=category)
         audit(
             db,
             "tool.call",

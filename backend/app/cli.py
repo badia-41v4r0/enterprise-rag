@@ -209,6 +209,39 @@ def _cmd_maintenance(_: argparse.Namespace) -> int:
     return asyncio.run(run())
 
 
+def _cmd_backup_verify(args: argparse.Namespace) -> int:
+    import json
+
+    async def run() -> dict[str, object]:
+        from app.core.db import dispose_engine, get_sessionmaker
+        from app.ingestion.blobstore import get_blobstore
+        from app.services.audit import audit
+        from app.services.backup import verify
+
+        try:
+            async with get_sessionmaker()() as db:
+                report = await verify(db, get_blobstore(), sample=args.sample, full=args.full)
+                audit(
+                    db,
+                    "backup.verify",
+                    decision="allow" if report.ok else "error",
+                    details={c.name: c.ok for c in report.checks},
+                )
+                await db.commit()
+                return report.as_dict()
+        finally:
+            await dispose_engine()
+
+    result = asyncio.run(run())
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        for c in result["checks"]:  # type: ignore[attr-defined]
+            print(f"{'ok  ' if c['ok'] else 'FAIL'} {c['name']:<11} {c['detail']}")
+        print("backup verify: " + ("passed" if result["ok"] else "FAILED"))
+    return 0 if result["ok"] else 1
+
+
 def _cmd_blobs_migrate(_: argparse.Namespace) -> int:
     from app.core.config import get_settings
     from app.ingestion.blobstore import LocalBlobStore, migrate_blobs
@@ -305,6 +338,15 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("maintenance", help="delete expired/idle sessions and apply conversation retention now")
     p.set_defaults(func=_cmd_maintenance)
+
+    sp = sub.add_parser("backup", help="backup checks").add_subparsers(dest="backup_cmd", required=True)
+    p = sp.add_parser(
+        "verify", help="check schema, master key, blobs and embeddings of this installation (e.g. after a restore)"
+    )
+    p.add_argument("--sample", type=int, default=50, help="current versions whose blob is checked (default 50)")
+    p.add_argument("--full", action="store_true", help="check every blob")
+    p.add_argument("--json", action="store_true", help="print the report as JSON")
+    p.set_defaults(func=_cmd_backup_verify)
 
     sp = sub.add_parser("blobs", help="blob storage").add_subparsers(dest="blobs_cmd", required=True)
     p = sp.add_parser("migrate", help="copy local blobs to S3 (configured with ERAG_S3_*), verifying each hash")

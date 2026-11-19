@@ -36,9 +36,9 @@ PLAINTEXT = "sk-or-v1-PLAINTEXT-CANARY-0123456789abcdef"
 
 
 @pytest.fixture(autouse=True)
-def _reset_limiters() -> None:
-    login_limiter.reset()
-    mfa_limiter.reset()
+async def _reset_limiters() -> None:
+    await login_limiter.reset()
+    await mfa_limiter.reset()
 
 
 async def _admin(db: AsyncSession, client: httpx.AsyncClient, email: str = "admin@acme.test") -> uuid.UUID:

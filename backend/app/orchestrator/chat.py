@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.policy import EffectivePermissions, readable_document_ids
 from app.core.config import Settings, get_settings
 from app.core.db import get_sessionmaker
+from app.core.metrics import COST_USD, GENERATIONS, LIMIT_REFUSALS, QUEUE_TIMEOUTS, STAGE_LATENCY, TOKENS
+from app.core.tracing import stage
 from app.ingestion.embedder import Embedder
 from app.llm.prompt_builder import NO_INFO_ANSWER, HistoryTurn, build_messages, render_tool_result
 from app.llm.providers.base import Done, LLMProvider, ProviderError, TextDelta, ToolCall, ToolCallsEvent, ToolSpec
@@ -312,39 +315,45 @@ class ChatOrchestrator:
                         endpoints = getattr(provider, "endpoints", None) or [genqueue.Endpoint(provider.model_id, None)]
                         priority = await self._priority(perms) if genqueue.limited(endpoints) else 0
                         lease: genqueue.Lease | None = None
+                        waited = time.perf_counter()
                         async for slot in genqueue.acquire(provider.provider, endpoints, user.id, priority=priority):
                             if isinstance(slot, genqueue.Lease):
                                 lease = slot
                             else:
                                 yield {"type": "queue", "position": slot}
                         assert lease is not None
+                        if lease.id is not None:
+                            STAGE_LATENCY.observe(time.perf_counter() - waited, stage="queue_wait")
                         await self._audit_egress(user, provider, classification, prep, iteration)
                         models_used.append(provider.model_id)
                         usage: dict[str, Any] = {}
                         target = {"endpoint": lease.endpoint} if lease.id is not None else {}
                         try:
                             async with genqueue.held(lease):
-                                async for ev in provider.stream_chat(
-                                    messages,
-                                    tools=offer_tools,
-                                    classification=classification,
-                                    max_tokens=lim.max_output_tokens,
-                                    **target,
-                                ):
-                                    if isinstance(ev, TextDelta):
-                                        step_text += ev.text
-                                        yield {"type": "delta", "text": ev.text}
-                                    elif isinstance(ev, ToolCallsEvent):
-                                        calls = ev.calls
-                                    elif isinstance(ev, Done):
-                                        usage = ev.usage
+                                with stage("generation", model=provider.model_id, step=iteration):
+                                    async for ev in provider.stream_chat(
+                                        messages,
+                                        tools=offer_tools,
+                                        classification=classification,
+                                        max_tokens=lim.max_output_tokens,
+                                        **target,
+                                    ):
+                                        if isinstance(ev, TextDelta):
+                                            step_text += ev.text
+                                            yield {"type": "delta", "text": ev.text}
+                                        elif isinstance(ev, ToolCallsEvent):
+                                            calls = ev.calls
+                                        elif isinstance(ev, Done):
+                                            usage = ev.usage
                         except ProviderError:
+                            GENERATIONS.inc(model=provider.model_id, outcome="error")
                             # Failed mid-stream: what was sent (and any partial answer) is counted, estimated.
                             await self._settle(
                                 pre, provider, lim, user, measure({}, lim, messages, offer_tools, len(step_text))
                             )
                             settled = True
                             raise
+                        GENERATIONS.inc(model=provider.model_id, outcome="tool_calls" if calls else "ok")
                         out_chars = len(step_text) + sum(len(c.name) + len(c.arguments) for c in calls)
                         used = measure(usage, lim, messages, offer_tools, out_chars)
                         await self._settle(pre, provider, lim, user, used)
@@ -395,10 +404,12 @@ class ChatOrchestrator:
                 refusal = exc.reason
             except BudgetExceeded as exc:
                 # A limit or quota: nothing was sent for this step. Shown as such, not as a model failure.
+                LIMIT_REFUSALS.inc(code=getattr(exc, "code", "limit_reached"))
                 await self.db.commit()  # keep the refused attempt in the daily request counter
                 yield {"type": "error", "code": getattr(exc, "code", "limit_reached"), "message": str(exc)}
             except genqueue.QueueTimeout as exc:
                 # Nothing was sent: every slot of the model stayed busy for the whole wait.
+                QUEUE_TIMEOUTS.inc(pool=provider.provider if provider is not None else "?")
                 await self.db.commit()
                 yield {"type": "error", "code": exc.code, "message": str(exc)}
             except ProviderError as exc:
@@ -458,6 +469,9 @@ class ChatOrchestrator:
     ) -> None:
         """Record the real usage and drop the reservation in one transaction: never counted twice or not at all."""
         await record_usage(self.db, provider=provider.provider, model=provider.model, user_id=user.id, measured=used)
+        COST_USD.inc(used.cost_usd, provider=provider.provider)
+        TOKENS.inc(used.prompt_tokens, provider=provider.provider, direction="in")
+        TOKENS.inc(used.completion_tokens, provider=provider.provider, direction="out")
         if lim.metered or lim.provider_monthly_usd is not None:
             await record_spend(self.db, provider.provider, used.cost_usd)
         await charge_pools(self.db, pre.caps, used.tokens, used.cost_usd)

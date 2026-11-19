@@ -2,7 +2,7 @@
 
 **Permission-aware RAG + MCP for enterprise generative AI.** A self-hosted reference implementation by [Badia Partners](https://badiapartners.com).
 
-> **Status: v0.5 in development** (branch `feat/v0.5`, on top of v0.3). Runnable end to end with a seeded demo company. Progress and verification notes: [`PROGRESS.md`](PROGRESS.md). Plans: [`docs/PLAN.md`](docs/PLAN.md) (MVP), [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md) (administration, connectors, MCP extensibility), [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md) (cost limits and quotas, paid models, model router), [`docs/PLAN-v0.4.md`](docs/PLAN-v0.4.md) (guided first-run setup, planned), [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (many users, hybrid search with a reranker and evaluation, scale and operations; R13 evaluation done).
+> **Status: v0.5 in development** (on top of v0.3). Runnable end to end with a seeded demo company. v0.5 adds many users in one company, hybrid search with a reranker and a permission-aware evaluation set, and scale and operations (R13 to R19 built; R20, the Helm chart and load tests, in progress). Progress and verification notes: [`PROGRESS.md`](PROGRESS.md). Plans: [`docs/PLAN.md`](docs/PLAN.md) (MVP), [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md) (administration, connectors, MCP extensibility), [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md) (cost limits and quotas, paid models, model router), [`docs/PLAN-v0.4.md`](docs/PLAN-v0.4.md) (guided first-run setup, planned), [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md).
 
 ## The idea
 
@@ -24,8 +24,12 @@ Most enterprise RAG and agent setups let the model see (or reach) more than the 
 - **Users:** an admin creates, edits, deactivates and, once deactivated, **deletes** users (Admin > Users; re-authentication required). Deleting removes the person's sessions, roles, personal quotas and conversations; the audit log and the token usage figures are kept ([ADR 0033](docs/adr/0033-delete-users.md)).
 - **MFA and step-up:** optional TOTP for every user with recovery codes; re-authentication within 5 minutes for sensitive admin actions (secrets, providers and the default model, connectors, MCP registration, admin promotion, MFA resets).
 - **Connectors:** `folder` (below allowed roots, no symlink escapes) and `web` (URLs or a sitemap, SSRF-guarded) sync into one container and inherit its permissions; scheduled or manual, with dry-run preview and run history.
-- **Ingestion:** PDF, DOCX, XLSX, HTML, Markdown and text; SHA-256 dedupe, versioning, a Postgres-backed job queue, local `bge-m3` embeddings.
-- **Authorized retrieval:** the user's permissions are resolved from PostgreSQL on every request and pushed into the pgvector query as a filter, then re-checked. Revocation is immediate.
+- **Ingestion:** PDF, DOCX, XLSX, HTML, Markdown and text; SHA-256 dedupe, versioning, local `bge-m3` embeddings. A Postgres-backed job queue with priorities (an upload before a connector sync), retries with backoff, dead letters with a Retry button, a heartbeat and a reaper, several jobs per worker and back-pressure on connectors. Blobs on local disk or any S3-compatible store.
+- **Authorized retrieval:** the user's permissions are resolved from PostgreSQL (cached per replica and invalidated in the same transaction as any change, so revocation stays immediate) and pushed into the search as a filter, then re-checked.
+- **Hybrid search with a reranker:** pgvector and Postgres full text under one authorization clause, reciprocal rank fusion, and a cross-encoder reranker inside the app process with a degraded mode ([ADR 0038](docs/adr/0038-hybrid-search-and-rank-fusion.md), [ADR 0039](docs/adr/0039-reranker-in-process.md)). Settings in Admin > Retrieval. Users who read little of the corpus get an exact search; everyone else an index-driven one.
+- **Many users in one company:** paginated and searchable user admin with filters, bulk actions and CSV import and export; a paginated, filterable audit log; idle and absolute session lifetimes and "sign out everywhere"; conversation retention; usage reports per role.
+- **Fair use across replicas:** rate limits shared through Postgres, budgets **reserved** before each model call (never overspent by concurrent requests), and a fair generation queue over pools of model endpoints: a free slot goes to the user with the fewest requests in flight, and the chat shows the queue position ([Fair use and capacity](#fair-use-and-capacity)).
+- **Operations:** stateless app replicas, PgBouncer support, Prometheus metrics with security alerts, correlation ids in logs, audit and traces, liveness and readiness, `erag backup verify` and a restore drill ([Operations](#operations-scaling-metrics-and-backups)).
 - **Retrieval evaluation:** a permission-aware question set asked as personas (expected documents, unanswerable questions, documents a persona must never get), an independent leakage oracle, recall/MRR/nDCG per tag, and a CI gate that fails on any leak or a quality drop ([Evaluation](#evaluation), [ADR 0040](docs/adr/0040-permission-aware-evaluation.md)).
 - **Classification routing:** after retrieval (and after every tool result) the effective classification decides which models may answer. Confidential data only ever goes to local models. OpenRouter is optional and bounded by the same budgets as any paid provider.
 - **Model providers from the admin panel:** add Ollama instances and any OpenAI-compatible API (OpenAI, Together, Groq, vLLM, LM Studio, ...), test the connection, discover models, and choose the default model for the chat. Locality is derived from the address (only private networks are local), clearance is capped by locality, keys live in the credential store, every provider is re-checked on every request, and paid APIs have a monthly ceiling and a daily request cap.
@@ -62,6 +66,12 @@ Open http://127.0.0.1:8000 and log in as `hr@acme.test`, `engineer@acme.test`, `
 
 ```bash
 uv run python scripts/demo_scenarios.py --base http://127.0.0.1:8000
+```
+
+Optionally install the reranker (129 MB, pinned by hash; nothing downloads by itself). Without it search uses the fused order and says so:
+
+```bash
+docker compose -f deploy/docker-compose.yml exec app erag models install mmarco-minilm-l12
 ```
 
 Set `APP_PORT` if port 8000 is taken. A bundled Ollama container exists behind `--profile ollama` (NVIDIA GPU via CDI; not verified, see [ADR 0006](docs/adr/0006-ollama-on-host.md)). The demo secrets and password are for local use only: see [Production settings](#production-settings).
@@ -148,6 +158,29 @@ The official API was built from TypeSafe's reference and has not yet been called
 
 OpenRouter also offers the Jev Router as a model that both routes and serves (`typesafe/jev-router`). Add it by typing `typesafe/jev-router` in **Add model** on the OpenRouter card, then **Price and limits** to set its options (cost tier `low`/`medium`/`high`, allowed and excluded model patterns, sent as OpenRouter's `jev-router` plugin). It sees the whole conversation, so it is cleared for **public** data only by default (a model can only lower its provider's clearance). A cost tier is a preference, not a price cap: OpenRouter's monthly ceiling, the request cap and quotas bound it, and since its price is not published the worst-case check cannot price it, so keep the ceiling low and prefer an allowed list of models whose prices you know. Not called for real in this release.
 
+### Users at company scale
+
+**Admin > Users** searches by name or email and filters by role, status and "never logged in", one page of 50 at a time, with the total. Select users (or a whole page) to add or remove a role, activate, deactivate (their sessions end at once) or sign them out everywhere; you are never deactivated by your own bulk action. **Export CSV** downloads the filtered list (cells that would be spreadsheet formulas are neutralized). **Import users from CSV** takes `email,display_name,roles` (roles separated by `;`): **Check** validates the whole file first and shows what would happen; **Apply** (re-authentication required) creates new users with a temporary password shown once, and adds roles to existing users (never removes them). Nobody becomes an administrator through a file.
+
+**Admin > Audit** pages through the log newest first and filters by action and resource prefix, decision and date range. **Usage by role** (Admin > Roles) gives requests, tokens and cost per role for any range of days, also as CSV.
+
+Sessions end after `ERAG_SESSION_IDLE_MINUTES` without use (default 120) and at most `ERAG_SESSION_TTL_HOURS` after login (12). Each user can **Sign out everywhere** from the Account page. Conversations without activity for `ERAG_CONVERSATION_RETENTION_DAYS` are deleted (default 0: keep), audited as counts only.
+
+### Fair use and capacity
+
+- **Rate limits** (login, MFA, chat, tools) hold across every replica ([ADR 0035](docs/adr/0035-shared-limits-in-postgres.md)).
+- **Budgets are reserved.** Before each model call the worst case is reserved on every budget and pool that applies, under locks taken in a fixed order, and settled at the real cost when the answer ends; a request that fails half-way still records what it used ([ADR 0036](docs/adr/0036-budget-reservations.md)).
+- **Endpoint pools and the generation queue** ([ADR 0037](docs/adr/0037-endpoint-pools-and-fair-generation-queue.md)). Give a provider a **maximum concurrency** and extra **endpoints** (one Ollama or vLLM per GPU; Admin > Providers; each must have the provider's locality). When every slot is busy, requests wait: a slot goes first to roles with a higher **priority** (Admin > Roles), then to the user with the fewest generations in flight, then to the oldest request. The chat shows "waiting, position N"; after `ERAG_GENERATION_QUEUE_TIMEOUT_SECONDS` (120) the request stops with a clear message. Providers without a limit skip the queue entirely.
+- **Embeddings:** chat questions can use their own endpoint (`ERAG_QUERY_EMBED_URL`) so a large ingestion never slows the chat; ingestion spreads over `ERAG_INGEST_EMBED_URLS`.
+- Sizing: [`docs/operations/capacity.md`](docs/operations/capacity.md).
+
+## Operations: scaling, metrics and backups
+
+- **Scaling** ([ADR 0041](docs/adr/0041-horizontal-scaling-pgbouncer-and-advisory-locks.md)): app replicas and workers share everything through Postgres; singleton tasks (connector scheduler, maintenance) elect themselves with advisory locks. `docker compose --profile scale up -d` adds PgBouncer, a second app and a second worker. Behind PgBouncer (transaction mode) set `ERAG_DB_PGBOUNCER=true` and a direct `ERAG_DB_DIRECT_URL` for the queue's LISTEN.
+- **Storage** ([ADR 0042](docs/adr/0042-s3-blob-store-and-vector-scaling-path.md)): `ERAG_BLOB_BACKEND=s3` with `ERAG_S3_*` for any S3-compatible store; `erag blobs migrate --to s3` moves an existing installation. Embeddings are stored as `halfvec` (half the size, the same retrieval quality on the evaluation set). **Upgrading to this release rebuilds the vector index: stop the app during the migration.**
+- **Metrics and alerts** ([ADR 0044](docs/adr/0044-observability-without-content.md)): Prometheus metrics on an internal port (9464 app, 9465 worker), alert rules in [`deploy/monitoring/alerts.yml`](deploy/monitoring/alerts.yml), reference in [`docs/operations/metrics.md`](docs/operations/metrics.md). No metric, log field or span carries a question or document text. `/health/live` and `/health/ready` for probes. Every response has an `X-Request-ID` that is also in the logs, on the audit entries and on the traces.
+- **Backups** ([ADR 0043](docs/adr/0043-backup-and-recovery.md), [`docs/operations/backup.md`](docs/operations/backup.md)): pgBackRest with point-in-time recovery (RPO 15 min, RTO 4 h), blobs in a versioned bucket, keys kept apart from the backups. After any restore run `erag backup verify` (schema, master key, blobs, embeddings); rehearse with `scripts/restore_drill.py`.
+
 ## Configuration reference (new in v0.2)
 
 All settings use the `ERAG_` prefix (full list in [`backend/app/core/config.py`](backend/app/core/config.py)).
@@ -171,6 +204,18 @@ All settings use the `ERAG_` prefix (full list in [`backend/app/core/config.py`]
 | `ERAG_RUNNER_MOUNT_ROOTS` | none | Host folders an MCP may mount read-only. |
 | `ERAG_RUNNER_IDLE_MINUTES`, `ERAG_RUNNER_MAX_CPUS`, `ERAG_RUNNER_MAX_MEMORY_MB`, `ERAG_RUNNER_DOCKER_SOCKET` | `15`, `2`, `2048`, `/var/run/docker.sock` | Idle shutdown, per-MCP resource ceilings, engine socket. |
 | `ERAG_EVAL_DATABASE_URL`, `ERAG_BENCH_DATABASE_URL` | the app's server, databases `erag_eval` / `erag_bench` | Where `erag eval` and the benchmark scripts work. They refuse to run against the application database, because the evaluation corpus creates personas and confidential documents (ADR 0040). |
+| `ERAG_SESSION_TTL_HOURS`, `ERAG_SESSION_IDLE_MINUTES` | `12`, `120` | Absolute session lifetime; idle timeout (0 turns it off). |
+| `ERAG_CONVERSATION_RETENTION_DAYS` | `0` (keep) | Delete conversations with no activity for this many days. |
+| `ERAG_MAINTENANCE_INTERVAL_MINUTES` | `15` | Expired sessions, retention, expired reservations and leases (one replica at a time). Also `erag maintenance`. |
+| `ERAG_GENERATION_QUEUE_TIMEOUT_SECONDS` | `120` | How long a chat request waits for a model slot. |
+| `ERAG_QUERY_EMBED_URL` | the Ollama URL | Embedding endpoint for chat questions (keep it free of bulk ingestion). |
+| `ERAG_INGEST_EMBED_URLS`, `ERAG_INGEST_EMBED_CONCURRENCY`, `ERAG_EMBED_BATCH_SIZE` | the Ollama URL, `2`, `16` | Embedding pool for ingestion (comma-separated), requests in flight per worker, texts per request. |
+| `ERAG_WORKER_CONCURRENCY`, `ERAG_JOB_MAX_ATTEMPTS`, `ERAG_JOB_RETRY_BASE_SECONDS`, `ERAG_JOB_LEASE_SECONDS` | `2`, `3`, `30`, `120` | Jobs in parallel per worker; attempts before a dead letter; first retry delay (doubles, at most 1 h); heartbeat lease of a running job or sync. |
+| `ERAG_INGEST_QUEUE_MAX`, `ERAG_INGEST_MAX_BLOB_MB` | `5000`, `200` | Connectors stop enqueueing above this queue depth; files above this size are refused before being read. `ERAG_CONNECTOR_MAX_ITEMS` is now the default of each connector's own `max_items`, not a global ceiling. |
+| `ERAG_BLOB_BACKEND`, `ERAG_S3_ENDPOINT`, `ERAG_S3_BUCKET`, `ERAG_S3_REGION`, `ERAG_S3_PREFIX`, `ERAG_S3_ACCESS_KEY_ID`, `ERAG_S3_SECRET_ACCESS_KEY`, `ERAG_S3_SSE` | `local`, ..., `us-east-1`, ..., `AES256` | Blob storage. `s3` works with any S3-compatible server (tested with SeaweedFS). `ERAG_S3_SSE` empty for a server that rejects the encryption header. |
+| `ERAG_DB_POOL_SIZE`, `ERAG_DB_MAX_OVERFLOW`, `ERAG_DB_PGBOUNCER`, `ERAG_DB_DIRECT_URL` | `10`, `10`, `false`, the database URL | Connection pool per process; PgBouncer transaction-mode compatibility; a direct connection for LISTEN/NOTIFY. |
+| `ERAG_METRICS_HOST`, `ERAG_METRICS_PORT` | `127.0.0.1`, `9464` (worker: +1) | Internal Prometheus endpoint (0 turns it off). Compose binds it inside the project network, unpublished. |
+| `ERAG_OTEL_ENDPOINT`, `ERAG_OTEL_SERVICE_NAME` | unset, `enterprise-rag` | OTLP endpoint for traces (needs `opentelemetry-sdk` and the OTLP exporter installed). |
 
 ### Production settings
 
@@ -188,7 +233,9 @@ Known boundaries, documented rather than hidden:
 - **Admin account compromise remains the largest risk.** Mitigations: optional MFA, step-up for sensitive actions, audit, the runner's confinement. The audit log lives in the same database (no tamper evidence).
 - **Container isolation is not a VM**; runner MCPs get network `none` only (allowlisted egress is not implemented).
 - **Admin-added cloud providers are trusted with what their clearance allows.** The software does not verify their retention or training policies, and a public endpoint can never be declared local.
-- **Budgets are checked, not reserved.** Concurrent requests can each pass the worst-case check and overshoot a budget or a pool by at most their own worst cases. A provider whose price is unknown and that does not report cost is bounded by requests and tokens, not money.
+- **A provider whose price is unknown** and that does not report cost is bounded by requests and tokens, not money. (Budgets themselves are now reserved: concurrent requests cannot overshoot them.)
+- **Rate-limit counters are not durable.** They live in an UNLOGGED table: a database crash resets them to zero. Money (budget reservations, usage) is always logged.
+- **Permission changes made with raw SQL** outside the application do not invalidate the permission cache; such scripts must increase `authz_state.epoch` themselves (or restart the app).
 - **The model can still be wrong** or repeat what it was legitimately given.
 
 ## Evaluation
@@ -217,7 +264,10 @@ uv run erag eval baseline       # store eval/baselines/acme.json (a deliberate c
 - **Leakage** is checked twice: against `must_not_see`, and against an oracle built from the declared structure (not from the permission code). Any leak fails the run.
 - **Metrics:** recall@5/8, MRR and nDCG@10 at document level (a document's rank is its first chunk's rank, so recall@8 means "in the chat's context"), abstention on unanswerable questions, per-tag figures and latency.
 - **No Ollama in CI:** `eval/cache/bge-m3.bin` holds the real `bge-m3` embeddings of the corpus and the questions, keyed by text hash. Live and recorded runs give identical numbers. After changing the corpus, the chunker or the questions, re-record them on a machine with Ollama: `uv run erag eval embed-cache` (or `erag eval prepare --live`), and commit the file. `uv run erag eval generate` rewrites the generated corpus and questions.
-- **Current baseline** (vector search only, R13): recall@8 0.980, MRR 0.899, nDCG@10 0.921, abstention 0.307, no leaks. The weak spots are exact identifiers in Spanish contracts (MRR 0.57 to 0.76 on duration and payment-term questions) and abstention: vector similarity returns *something* for most questions that have no answer. These are what hybrid search and the reranker (R14) must improve.
+- **Baseline** (vector search only, R13): recall@8 0.980, MRR 0.899, nDCG@10 0.921, abstention 0.307, no leaks. The weak spots were exact identifiers in Spanish contracts and abstention.
+- **Hybrid search without the reranker** (the fallback, measured 2026-11-18): recall@8 1.000, MRR 0.983, nDCG@10 0.988, abstention 0.287, no leaks; the gate passes. `halfvec` storage gives exactly the baseline figures ([`docs/benchmarks/r18-halfvec.md`](docs/benchmarks/r18-halfvec.md)).
+- **Override a retrieval setting for one run:** `erag eval run --retrieval mode=vector --retrieval reranker=`.
+- **Feedback:** thumbs up or down on every answer; a thumbs down can be proposed as an evaluation item, reviewed in Admin > Evaluation by an administrator who can read every cited source, and run against the live database as the company's own set.
 - **At scale:** `scripts/synth_corpus.py --chunks N` loads synthetic vectors into `erag_bench`, and `scripts/bench_search.py --out docs/benchmarks/<name>.md` measures filtered search latency and recall for users who see 90, 10 and 1 percent of the corpus.
 
 ## Development
@@ -232,7 +282,9 @@ uv run erag eval prepare && uv run erag eval gate           # retrieval quality 
 cd frontend && npm ci && npm run build
 ```
 
-Useful commands: `uv run erag create-admin --email you@example.com`, `uv run erag seed-acme`, `uv run erag worker`, `uv run erag secrets init|set|list|rotate-master`, `uv run erag reset-mfa --email ...`, `uv run python -m app.runner.service`, `uv run erag eval prepare|run|compare|gate|baseline|embed-cache|generate`. Architecture decisions are in [`docs/adr/`](docs/adr/README.md).
+Useful commands: `uv run erag create-admin --email you@example.com`, `uv run erag seed-acme`, `uv run erag worker`, `uv run erag secrets init|set|list|rotate-master`, `uv run erag reset-mfa --email ...`, `uv run python -m app.runner.service`, `uv run erag eval prepare|run|compare|gate|baseline|embed-cache|generate`, `uv run erag models list|install <name>`, `uv run erag reindex [--container slug] [--all]`, `uv run erag maintenance`, `uv run erag blobs migrate --to s3`, `uv run erag backup verify [--full]`, `uv run python scripts/restore_drill.py --help`. Architecture decisions are in [`docs/adr/`](docs/adr/README.md).
+
+Tests against real external servers run when their address is given: `ERAG_TEST_S3_ENDPOINT` (SeaweedFS, see `tests/integration/test_s3_seaweedfs.py`) and `ERAG_TEST_PGBOUNCER_URL` (`tests/integration/test_pgbouncer.py`).
 
 ## License
 

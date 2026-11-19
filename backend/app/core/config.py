@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     env: str = "dev"
     log_level: str = "INFO"
     log_json: bool = True
+    # Observability (R19): Prometheus metrics on an internal port, never routed by the proxy (0 = off). The
+    # worker uses metrics_port + 1. Traces go to an OTLP collector when the OpenTelemetry SDK is installed and
+    # otel_endpoint is set; spans carry ids and sizes only, never text.
+    metrics_host: str = "127.0.0.1"
+    metrics_port: int = 9464
+    otel_endpoint: str = ""
+    otel_service_name: str = "enterprise-rag"
 
     # Database (asyncpg driver; psycopg is avoided because it is LGPL, see ADR 0004)
     database_url: str = "postgresql+asyncpg://erag:erag@localhost:55432/erag"
