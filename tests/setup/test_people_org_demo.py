@@ -21,8 +21,8 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture(autouse=True)
-def _limits() -> None:
-    reset_limiters()
+async def _limits() -> None:
+    await reset_limiters()
 
 
 async def _age_reauth(db: AsyncSession, email: str) -> None:

@@ -35,8 +35,8 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture(autouse=True)
-def _limits() -> None:
-    reset_limiters()
+async def _limits() -> None:
+    await reset_limiters()
 
 
 async def test_no_setup_row_means_no_setup_mode(db: AsyncSession, client: httpx.AsyncClient) -> None:
@@ -217,7 +217,7 @@ async def test_expired_token_is_refused_and_replaced_at_next_start(db: AsyncSess
     assert (await client.post("/api/setup/token", json={"token": token})).status_code == 401
     res = await svc.init_on_start(db)
     assert res.mode == "setup" and res.new_token and res.new_token != token
-    reset_limiters()
+    await reset_limiters()
     await enter_token(client, res.new_token)
 
 
@@ -315,7 +315,7 @@ async def test_cli_reset_reopens_setup_with_a_new_token(db: AsyncSession, client
     new = next(line.split(": ", 1)[1] for line in out.stdout.splitlines() if line.startswith("Setup token: "))
     svc.invalidate_cache()
     assert await svc.setup_required(db)
-    reset_limiters()
+    await reset_limiters()
     assert (await client.post("/api/setup/token", json={"token": old})).status_code == 401
     await enter_token(client, new)
     await accept_license(client, "Second Run")

@@ -15,9 +15,9 @@ ADMIN_EMAIL = "it.admin@example.com"
 ADMIN_PASSWORD = "Correct-Horse-Battery-77"
 
 
-def reset_limiters() -> None:
+async def reset_limiters() -> None:
     for lim in (login_limiter, mfa_limiter, token_limiter, token_global_limiter):
-        lim.reset()
+        await lim.reset()
 
 
 async def fresh_setup(db: AsyncSession) -> str:
@@ -53,7 +53,7 @@ async def create_admin(
 
 async def through_admin(db: AsyncSession, client: httpx.AsyncClient) -> str:
     """Token, license, environment, administrator. Returns the token."""
-    reset_limiters()
+    await reset_limiters()
     token = await fresh_setup(db)
     await enter_token(client, token)
     await accept_license(client)

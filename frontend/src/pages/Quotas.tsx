@@ -247,6 +247,67 @@ export function UsageSummary({ data }: { data: MyUsage }) {
   );
 }
 
+type RoleUsage = {
+  role: string;
+  users: number;
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost_usd: number;
+};
+
+/** Requests, tokens and cost per role over a date range, exportable as CSV (R16). */
+export function UsageByRole() {
+  const today = new Date().toISOString().slice(0, 10);
+  const [since, setSince] = useState(today.slice(0, 8) + "01");
+  const [until, setUntil] = useState(today);
+  const range = `since=${since}&until=${until}`;
+  const q = useQuery({
+    queryKey: ["usage-by-role", range],
+    queryFn: () => api<{ roles: RoleUsage[] }>(`/api/admin/usage/by-role?${range}`),
+    enabled: since <= until,
+  });
+  return (
+    <Card className="p-4" data-testid="usage-by-role">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold">Usage by role (UTC days)</h3>
+        <Input type="date" value={since} onChange={(e) => setSince(e.target.value)} className="w-auto" aria-label="from" />
+        <Input type="date" value={until} onChange={(e) => setUntil(e.target.value)} className="w-auto" aria-label="to" />
+        <a className="ml-auto text-sm underline" href={`/api/admin/usage/by-role?${range}&format=csv`}>
+          Export CSV
+        </a>
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground">
+        A user counts in every role they hold today, so rows can add up to more than the total.
+      </p>
+      <Table>
+        <thead>
+          <tr>
+            <Th>Role</Th>
+            <Th>Users</Th>
+            <Th>Requests</Th>
+            <Th>Tokens in</Th>
+            <Th>Tokens out</Th>
+            <Th>Cost</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {q.data?.roles.map((r) => (
+            <tr key={r.role} className="border-t border-border">
+              <td>{r.role}</td>
+              <td>{r.users}</td>
+              <td>{r.requests}</td>
+              <td>{r.prompt_tokens}</td>
+              <td>{r.completion_tokens}</td>
+              <td>${r.cost_usd.toFixed(4)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </Card>
+  );
+}
+
 export function UsageOverview() {
   const q = useQuery({ queryKey: ["admin-usage"], queryFn: () => api<AdminUsage>("/api/admin/usage") });
   if (!q.data) return null;

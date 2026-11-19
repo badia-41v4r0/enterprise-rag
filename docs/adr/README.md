@@ -46,3 +46,15 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0039](0039-explicit-ollama-downloads.md) | Ollama models are downloaded only on an explicit, confirmed administrator action | Accepted |
 | [0040](0040-seed-demo-and-the-wizard.md) | `ERAG_SEED_DEMO` with the setup wizard | Accepted |
 | [0041](0041-check-as-another-user.md) | "Does it work?": asking as another user, and what the administrator sees | Accepted, Owner review |
+| [0042](0042-permission-cache-and-selective-search-plan.md) | Permission cache by epoch (immediate revocation on every replica), the index-driven search and an exact plan for selective users | Accepted |
+| [0043](0043-shared-limits-in-postgres.md) | Shared rate limits in Postgres behind `LimitStore` (UNLOGGED counters, autocommit) | Accepted |
+| [0044](0044-budget-reservations.md) | Budget reservations: reserve the worst case under ordered advisory locks, settle with the usage record | Accepted |
+| [0045](0045-endpoint-pools-and-fair-generation-queue.md) | Endpoint pools and a fair generation queue across replicas (leases, priority, fewest in flight) | Accepted |
+| [0046](0046-hybrid-search-and-rank-fusion.md) | Hybrid search (pgvector + Postgres full text), one authorization clause for both legs, reciprocal rank fusion | Accepted |
+| [0047](0047-reranker-in-process.md) | A cross-encoder reranker inside the app process (ONNX Runtime), pinned models installed explicitly, degraded mode | Accepted |
+| [0048](0048-permission-aware-evaluation.md) | Permission-aware retrieval evaluation: personas, an independent oracle, recorded embeddings, a separate database, a CI gate | Accepted |
+| [0049](0049-horizontal-scaling-pgbouncer-and-advisory-locks.md) | Horizontal scaling: stateless replicas, advisory-lock singletons, PgBouncer in transaction mode, graceful shutdown | Accepted |
+| [0050](0050-s3-blob-store-and-vector-scaling-path.md) | S3-compatible blob store (SigV4 on httpx), halfvec embeddings, Qdrant only if pgvector misses the target | Accepted |
+| [0051](0051-backup-and-recovery.md) | Backup and recovery: pgBackRest PITR, keys apart from data, `erag backup verify`, the restore drill | Accepted |
+| [0052](0052-observability-without-content.md) | Observability without content: internal metrics, security alerts, correlation ids, traces, health | Accepted |
+| [0053](0053-helm-and-zero-downtime-upgrades.md) | Helm chart, CloudNativePG, migrations as a hook, expand/contract enforced by a test | Accepted |

@@ -1,0 +1,47 @@
+{{- if .Values.metrics.enabled }}
+# Prometheus scrape targets: app (9464) and worker (9465). ClusterIP only; never routed by the ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "erag.name" . }}-metrics
+  labels:
+    {{- include "erag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+spec:
+  clusterIP: None
+  selector:
+    {{- include "erag.selector" . | nindent 4 }}
+  ports:
+    - { name: app-metrics, port: 9464, targetPort: 9464 }
+    - { name: worker-metrics, port: 9465, targetPort: 9465 }
+{{- end }}
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "erag.name" . }}
+  labels:
+    {{- include "erag.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tlsSecret }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: {{ .Values.ingress.tlsSecret }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "erag.name" . }}
+                port: { number: {{ .Values.app.service.port }} }
+{{- end }}

@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.context import current_request_id
 from app.models import AuditLog
 
 
@@ -19,4 +20,13 @@ def audit(
     decision: str = "allow",
     details: dict[str, Any] | None = None,
 ) -> None:
-    db.add(AuditLog(user_id=user_id, action=action, resource=resource, decision=decision, details=details or {}))
+    db.add(
+        AuditLog(
+            user_id=user_id,
+            action=action,
+            resource=resource,
+            decision=decision,
+            details=details or {},
+            correlation_id=current_request_id(),
+        )
+    )

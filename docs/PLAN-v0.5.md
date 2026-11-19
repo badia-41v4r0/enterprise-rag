@@ -58,6 +58,7 @@ These numbers are **what the benchmarks measure, not a ceiling**. The design mus
 ## 3. Many users in one company
 
 ### 3.1 Permission resolution at scale
+- **First, make the index drive the query** (found by the R13 benchmark, `docs/benchmarks/r13-baseline.md`). Today the planner runs `PgVectorStore.search` as a sequential scan plus a sort, because it estimates one row after the joins. A user who reads 90 percent of 60,000 chunks waits about 1 s. The query is reshaped so that an ordered HNSW scan on `chunks` (filters on `chunks` columns only) feeds the top k, the documents are joined afterwards, and it is re-measured.
 - **Cache with invalidation:**
   - An `authz_state.epoch` counter in Postgres is increased **in the same transaction** as any change to grants, roles, memberships, restricted documents or user status.
   - Every app replica keeps effective permissions in memory, keyed by (user, epoch).
@@ -346,18 +347,18 @@ Runs as personas use those personas' real permissions and are audited as evaluat
 **ADRs:**
 | ADR | Topic |
 |---|---|
-| 0034 | Permission cache by epoch and the search plan for selective users |
-| 0035 | Shared limits in Postgres behind `LimitStore` |
-| 0036 | Budget reservations |
-| 0037 | Endpoint pools and the fair generation queue |
-| 0038 | Hybrid search and rank fusion |
-| 0039 | Reranker inside the application process |
-| 0040 | Permission-aware evaluation |
-| 0041 | Horizontal scaling: PgBouncer and advisory locks |
-| 0042 | S3 blob store and the vector-store scaling path |
-| 0043 | Backup and recovery |
-| 0044 | Observability without content |
-| 0045 | Helm and zero-downtime upgrades |
+| 0042 | Permission cache by epoch and the search plan for selective users |
+| 0043 | Shared limits in Postgres behind `LimitStore` |
+| 0044 | Budget reservations |
+| 0045 | Endpoint pools and the fair generation queue |
+| 0046 | Hybrid search and rank fusion |
+| 0047 | Reranker inside the application process |
+| 0048 | Permission-aware evaluation |
+| 0049 | Horizontal scaling: PgBouncer and advisory locks |
+| 0050 | S3 blob store and the vector-store scaling path |
+| 0051 | Backup and recovery |
+| 0052 | Observability without content |
+| 0053 | Helm and zero-downtime upgrades |
 
 **README:** updated at every release, with a full pass at the end:
 - the status line and "What it does";

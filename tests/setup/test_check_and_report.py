@@ -21,8 +21,8 @@ PROVIDER_KEY = "sk-REPORT-CANARY-77b1e0"
 
 
 @pytest.fixture(autouse=True)
-def _limits() -> None:
-    reset_limiters()
+async def _limits() -> None:
+    await reset_limiters()
 
 
 async def test_check_as_user_shows_the_answer_only_during_setup(db: AsyncSession, client: httpx.AsyncClient) -> None:

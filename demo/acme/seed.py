@@ -97,12 +97,14 @@ PERSONAS = [
 ]
 
 
-def readable_slugs(persona: Persona) -> set[str]:
-    return {slug for r in persona.roles for slug in ROLES[r]}
+def readable_slugs(persona: Persona, roles: dict[str, dict[str, Action]] | None = None) -> set[str]:
+    roles = ROLES if roles is None else roles
+    return {slug for r in persona.roles for slug in roles[r]}
 
 
-def readable_restricted(persona: Persona) -> set[str]:
-    return {f for r in persona.roles for f in ROLE_DOCUMENTS.get(r, [])}
+def readable_restricted(persona: Persona, role_documents: dict[str, list[str]] | None = None) -> set[str]:
+    role_documents = ROLE_DOCUMENTS if role_documents is None else role_documents
+    return {f for r in persona.roles for f in role_documents.get(r, [])}
 
 
 async def _get_or_create_role(db: AsyncSession, name: str) -> Role:
@@ -114,12 +116,24 @@ async def _get_or_create_role(db: AsyncSession, name: str) -> Role:
     return role
 
 
-async def seed_structure(db: AsyncSession, password: str, *, include_admin: bool = True) -> dict[str, Container]:
-    """Containers, roles, grants and personas. `include_admin=False` (the wizard's demo installation, ADR 0036)
-    leaves out the admin persona: the administrator is the person who ran the wizard, so no administrator account
-    with the published demo password exists."""
+async def seed_structure(
+    db: AsyncSession,
+    password: str,
+    *,
+    specs: list[ContainerSpec] | None = None,
+    role_grants: dict[str, dict[str, Action]] | None = None,
+    personas: list[Persona] | None = None,
+    include_admin: bool = True,
+) -> dict[str, Container]:
+    """Containers, roles, grants and personas. The structure arguments default to ACME (the evaluation corpus
+    passes an extended structure, see app.eval.corpus). `include_admin=False` (the wizard's demo installation,
+    ADR 0036) leaves out the admin persona: the administrator is the person who ran the wizard, so no
+    administrator account with the published demo password exists."""
+    specs = CONTAINERS if specs is None else specs
+    role_grants = ROLES if role_grants is None else role_grants
+    personas = PERSONAS if personas is None else personas
     containers: dict[str, Container] = {}
-    for spec in CONTAINERS:
+    for spec in specs:
         c = await db.scalar(select(Container).where(Container.slug == spec.slug))
         if c is None:
             c = Container(
@@ -130,14 +144,14 @@ async def seed_structure(db: AsyncSession, password: str, *, include_admin: bool
         c.classification = spec.classification
         containers[spec.slug] = c
 
-    roles = {name: await _get_or_create_role(db, name) for name in ROLES}
+    roles = {name: await _get_or_create_role(db, name) for name in role_grants}
     for name, role in roles.items():
         await db.execute(
             delete(Grant).where(
                 Grant.role_id == role.id, Grant.resource_type.in_([ResourceType.container, ResourceType.document])
             )
         )
-        for slug, action in ROLES[name].items():
+        for slug, action in role_grants[name].items():
             db.add(
                 Grant(
                     role_id=role.id,
@@ -149,7 +163,7 @@ async def seed_structure(db: AsyncSession, password: str, *, include_admin: bool
     await db.flush()
 
     pw_hash = hash_password(password)
-    for p in PERSONAS:
+    for p in personas:
         if p.is_admin and not include_admin:
             continue
         u = await db.scalar(select(User).where(User.email == p.email))
@@ -165,12 +179,24 @@ async def seed_structure(db: AsyncSession, password: str, *, include_admin: bool
     return containers
 
 
-async def seed_documents(db: AsyncSession, containers: dict[str, Container]) -> int:
-    """Upload every synthetic document. Returns the number of new versions queued."""
+async def seed_documents(
+    db: AsyncSession,
+    containers: dict[str, Container],
+    *,
+    specs: list[ContainerSpec] | None = None,
+    doc_dirs: list[Path] | None = None,
+    role_documents: dict[str, list[str]] | None = None,
+) -> int:
+    """Upload every synthetic document (`<doc_dir>/<container slug>/*.md`). Returns the number of new versions
+    queued. The keyword arguments default to ACME."""
+    specs = CONTAINERS if specs is None else specs
+    doc_dirs = [DOCS_DIR] if doc_dirs is None else doc_dirs
+    role_documents = ROLE_DOCUMENTS if role_documents is None else role_documents
     blobs = get_blobstore()
     queued = 0
-    for spec in CONTAINERS:
-        for path in sorted((DOCS_DIR / spec.slug).glob("*.md")):
+    for spec in specs:
+        paths = sorted(p for d in doc_dirs for p in (d / spec.slug).glob("*.md"))
+        for path in paths:
             res = await upload_document(
                 db,
                 blobs,
@@ -183,7 +209,7 @@ async def seed_documents(db: AsyncSession, containers: dict[str, Container]) -> 
             queued += res.status == "queued"
     # Restricted-document grants (documents exist now).
     roles = {r.name: r for r in (await db.scalars(select(Role))).all()}
-    for role_name, filenames in ROLE_DOCUMENTS.items():
+    for role_name, filenames in role_documents.items():
         for fn in filenames:
             doc = await db.scalar(select(Document).where(Document.filename == fn))
             if doc is not None:

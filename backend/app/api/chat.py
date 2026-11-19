@@ -23,7 +23,7 @@ from app.models import Classification, Conversation, Message
 from app.orchestrator.chat import ChatOrchestrator, ConversationNotFound, ToolRuntime, sse
 
 router = APIRouter(prefix="/api", tags=["chat"])
-chat_limiter = RateLimiter(get_settings().chat_rate_limit_per_minute)
+chat_limiter = RateLimiter("chat", get_settings().chat_rate_limit_per_minute)
 
 
 def get_tool_runtime() -> ToolRuntime | None:
@@ -67,7 +67,7 @@ class ModelOut(BaseModel):
 async def chat(
     body: ChatIn, auth: AuthContext = Depends(get_auth), db: AsyncSession = Depends(get_db)
 ) -> StreamingResponse:
-    if not chat_limiter.allow(str(auth.user.id)):
+    if not await chat_limiter.allow(str(auth.user.id)):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many chat requests, slow down")
     if body.conversation_id is not None:
         conv = await db.get(Conversation, body.conversation_id)

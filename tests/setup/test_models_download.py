@@ -44,8 +44,8 @@ def _rm(name: str) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _limits() -> None:
-    reset_limiters()
+async def _limits() -> None:
+    await reset_limiters()
 
 
 async def test_nothing_is_downloaded_without_the_download_action(db: AsyncSession, client: httpx.AsyncClient) -> None:

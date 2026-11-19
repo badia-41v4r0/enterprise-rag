@@ -377,6 +377,7 @@ function EditProvider({ p, onDone }: { p: ProviderRow; onDone: () => void }) {
     tokens_per_day: str(p.tokens_per_day),
     tokens_per_month: str(p.tokens_per_month),
     max_turn_tokens: str(p.max_turn_tokens),
+    max_concurrency: str(p.max_concurrency ?? null),
   });
   const save = () =>
     run(async () => {
@@ -394,6 +395,7 @@ function EditProvider({ p, onDone }: { p: ProviderRow; onDone: () => void }) {
         tokens_per_day: p.tokens_per_day,
         tokens_per_month: p.tokens_per_month,
         max_turn_tokens: p.max_turn_tokens,
+        max_concurrency: p.max_concurrency ?? null,
       };
       // Limits may be raised as well as lowered (step-up; every change is in the change history).
       for (const [k, v] of Object.entries(lim)) if (num(v) !== current[k]) body[k] = num(v);
@@ -454,6 +456,11 @@ function EditProvider({ p, onDone }: { p: ProviderRow; onDone: () => void }) {
         <Label>Per-turn token cap (tool loop)</Label>
         <Input placeholder="no limit" value={lim.max_turn_tokens} onChange={(e) => setLim({ ...lim, max_turn_tokens: e.target.value })} aria-label={`per-turn cap of ${p.slug}`} />
       </div>
+      <div>
+        <Label>Concurrent generations (primary URL)</Label>
+        <Input placeholder="no limit, no queue" value={lim.max_concurrency} onChange={(e) => setLim({ ...lim, max_concurrency: e.target.value })} aria-label={`max concurrency of ${p.slug}`} />
+      </div>
+      <Endpoints p={p} />
       <div className="flex items-end gap-2">
         {!p.builtin && p.kind === "api" && (
           <label className="flex items-center gap-1 text-xs">
@@ -475,6 +482,64 @@ function EditProvider({ p, onDone }: { p: ProviderRow; onDone: () => void }) {
         )}
       </div>
       {error && <p className="col-span-4 text-sm text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+/** Extra endpoints of the provider (R17): one more server with the same models, e.g. one Ollama per GPU. */
+function Endpoints({ p }: { p: ProviderRow }) {
+  const qc = useQueryClient();
+  const { run, error, busy } = useRun();
+  const [url, setUrl] = useState("");
+  const [conc, setConc] = useState("");
+  const refresh = () => qc.invalidateQueries({ queryKey: ["providers"] });
+  return (
+    <div className="col-span-4 rounded-md border border-border p-2">
+      <p className="mb-1 text-xs font-semibold">Endpoint pool</p>
+      <p className="mb-2 text-xs text-muted-foreground">
+        Other servers with the same models (one per GPU). Each must have this provider's locality ({p.locality}); requests go to the
+        least busy one, and wait in a fair queue when every endpoint is at its limit.
+      </p>
+      <ul className="mb-2 space-y-1 text-xs">
+        {(p.endpoints ?? []).map((e) => (
+          <li key={e.id} className="flex items-center gap-2">
+            <span className="font-mono">{e.base_url}</span>
+            <span className="text-muted-foreground">{e.max_concurrency ?? "no limit"}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label={`remove endpoint ${e.base_url}`}
+              onClick={() => run(async () => {
+                await api(`/api/admin/providers/${p.id}/endpoints/${e.id}`, { method: "DELETE" });
+                refresh();
+              })}
+            >
+              remove
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input className="max-w-sm" placeholder="http://10.0.0.6:11434" value={url} onChange={(e) => setUrl(e.target.value)} aria-label={`new endpoint of ${p.slug}`} />
+        <Input className="w-32" placeholder="max concurrent" value={conc} onChange={(e) => setConc(e.target.value)} aria-label={`new endpoint concurrency of ${p.slug}`} />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!url || busy}
+          onClick={() => run(async () => {
+            await api(`/api/admin/providers/${p.id}/endpoints`, {
+              method: "POST",
+              body: json({ base_url: url, max_concurrency: conc ? Number(conc) : null }),
+            });
+            setUrl("");
+            setConc("");
+            refresh();
+          })}
+        >
+          Add endpoint
+        </Button>
+      </div>
+      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
     </div>
   );
 }

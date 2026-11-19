@@ -132,7 +132,7 @@ async def test_worker_heartbeat_and_database_check(db: AsyncSession) -> None:
 async def test_environment_endpoint_reports_booleans_and_fixes_only(
     db: AsyncSession, client: httpx.AsyncClient
 ) -> None:
-    reset_limiters()
+    await reset_limiters()
     token = await through_admin(db, client)
     r = await client.get("/api/setup/environment")
     assert r.status_code == 200

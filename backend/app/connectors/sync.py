@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hashlib
 import logging
 import time
@@ -20,7 +22,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.connectors.folder
@@ -29,7 +31,7 @@ from app.connectors.base import KINDS, BaseConnector, ConnectorError, ItemSkippe
 from app.core.config import Settings, get_settings
 from app.core.netguard import BlockedDestination
 from app.ingestion.blobstore import BlobStore, get_blobstore
-from app.models import Connector, ConnectorItem, Container, Document, SyncRun
+from app.models import Connector, ConnectorItem, Container, Document, IngestionJob, JobState, SyncRun
 from app.services import vault
 from app.services.audit import audit
 from app.services.documents import upload_document
@@ -100,6 +102,16 @@ async def _document_for(
     return doc
 
 
+BACKPRESSURE_EVERY = 50
+
+
+async def queue_full(db: AsyncSession, s: Settings) -> bool:
+    queued = await db.scalar(
+        select(func.count()).select_from(IngestionJob).where(IngestionJob.state == JobState.queued)
+    )
+    return int(queued or 0) >= s.ingest_queue_max
+
+
 async def run_sync(
     db: AsyncSession,
     connector: Connector,
@@ -119,8 +131,8 @@ async def run_sync(
         i.external_id: i
         for i in (await db.scalars(select(ConnectorItem).where(ConnectorItem.connector_id == connector.id))).all()
     }
-    configured_max = int(connector.config.get("max_items", s.connector_max_items))
-    limit = min(configured_max, s.connector_max_items)
+    # Per connector (R18): its own `max_items`, else the environment default; no longer a global ceiling.
+    limit = int(connector.config.get("max_items", s.connector_max_items))
     max_bytes = s.connector_max_item_mb * 1024 * 1024
     seen: set[str] = set()
     try:
@@ -133,6 +145,12 @@ async def run_sync(
         async for item in impl.list_items():
             if len(seen) >= limit:
                 report.error(item.external_id, f"item limit ({limit}) reached; the rest was not synced")
+                report.complete = False
+                break
+            if not dry_run and len(seen) % BACKPRESSURE_EVERY == 0 and await queue_full(db, s):
+                # Back-pressure (R18): stop enqueueing while the workers catch up. The run is incomplete, so
+                # nothing unseen is deleted; the next run continues where the content changed.
+                report.error(item.external_id, "ingestion queue is full; the rest is synced on the next run")
                 report.complete = False
                 break
             seen.add(item.external_id)
@@ -286,26 +304,56 @@ async def process_next(sessionmaker: async_sessionmaker[AsyncSession]) -> uuid.U
         if run is None:
             return None
         run.status = "running"
+        lease = timedelta(seconds=get_settings().job_lease_seconds)
+        run.locked_until = datetime.now(UTC) + lease
         await db.commit()
         run_id = run.id
-    async with sessionmaker() as db:
-        run = await db.get(SyncRun, run_id)
-        if run is not None:
-            try:
-                await execute_run(db, run)
-            except Exception as exc:
-                log.exception("sync run crashed")
-                await db.rollback()
-                failed = await db.get(SyncRun, run_id)
-                if failed is not None:
-                    failed.status = "failed"
-                    failed.errors = {"items": [], "fatal": f"{type(exc).__name__}: {exc}"}
-                    await db.commit()
+
+    async def heartbeat() -> None:  # R18: the reaper re-queues a run whose worker died
+        while True:
+            await asyncio.sleep(max(lease.total_seconds() / 3, 1.0))
+            async with sessionmaker() as hb:
+                await hb.execute(
+                    update(SyncRun)
+                    .where(SyncRun.id == run_id, SyncRun.status == "running")
+                    .values(locked_until=datetime.now(UTC) + lease)
+                )
+                await hb.commit()
+
+    beat = asyncio.create_task(heartbeat())
+    try:
+        async with sessionmaker() as db:
+            run = await db.get(SyncRun, run_id)
+            if run is not None:
+                try:
+                    await execute_run(db, run)
+                except Exception as exc:
+                    log.exception("sync run crashed")
+                    await db.rollback()
+                    failed = await db.get(SyncRun, run_id)
+                    if failed is not None:
+                        failed.status = "failed"
+                        failed.errors = {"items": [], "fatal": f"{type(exc).__name__}: {exc}"}
+                        await db.commit()
+    finally:
+        beat.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await beat
     return run_id
 
 
 async def schedule_due(db: AsyncSession) -> int:
-    """Queue a sync for every enabled connector whose interval elapsed and that has no run pending."""
+    """Queue a sync for every enabled connector whose interval elapsed and that has no run pending.
+
+    A singleton across workers and replicas (R17): a transaction-level advisory lock lets one process do it;
+    the others skip this round. That also closes the check-then-enqueue race between two schedulers."""
+    if not await db.scalar(text("SELECT pg_try_advisory_xact_lock(hashtext('erag.connector_scheduler'))")):
+        await db.rollback()
+        return 0
+    if await queue_full(db, get_settings()):
+        log.info("connector scheduler: ingestion queue full, no new syncs this round")
+        await db.rollback()
+        return 0
     now = datetime.now(UTC)
     n = 0
     for c in (

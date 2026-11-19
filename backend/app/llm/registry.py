@@ -33,7 +33,7 @@ from app.core.netguard import (
 )
 from app.llm.providers.base import LLMProvider
 from app.llm.providers.openai_compat import OpenAICompatProvider
-from app.models import AppSetting, Classification, LlmModel, LlmProvider
+from app.models import AppSetting, Classification, LlmEndpoint, LlmModel, LlmProvider
 from app.services.usage import ModelLimits
 
 log = logging.getLogger(__name__)
@@ -302,13 +302,13 @@ class Built:
     states: dict[str, ProviderState] = field(default_factory=dict)
 
 
-async def current_endpoint(row: LlmProvider) -> tuple[str, str]:
+async def current_endpoint(row: LlmProvider, base_url: str | None = None) -> tuple[str, str]:
     """(locality, problem). Re-evaluated from DNS every time the router is built.
 
     An unresolvable host is treated as cloud (the most restrictive); a policy violation disables it."""
     try:
         ep = await check_provider_url(
-            chat_base(row.kind, row.base_url), allow_private=allows_private(row.kind, row.self_hosted)
+            chat_base(row.kind, base_url or row.base_url), allow_private=allows_private(row.kind, row.self_hosted)
         )
     except UnresolvableHost as exc:
         return "cloud", str(exc)
@@ -317,6 +317,24 @@ async def current_endpoint(row: LlmProvider) -> tuple[str, str]:
     if ep.locality == "cloud" and ep.target.scheme != "https" and not row.builtin:
         return "blocked", "public address over plain http"
     return ep.locality, ""
+
+
+async def endpoint_pool(db: AsyncSession, row: LlmProvider, locality: str) -> list[tuple[str, int | None]]:
+    """The provider's endpoint pool (R17): the primary URL, then every enabled extra endpoint whose address has
+    the same locality as the primary one. A mismatch (an "extra local GPU" that resolves to a public address)
+    is left out and logged: every endpoint of a pool shares one clearance. The egress guard still checks the
+    destination of each request."""
+    pool: list[tuple[str, int | None]] = [(chat_base(row.kind, row.base_url), row.max_concurrency)]
+    extra = (
+        await db.scalars(select(LlmEndpoint).where(LlmEndpoint.provider_id == row.id, LlmEndpoint.enabled.is_(True)))
+    ).all()
+    for ep in extra:
+        ep_locality, problem = await current_endpoint(row, ep.base_url)
+        if ep_locality != locality:
+            log.error("endpoint %s of %s left out: %s", ep.base_url, row.slug, problem or f"locality {ep_locality}")
+            continue
+        pool.append((chat_base(row.kind, ep.base_url), ep.max_concurrency))
+    return pool
 
 
 JEV_ROUTER_MODEL = "typesafe/jev-router"  # OpenRouter's Jev Router, a virtual model (ADR 0032)
@@ -370,7 +388,14 @@ def jev_router_plugin(options: dict[str, Any]) -> dict[str, Any]:
     return {"id": "jev-router", **validate_jev_router_options(options.get("jev_router") or {})}
 
 
-def make_provider(row: LlmProvider, m: LlmModel, locality: str, key: str | None, s: Settings) -> OpenAICompatProvider:
+def make_provider(
+    row: LlmProvider,
+    m: LlmModel,
+    locality: str,
+    key: str | None,
+    s: Settings,
+    endpoints: list[tuple[str, int | None]] | None = None,
+) -> OpenAICompatProvider:
     model = m.model
     clearance = model_clearance(row, m, locality, s)
     common: dict[str, Any] = {
@@ -382,6 +407,7 @@ def make_provider(row: LlmProvider, m: LlmModel, locality: str, key: str | None,
         "api_key": key,
         "allow_private": allows_private(row.kind, row.self_hosted),
         "cloud_cap": cloud_cap(s),
+        "endpoints": endpoints,
     }
     if is_openrouter(row):
         body: dict[str, Any] = {"usage": {"include": True}}  # OpenRouter reports the real cost of each request
@@ -424,6 +450,7 @@ async def build_from_db(db: AsyncSession, settings: Settings | None = None) -> B
             out.states[row.slug] = ProviderState(row.slug, locality, clearance, False, "disabled")
             continue
         key, _source = await resolve_key(db, row, s)
+        pool = await endpoint_pool(db, row, locality)
         if is_openrouter(row) and not key:
             out.states[row.slug] = ProviderState(row.slug, locality, clearance, False, "no API key")
             continue
@@ -432,7 +459,7 @@ async def build_from_db(db: AsyncSession, settings: Settings | None = None) -> B
             if not m.enabled:
                 continue
             try:
-                p = make_provider(row, m, locality, key, s)
+                p = make_provider(row, m, locality, key, s, pool)
             except ProviderConfigError as exc:
                 log.error("model %s:%s skipped: %s", row.slug, m.model, exc)
                 continue

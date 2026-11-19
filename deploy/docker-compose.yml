@@ -31,6 +31,8 @@ x-app-env: &app-env
   ERAG_CLOUD_MAX_CLASSIFICATION: ${ERAG_CLOUD_MAX_CLASSIFICATION:-internal}
   ERAG_COOKIE_SECURE: ${ERAG_COOKIE_SECURE:-false}
   ERAG_BLOB_DIR: /data/blobs
+  # Local model files (reranker, tokenizer), installed with `docker compose exec app erag models install <name>`.
+  ERAG_MODELS_DIR: /data/models
   # Folder connectors may only read below these roots (mounted read-only below). ADR 0020.
   ERAG_CONNECTOR_ROOTS: ${ERAG_CONNECTOR_ROOTS:-/connectors}
   # Non-public destinations that web connectors / remote MCP servers may reach (host, host:port, CIDR).
@@ -47,6 +49,10 @@ x-app-env: &app-env
   # scripts/demo_scenarios.py, and counts as a completed setup; ignored in production (ADR 0040).
   ERAG_SEED_DEMO: ${ERAG_SEED_DEMO:-false}
   ERAG_DEMO_PASSWORD: ${ERAG_DEMO_PASSWORD:-acme-demo-password}
+  # Observability (R19): metrics on 9464 (app) and 9465 (worker) inside the compose network only, never
+  # published; point your Prometheus at them. Traces: set ERAG_OTEL_ENDPOINT (needs the OTel SDK).
+  ERAG_METRICS_HOST: 0.0.0.0
+  ERAG_OTEL_ENDPOINT: ${ERAG_OTEL_ENDPOINT:-}
   # Setup (ADR 0034): the SHA-256 of the token printed by `erag init`; without it a token is generated at first
   # start and written to the log and to /data/setup-token (mode 0600).
   ERAG_SETUP_TOKEN_SHA256: ${ERAG_SETUP_TOKEN_SHA256:-}
@@ -68,7 +74,9 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
-    mem_limit: 1g
+    # HNSW index builds need the graph in maintenance_work_mem (about 4.5 KB per chunk); parallel builds use /dev/shm.
+    mem_limit: 2g
+    shm_size: 256m
 
   app:
     build:
@@ -76,7 +84,7 @@ services:
       dockerfile: Dockerfile
     image: ${ERAG_IMAGE:-enterprise-rag:dev}
     environment: *app-env
-    command: ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
+    command: ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --timeout-graceful-shutdown 60"]
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
     extra_hosts:
@@ -89,7 +97,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    mem_limit: 1g
+    # The reranker runs in this process (ADR 0047): about 300 MB with mmarco-minilm-l12, 1 GB with bge-reranker-v2-m3.
+    mem_limit: 2g
 
   worker:
     image: ${ERAG_IMAGE:-enterprise-rag:dev}
@@ -103,6 +112,73 @@ services:
     depends_on:
       app:
         condition: service_started
+    # SIGTERM: the worker finishes the jobs it holds (R18); give it time before SIGKILL.
+    stop_grace_period: 120s
+    mem_limit: 768m
+
+  # --- Scale profile (R18): two app replicas, two workers, PgBouncer in transaction mode -------------------
+  #   docker compose --profile scale up -d
+  # The replicas share everything through Postgres (sessions, permission epoch, rate limits, budget
+  # reservations, the generation queue). Put your reverse proxy in front of app and app-2.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.24.1-p1
+    profiles: ["scale"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-erag}:${POSTGRES_PASSWORD:-erag}@postgres:5432/${POSTGRES_DB:-erag}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "40"
+      AUTH_TYPE: scram-sha-256
+      # Prepared statements in transaction mode (PgBouncer >= 1.21); the app also disables its cache.
+      MAX_PREPARED_STATEMENTS: "200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 128m
+
+  app-2:
+    image: enterprise-rag:dev
+    profiles: ["scale"]
+    environment:
+      <<: *app-env
+      ERAG_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-erag}:${POSTGRES_PASSWORD:-erag}@pgbouncer:5432/${POSTGRES_DB:-erag}
+      ERAG_DB_PGBOUNCER: "true"
+      # LISTEN/NOTIFY (generation queue) needs a direct connection, not PgBouncer.
+      ERAG_DB_DIRECT_URL: postgresql+asyncpg://${POSTGRES_USER:-erag}:${POSTGRES_PASSWORD:-erag}@postgres:5432/${POSTGRES_DB:-erag}
+      ERAG_SEED_DEMO: "false"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--timeout-graceful-shutdown", "60"]
+    ports:
+      - "127.0.0.1:${APP2_PORT:-8001}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - appdata:/data
+      - ${ERAG_RUNNER_SOCKET_DIR:-/tmp/erag-runner-sockets}:${ERAG_RUNNER_SOCKET_DIR:-/tmp/erag-runner-sockets}
+    depends_on:
+      app:
+        condition: service_started
+      pgbouncer:
+        condition: service_started
+    mem_limit: 2g
+
+  worker-2:
+    image: enterprise-rag:dev
+    profiles: ["scale"]
+    environment:
+      <<: *app-env
+      ERAG_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-erag}:${POSTGRES_PASSWORD:-erag}@pgbouncer:5432/${POSTGRES_DB:-erag}
+      ERAG_DB_PGBOUNCER: "true"
+      ERAG_SEED_DEMO: "false"
+    command: ["python", "-m", "app.cli", "worker"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - appdata:/data
+      - ../demo/acme/connector-source:/connectors/acme:ro
+    depends_on:
+      pgbouncer:
+        condition: service_started
+    stop_grace_period: 120s
     mem_limit: 768m
 
   # Demo remote MCP server (no access to the database or the app). In production, MCP servers run in

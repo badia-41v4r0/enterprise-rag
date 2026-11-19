@@ -42,8 +42,8 @@ MD = b"# Leave policy\n\nEmployees get 25 days of paid leave."
 
 
 @pytest.fixture(autouse=True)
-def _reset_limiter() -> None:
-    login_limiter.reset()
+async def _reset_limiter() -> None:
+    await login_limiter.reset()
 
 
 class World:

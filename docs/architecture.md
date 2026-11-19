@@ -123,3 +123,11 @@ One PostgreSQL holds identities, ACL, documents, vectors, jobs, conversations an
   `/me`, `/logout` and `/change-password`.
 - **Demo** (ADR 0036): installed from the wizard without the demo administrator, detected live (banner), removable
   with a listed confirmation. `ERAG_SEED_DEMO=true` keeps the one-command seeded demo for development (ADR 0040).
+
+## v0.5: many users, hybrid search, scale and operations
+
+- **Retrieval** (ADR 0042, 0046, 0047): permissions are cached per replica by (user, epoch) and invalidated in the same transaction as any change. The question is embedded (on `ERAG_QUERY_EMBED_URL` when set); the vector leg (HNSW with iterative scan, or an exact scan for users who read little) and the full-text leg run under the same authorization clause; reciprocal rank fusion; the Postgres recheck; then the in-process reranker, or the fused order with floors when it is unavailable.
+- **Before each model call** (ADR 0044, 0045): the worst case is **reserved** on every applicable budget under ordered advisory locks; a generation **lease** is taken on the least-loaded endpoint of the provider's pool, waiting in a fair queue (role priority, fewest in flight, oldest) when every endpoint is full; after the stream the usage is recorded and the reservation settled in one transaction, and the lease released (NOTIFY wakes the waiters on every replica).
+- **Shared state lives in Postgres** (ADR 0043, 0049): sessions, the permission epoch, rate-limit counters (UNLOGGED), reservations, leases and waiters, the job queue. App replicas and workers are stateless; singletons (connector scheduler, maintenance) elect themselves with advisory locks. PgBouncer in transaction mode in front, a direct connection per replica for LISTEN.
+- **Ingestion** (R18): jobs by priority, backoff, dead letters, heartbeats and a reaper; several jobs per worker; embeddings over a pool of endpoints; connectors back off when the queue is full. Blobs on disk or S3 (ADR 0050); vectors as `halfvec`.
+- **Operations** (ADR 0051, 0052, 0053): metrics on an internal port, alert rules, correlation ids shared by logs, audit and traces, liveness and readiness; pgBackRest or CloudNativePG backups, `erag backup verify` and the restore drill; a Helm chart with migrations as a hook and expand/contract migrations.

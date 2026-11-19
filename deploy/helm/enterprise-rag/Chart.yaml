@@ -1,0 +1,9 @@
+apiVersion: v2
+name: enterprise-rag
+description: Permission-aware RAG + MCP (EnterpriseRAG). App replicas, workers, PgBouncer and migrations; Postgres (with pgvector) is external or CloudNativePG.
+type: application
+version: 0.5.0
+appVersion: "0.5.0"
+home: https://badiapartners.com
+sources:
+  - https://github.com/badia-41v4r0/enterprise-rag

@@ -18,8 +18,8 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture(autouse=True)
-def _reset_limiter() -> None:
-    login_limiter.reset()
+async def _reset_limiter() -> None:
+    await login_limiter.reset()
 
 
 async def _admin_session(db: AsyncSession, client: httpx.AsyncClient) -> uuid.UUID:

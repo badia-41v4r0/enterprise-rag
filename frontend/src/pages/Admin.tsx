@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { Fragment, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import {
   api,
   json,
   type AccessLevel,
+  type AuditPage,
   type AuditRow,
   type Classification,
   type ContainerRow,
@@ -25,12 +26,15 @@ import Connectors from "@/pages/Connectors";
 import ModelRouter from "@/pages/ModelRouter";
 import Providers from "@/pages/Providers";
 import Registry from "@/pages/Registry";
+import Retrieval from "@/pages/Retrieval";
+import Users from "@/pages/Users";
+import Evaluation from "@/pages/Evaluation";
 import { ContainerContent } from "@/pages/Content";
-import { RoleQuotas, UsageOverview, UserQuotas } from "@/pages/Quotas";
+import { RoleQuotas, UsageByRole, UsageOverview, UserQuotas } from "@/pages/Quotas";
 import SetupAssistant, { SetupChecklist } from "@/pages/SetupAssistant";
 import type { Me } from "@/lib/api";
 
-const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Model router", "Audit", "Jobs", "Setup assistant"] as const;
+const TABS = ["Users", "Roles", "Containers", "Grants", "Connectors", "MCP registry", "Tools", "Secrets", "Providers", "Model router", "Retrieval", "Evaluation", "Audit", "Jobs", "Setup assistant"] as const;
 type Tab = (typeof TABS)[number];
 const CLASSIFICATIONS = ["public", "internal", "confidential"] as const;
 const CLASSES: Classification[] = ["public", "internal", "confidential"];
@@ -49,179 +53,31 @@ const useContainers = () =>
   useQuery({ queryKey: ["containers"], queryFn: () => api<ContainerRow[]>("/api/admin/containers") });
 const useTools = () => useQuery({ queryKey: ["tools"], queryFn: () => api<ToolRow[]>("/api/admin/tools") });
 
-// --- Users ---------------------------------------------------------------------------------------
+// --- Roles ---------------------------------------------------------------------------------------
 
-export function Users() {
+function RolePriority({ role }: { role: RoleRow }) {
   const inv = useInvalidate();
-  const users = useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/api/admin/users") });
-  const roles = useRoles();
-  const [form, setForm] = useState({ email: "", display_name: "", password: "", is_admin: false, role_ids: [] as string[] });
-  const create = useMutation({
-    mutationFn: () => api("/api/admin/users", { method: "POST", body: json(form) }),
-    onSuccess: () => {
-      setForm({ email: "", display_name: "", password: "", is_admin: false, role_ids: [] });
-      inv("users");
-    },
+  const [value, setValue] = useState(String(role.priority ?? 0));
+  const save = useMutation({
+    mutationFn: (priority: number) => api(`/api/admin/roles/${role.id}`, { method: "PATCH", body: json({ priority }) }),
+    onSuccess: () => inv("roles"),
   });
-  const patch = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: object }) =>
-      api(`/api/admin/users/${id}`, { method: "PATCH", body: json(body) }),
-    onSuccess: () => inv("users"),
-  });
-  const roleName = (id: string) => roles.data?.find((r) => r.id === id)?.name ?? id;
-  const resetMfa = useMutation({
-    mutationFn: (id: string) => api(`/api/admin/users/${id}/reset-mfa`, { method: "POST" }),
-    onSuccess: () => inv("users"),
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => api(`/api/admin/users/${id}`, { method: "DELETE" }),
-    onSuccess: () => inv("users"),
-  });
-
   return (
-    <div className="space-y-4">
-      <Card className="p-4">
-        <h3 className="mb-3 text-sm font-semibold">Create user</h3>
-        <div className="grid grid-cols-4 gap-2">
-          <Input placeholder="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          <Input
-            placeholder="display name"
-            value={form.display_name}
-            onChange={(e) => setForm({ ...form, display_name: e.target.value })}
-          />
-          <Input
-            placeholder="password (12+ chars)"
-            type="password"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-          />
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.is_admin} onChange={(e) => setForm({ ...form, is_admin: e.target.checked })} />
-            admin
-          </label>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-3 text-sm">
-          {roles.data?.map((r) => (
-            <label key={r.id} className="flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={form.role_ids.includes(r.id)}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    role_ids: e.target.checked ? [...form.role_ids, r.id] : form.role_ids.filter((x) => x !== r.id),
-                  })
-                }
-              />
-              {r.name}
-            </label>
-          ))}
-        </div>
-        <Button className="mt-3" size="sm" onClick={() => create.mutate()} disabled={!form.email || !form.password}>
-          Create
-        </Button>
-        <ErrorLine error={create.error} />
-      </Card>
-      <Card>
-        <Table>
-          <thead>
-            <tr>
-              <Th>Email</Th>
-              <Th>Name</Th>
-              <Th>Roles</Th>
-              <Th>Admin</Th>
-              <Th>Active</Th>
-              <Th>MFA</Th>
-              <Th> </Th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.data?.map((u) => (
-              <tr key={u.id} className="border-t border-border align-top">
-                <td>{u.email}</td>
-                <td>{u.display_name}</td>
-                <td>
-                  <div className="flex flex-wrap gap-2">
-                    {roles.data?.map((r) => (
-                      <label key={r.id} className="flex items-center gap-1 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={u.role_ids.includes(r.id)}
-                          onChange={(e) =>
-                            patch.mutate({
-                              id: u.id,
-                              body: {
-                                role_ids: e.target.checked ? [...u.role_ids, r.id] : u.role_ids.filter((x) => x !== r.id),
-                              },
-                            })
-                          }
-                        />
-                        {roleName(r.id)}
-                      </label>
-                    ))}
-                  </div>
-                </td>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={u.is_admin}
-                    onChange={(e) => patch.mutate({ id: u.id, body: { is_admin: e.target.checked } })}
-                    aria-label="admin"
-                  />
-                </td>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={u.is_active}
-                    onChange={(e) => patch.mutate({ id: u.id, body: { is_active: e.target.checked } })}
-                    aria-label="active"
-                  />
-                </td>
-                <td className="whitespace-nowrap text-xs">
-                  {u.mfa_enabled ? "on" : "off"}
-                  {u.mfa_enabled && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (confirm(`Reset MFA for ${u.email}? Their sessions end and they log in with the password only.`))
-                          resetMfa.mutate(u.id);
-                      }}
-                    >
-                      reset
-                    </Button>
-                  )}
-                </td>
-                <td className="whitespace-nowrap text-xs">
-                  {!u.is_active && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Delete user ${u.email}`}
-                      onClick={() => {
-                        if (confirm(`Permanently delete ${u.email}? Their conversations and personal quotas are removed. This cannot be undone.`))
-                          remove.mutate(u.id);
-                      }}
-                    >
-                      delete
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-        <div className="px-3 pb-2">
-          <ErrorLine error={patch.error} />
-          <ErrorLine error={resetMfa.error} />
-          <ErrorLine error={remove.error} />
-        </div>
-      </Card>
-    </div>
+    <Input
+      className="w-16"
+      type="number"
+      min={-100}
+      max={100}
+      value={value}
+      aria-label={`queue priority of ${role.name}`}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        const n = Number(value);
+        if (Number.isInteger(n) && n !== (role.priority ?? 0)) save.mutate(n);
+      }}
+    />
   );
 }
-
-// --- Roles ---------------------------------------------------------------------------------------
 
 const TEMPLATES = [
   { id: "", label: "no template" },
@@ -331,6 +187,7 @@ export function Roles() {
               <Th>Role</Th>
               <Th>Users</Th>
               <Th>Grants</Th>
+              <Th title="Generation queue: when every model slot is busy, higher goes first">Priority</Th>
               <Th>Actions</Th>
             </tr>
           </thead>
@@ -341,6 +198,9 @@ export function Roles() {
                   <td>{r.name}</td>
                   <td>{r.user_count}</td>
                   <td>{r.grant_count}</td>
+                  <td>
+                    <RolePriority role={r} />
+                  </td>
                   <td className="flex gap-1">
                     <Button variant="outline" size="sm" onClick={() => rename(r)}>
                       Rename
@@ -365,7 +225,7 @@ export function Roles() {
                 </tr>
                 {members === r.id && (
                   <tr>
-                    <td colSpan={4} className="bg-muted/50">
+                    <td colSpan={5} className="bg-muted/50">
                       <div className="flex flex-wrap gap-3 text-xs">
                         {users.data?.map((u) => (
                           <label key={u.id} className="flex items-center gap-1">
@@ -925,20 +785,50 @@ function Secrets() {
 }
 
 function Audit() {
-  const [action, setAction] = useState("");
-  const audit = useQuery({
-    queryKey: ["audit", action],
-    queryFn: () => api<AuditRow[]>(`/api/admin/audit?limit=200${action ? `&action=${encodeURIComponent(action)}` : ""}`),
-    refetchInterval: 5000,
+  const [f, setF] = useState({ action: "", resource: "", decision: "", since: "", until: "" });
+  const qs = new URLSearchParams();
+  if (f.action) qs.set("action", f.action);
+  if (f.resource) qs.set("resource", f.resource);
+  if (f.decision) qs.set("decision", f.decision);
+  if (f.since) qs.set("since", new Date(f.since).toISOString());
+  if (f.until) qs.set("until", new Date(f.until).toISOString());
+  const query = qs.toString();
+  const audit = useInfiniteQuery({
+    queryKey: ["audit", "page", query],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      api<AuditPage>(`/api/admin/audit/page?limit=100&${query}${pageParam ? `&before=${pageParam}` : ""}`),
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
+  const rows: AuditRow[] = audit.data?.pages.flatMap((p) => p.items) ?? [];
   return (
     <Card className="p-4">
-      <Input
-        placeholder="filter by action prefix, e.g. chat, tool, llm, admin"
-        value={action}
-        onChange={(e) => setAction(e.target.value)}
-        className="mb-3 max-w-sm"
-      />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="action prefix, e.g. chat, tool, admin"
+          value={f.action}
+          onChange={(e) => setF({ ...f, action: e.target.value })}
+          className="max-w-xs"
+        />
+        <Input
+          placeholder="resource prefix, e.g. user:, doc:"
+          value={f.resource}
+          onChange={(e) => setF({ ...f, resource: e.target.value })}
+          className="max-w-xs"
+        />
+        <Select value={f.decision} onChange={(e) => setF({ ...f, decision: e.target.value })} aria-label="decision">
+          <option value="">any decision</option>
+          <option value="allow">allow</option>
+          <option value="deny">deny</option>
+        </Select>
+        <Label className="text-xs">from</Label>
+        <Input type="datetime-local" value={f.since} onChange={(e) => setF({ ...f, since: e.target.value })} className="w-auto" />
+        <Label className="text-xs">to</Label>
+        <Input type="datetime-local" value={f.until} onChange={(e) => setF({ ...f, until: e.target.value })} className="w-auto" />
+        <Button size="sm" variant="ghost" onClick={() => audit.refetch()} aria-label="refresh">
+          <RefreshCw className="h-4 w-4" />
+        </Button>
+      </div>
       <Table>
         <thead>
           <tr>
@@ -950,7 +840,7 @@ function Audit() {
           </tr>
         </thead>
         <tbody>
-          {audit.data?.map((a) => (
+          {rows.map((a) => (
             <tr key={a.id} className="border-t border-border align-top">
               <td className="whitespace-nowrap text-xs">{new Date(a.ts).toLocaleString()}</td>
               <td className="font-mono text-xs">{a.action}</td>
@@ -965,12 +855,23 @@ function Audit() {
           ))}
         </tbody>
       </Table>
+      {audit.hasNextPage && (
+        <Button className="mt-3" size="sm" variant="outline" onClick={() => audit.fetchNextPage()} disabled={audit.isFetchingNextPage}>
+          Load older
+        </Button>
+      )}
+      <ErrorLine error={audit.error} />
     </Card>
   );
 }
 
 function Jobs() {
+  const qc = useQueryClient();
   const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => api<JobRow[]>("/api/admin/jobs"), refetchInterval: 3000 });
+  const retry = useMutation({
+    mutationFn: (id: string) => api(`/api/admin/jobs/${id}/retry`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
+  });
   return (
     <Card>
       <Table>
@@ -979,8 +880,10 @@ function Jobs() {
             <Th>Created</Th>
             <Th>Version</Th>
             <Th>State</Th>
+            <Th>Priority</Th>
             <Th>Attempts</Th>
             <Th>Error</Th>
+            <Th> </Th>
           </tr>
         </thead>
         <tbody>
@@ -988,13 +891,31 @@ function Jobs() {
             <tr key={j.id} className="border-t border-border">
               <td className="text-xs">{new Date(j.created_at).toLocaleString()}</td>
               <td className="font-mono text-xs">{j.version_id.slice(0, 8)}</td>
-              <td>{j.state}</td>
+              <td className={cn(j.state === "dead" && "font-semibold text-red-600")}>
+                {j.state}
+                {j.state === "queued" && j.next_attempt_at && (
+                  <span className="block text-[11px] text-muted-foreground">
+                    retry at {new Date(j.next_attempt_at).toLocaleTimeString()}
+                  </span>
+                )}
+              </td>
+              <td>{j.priority ?? 0}</td>
               <td>{j.attempts}</td>
               <td className="text-xs text-red-600">{j.error}</td>
+              <td>
+                {(j.state === "dead" || j.state === "failed") && (
+                  <Button size="sm" variant="outline" onClick={() => retry.mutate(j.id)} disabled={retry.isPending}>
+                    Retry
+                  </Button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
       </Table>
+      <div className="px-3 pb-2">
+        <ErrorLine error={retry.error} />
+      </div>
     </Card>
   );
 }
@@ -1051,6 +972,7 @@ export default function AdminPage({ me }: { me?: Me }) {
           <Roles />
           <RolesQuotas />
           <UsageOverview />
+          <UsageByRole />
         </div>
       )}
       {tab === "Containers" && <Containers />}
@@ -1067,6 +989,8 @@ export default function AdminPage({ me }: { me?: Me }) {
       {tab === "Secrets" && <Secrets />}
       {tab === "Providers" && <Providers />}
       {tab === "Model router" && <ModelRouter />}
+      {tab === "Retrieval" && <Retrieval />}
+      {tab === "Evaluation" && <Evaluation />}
       {tab === "Audit" && <Audit />}
       {tab === "Jobs" && <Jobs />}
       {tab === "Setup assistant" && <SetupAssistant me={me} />}

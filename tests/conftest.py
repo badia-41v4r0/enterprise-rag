@@ -129,6 +129,16 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 TABLES = [
+    "rate_limit_counters",
+    "budget_reservations",
+    "generation_leases",
+    "generation_waiters",
+    "llm_endpoints",
+    "answer_feedback",
+    "eval_results",
+    "eval_runs",
+    "eval_items",
+    "eval_sets",
     "setup_state",
     "audit_log",
     "sync_runs",

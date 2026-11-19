@@ -26,3 +26,4 @@ setup-token
 # Local scratch
 .scratch/
 *.tsbuildinfo
+eval/runs/

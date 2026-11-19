@@ -1,0 +1,59 @@
+# Postgres for EnterpriseRAG on Kubernetes with CloudNativePG (Apache-2.0): a primary and a replica with
+# automatic failover, continuous backup to S3 with point-in-time recovery (Barman Cloud).
+# Install the operator first (https://cloudnative-pg.io), then: kubectl apply -f cloudnativepg-cluster.yaml
+#
+# The image must include pgvector >= 0.8 (halfvec, iterative index scans). The standard CloudNativePG
+# PostgreSQL images ship it; if you build your own, add it. Check with: CREATE EXTENSION vector;
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: erag-db
+spec:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+  primaryUpdateStrategy: unsupervised
+  bootstrap:
+    initdb:
+      database: erag
+      owner: erag
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector
+        - CREATE EXTENSION IF NOT EXISTS unaccent
+  postgresql:
+    parameters:
+      # HNSW builds keep the graph in memory: about 4.5 KB per vector as vector, half as halfvec.
+      maintenance_work_mem: 2GB
+      max_parallel_maintenance_workers: "4"
+      shared_buffers: 4GB
+      effective_cache_size: 12GB
+      max_connections: "300"
+      archive_timeout: 5min # RPO 15 minutes (ADR 0051)
+  resources:
+    requests: { cpu: "2", memory: 16Gi }
+    limits: { memory: 16Gi }
+  storage:
+    size: 200Gi
+  backup:
+    retentionPolicy: 30d
+    barmanObjectStore:
+      destinationPath: s3://CHANGE-ME-erag-backups/
+      endpointURL: https://CHANGE-ME-s3.example.internal
+      s3Credentials:
+        accessKeyId: { name: erag-backup-s3, key: ACCESS_KEY_ID }
+        secretAccessKey: { name: erag-backup-s3, key: SECRET_ACCESS_KEY }
+      wal:
+        compression: gzip
+        encryption: AES256
+      data:
+        compression: gzip
+        encryption: AES256
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: erag-db-nightly
+spec:
+  schedule: "0 0 2 * * *"
+  backupOwnerReference: self
+  cluster:
+    name: erag-db

@@ -293,6 +293,8 @@ export interface ProviderRow {
   tokens_per_day: number | null;
   tokens_per_month: number | null;
   max_turn_tokens: number | null;
+  max_concurrency?: number | null;
+  endpoints?: { id: string; base_url: string; max_concurrency: number | null; enabled: boolean }[];
   today: UsageFigures;
   month: UsageFigures;
   available: boolean;
@@ -327,7 +329,24 @@ export interface UserRow {
   is_active: boolean;
   role_ids: string[];
   mfa_enabled: boolean;
+  last_login_at?: string | null;
   must_change_password?: boolean;
+}
+export interface UserPage {
+  items: UserRow[];
+  next_cursor: string | null;
+  total: number;
+}
+export interface ImportResult {
+  applied: boolean;
+  created: number;
+  updated: number;
+  rows: { line: number; email: string; action: string; added_roles: string[]; temporary_password: string | null }[];
+  errors: string[];
+}
+export interface AuditPage {
+  items: AuditRow[];
+  next_cursor: number | null;
 }
 export interface RoleRow {
   id: string;
@@ -335,6 +354,7 @@ export interface RoleRow {
   description: string;
   user_count: number;
   grant_count: number;
+  priority?: number;
 }
 export type AccessLevel = "none" | "read" | "contribute" | "manage";
 export interface EffectivePermissions {
@@ -416,6 +436,8 @@ export interface JobRow {
   attempts: number;
   error: string | null;
   created_at: string;
+  priority?: number;
+  next_attempt_at?: string | null;
 }
 
 export type ChatEvent =
@@ -427,6 +449,8 @@ export type ChatEvent =
   | { type: "tool_result"; id: string; name: string; ok: boolean; classification: Classification }
   | { type: "refusal"; reason: string; classification: Classification }
   | { type: "error"; message: string; code?: "quota_exceeded" | "limit_reached" }
+  | { type: "notice"; code: string; message: string }
+  | { type: "queue"; position: number }
   | { type: "done"; message_id: string; model: string | null; classification: Classification; answer: string };
 
 /** POST /api/chat and parse the SSE stream with fetch (cookie auth, CSRF header). */

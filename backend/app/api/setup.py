@@ -46,8 +46,8 @@ wizard_router = APIRouter(prefix="/api/setup", tags=["setup"])
 assistant_router = APIRouter(prefix="/api/admin/setup", tags=["setup"])
 
 SETUP_CSRF_HEADER = "X-Setup-CSRF"
-token_limiter = RateLimiter(10)  # per client address
-token_global_limiter = RateLimiter(30)  # every client together: guessing 120 bits stays hopeless
+token_limiter = RateLimiter("setup-token", 10)  # per client address (shared by every replica)
+token_global_limiter = RateLimiter("setup-token-all", 30)  # every client together: guessing 120 bits stays hopeless
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -192,7 +192,7 @@ async def enter_token(
     if not await svc.setup_required(db):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not Found")
     ip = request.client.host if request.client else "?"
-    if not token_limiter.allow(ip) or not token_global_limiter.allow("all"):
+    if not await token_limiter.allow(ip) or not await token_global_limiter.allow("all"):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts; wait a minute")
     if not await svc.verify_token(db, body.token):
         audit(db, "setup.token", decision="deny", details={"client": ip})

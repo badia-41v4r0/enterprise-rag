@@ -1,0 +1,11321 @@
+{
+ "version": 1,
+ "run_id": "5325487b-e333-42ea-8435-6e036f7d1cfd",
+ "label": "baseline",
+ "commit": "28d022836f5bc3b949f728e423883c4f5b2730f7",
+ "finished_at": "2026-11-18T09:29:40.037320+00:00",
+ "config": {
+  "retrieval": "vector",
+  "embed_model": "bge-m3",
+  "embed_dim": 1024,
+  "retrieval_top_k": 8,
+  "retrieval_min_score": 0.45,
+  "eval_k": 10,
+  "hnsw_ef_search": 100,
+  "set": "acme",
+  "set_digest": "2881fa4c2572fc12feb9655e191fac626acc8e01e8ec5aa5eaf569769162d434",
+  "embeddings": "recorded (strict)"
+ },
+ "metrics": {
+  "runs": 247,
+  "answerable_runs": 146,
+  "unanswerable_runs": 101,
+  "leaks": 0,
+  "leaked": [],
+  "recall@5": 0.9726,
+  "recall@8": 0.9795,
+  "mrr": 0.8994,
+  "ndcg@10": 0.9206,
+  "abstention": 0.3069,
+  "by_tag": {
+   "acronym": {
+    "runs": 4,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "amount": {
+    "runs": 7,
+    "recall@8": 1.0,
+    "mrr": 0.6524
+   },
+   "api": {
+    "runs": 5,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "bare-id": {
+    "runs": 4,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "controller": {
+    "runs": 5,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "cross-lingual": {
+    "runs": 7,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "duration": {
+    "runs": 13,
+    "recall@8": 0.8462,
+    "mrr": 0.5744
+   },
+   "en": {
+    "runs": 80,
+    "recall@8": 1.0,
+    "mrr": 0.976
+   },
+   "es": {
+    "runs": 62,
+    "recall@8": 0.9516,
+    "mrr": 0.7941
+   },
+   "exact-id": {
+    "runs": 109,
+    "recall@8": 0.9725,
+    "mrr": 0.8699
+   },
+   "forbidden": {
+    "runs": 17,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "gateway": {
+    "runs": 15,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "generated": {
+    "runs": 100,
+    "recall@8": 0.97,
+    "mrr": 0.8582
+   },
+   "invoice": {
+    "runs": 10,
+    "recall@8": 1.0,
+    "mrr": 0.8583
+   },
+   "mobile": {
+    "runs": 2,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "multi-doc": {
+    "runs": 1,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "name": {
+    "runs": 1,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "paraphrase": {
+    "runs": 12,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "payment-term": {
+    "runs": 20,
+    "recall@8": 0.95,
+    "mrr": 0.76
+   },
+   "portal": {
+    "runs": 6,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "relay": {
+    "runs": 5,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "restricted": {
+    "runs": 3,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "sensor": {
+    "runs": 5,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   },
+   "sync": {
+    "runs": 7,
+    "recall@8": 1.0,
+    "mrr": 1.0
+   }
+  },
+  "latency_ms": {
+   "embed_p50": 0.0,
+   "embed_p95": 0.0,
+   "search_p50": 8.2,
+   "search_p95": 15.6
+  }
+ },
+ "results": [
+  {
+   "item": "gen-ct-001",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0001.md",
+     1,
+     0.6982
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     2,
+     0.6926
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     3,
+     0.6831
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     4,
+     0.6792
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     5,
+     0.6792
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     6,
+     0.6755
+    ],
+    [
+     "sales-contracts/ct-2025-0010.md",
+     7,
+     0.6746
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     8,
+     0.6734
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     9,
+     0.6718
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     10,
+     0.6712
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-001",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-002",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0002.md",
+     1,
+     0.7342
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.7336
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     3,
+     0.7263
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     4,
+     0.716
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     5,
+     0.7156
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     6,
+     0.715
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     7,
+     0.7147
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     8,
+     0.7133
+    ],
+    [
+     "sales-contracts/ct-2025-0052.md",
+     9,
+     0.712
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     10,
+     0.7105
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-002",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4546
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-003",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.2,
+    "ndcg@10": 0.38685280723454163
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0001.md",
+     1,
+     0.6922
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     2,
+     0.6888
+    ],
+    [
+     "sales-contracts/ct-2025-0025.md",
+     3,
+     0.6869
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     4,
+     0.6796
+    ],
+    [
+     "sales-contracts/ct-2025-0003.md",
+     5,
+     0.679
+    ],
+    [
+     "sales-contracts/ct-2025-0075.md",
+     6,
+     0.6772
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     7,
+     0.676
+    ],
+    [
+     "sales-contracts/ct-2025-0033.md",
+     8,
+     0.6743
+    ],
+    [
+     "sales-contracts/ct-2025-0073.md",
+     9,
+     0.6733
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     10,
+     0.6695
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-003",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1003.md",
+     1,
+     0.461
+    ],
+    [
+     "product-catalog/ax-1075.md",
+     2,
+     0.4608
+    ],
+    [
+     "product-catalog/ax-1015.md",
+     3,
+     0.4562
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-004",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0004.md",
+     1,
+     0.7292
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.7206
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     3,
+     0.7172
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     4,
+     0.7154
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     5,
+     0.7088
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     6,
+     0.7071
+    ],
+    [
+     "sales-contracts/ct-2025-0002.md",
+     7,
+     0.705
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     8,
+     0.7039
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     9,
+     0.7029
+    ],
+    [
+     "sales-contracts/ct-2025-0064.md",
+     10,
+     0.7022
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-004",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4528
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-005",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.5,
+    "ndcg@10": 0.6309297535714575
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0015.md",
+     1,
+     0.6979
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     2,
+     0.6874
+    ],
+    [
+     "sales-contracts/ct-2025-0010.md",
+     3,
+     0.682
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     4,
+     0.6813
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     5,
+     0.6802
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     6,
+     0.6799
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     7,
+     0.6799
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     8,
+     0.6795
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     9,
+     0.6787
+    ],
+    [
+     "sales-contracts/ct-2025-0050.md",
+     10,
+     0.6742
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-005",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-006",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0006.md",
+     1,
+     0.7512
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.7296
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     3,
+     0.7246
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     4,
+     0.7204
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     5,
+     0.7201
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     6,
+     0.7171
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     7,
+     0.7155
+    ],
+    [
+     "sales-contracts/ct-2025-0004.md",
+     8,
+     0.7152
+    ],
+    [
+     "sales-contracts/ct-2025-0052.md",
+     9,
+     0.7147
+    ],
+    [
+     "sales-contracts/ct-2025-0002.md",
+     10,
+     0.714
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-006",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4606
+    ],
+    [
+     "product-catalog/ax-1006.md",
+     2,
+     0.4532
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-007",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.3333333333333333,
+    "ndcg@10": 0.5
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0015.md",
+     1,
+     0.6804
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     2,
+     0.6799
+    ],
+    [
+     "sales-contracts/ct-2025-0007.md",
+     3,
+     0.6743
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     4,
+     0.6729
+    ],
+    [
+     "sales-contracts/ct-2025-0010.md",
+     5,
+     0.6717
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     6,
+     0.6697
+    ],
+    [
+     "sales-contracts/ct-2025-0037.md",
+     7,
+     0.6676
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     8,
+     0.6671
+    ],
+    [
+     "sales-contracts/ct-2025-0004.md",
+     9,
+     0.6669
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     10,
+     0.6666
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-007",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-008",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.25,
+    "ndcg@10": 0.43067655807339306
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0001.md",
+     1,
+     0.7306
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     2,
+     0.7258
+    ],
+    [
+     "sales-contracts/ct-2025-0058.md",
+     3,
+     0.7216
+    ],
+    [
+     "sales-contracts/ct-2025-0008.md",
+     4,
+     0.7199
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     5,
+     0.7168
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     6,
+     0.7163
+    ],
+    [
+     "sales-contracts/ct-2025-0002.md",
+     7,
+     0.7145
+    ],
+    [
+     "sales-contracts/ct-2025-0038.md",
+     8,
+     0.7133
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     9,
+     0.7117
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     10,
+     0.7116
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-008",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-009",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0009.md",
+     1,
+     0.6882
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.6875
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     3,
+     0.6872
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     4,
+     0.6756
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     5,
+     0.6752
+    ],
+    [
+     "sales-contracts/ct-2025-0025.md",
+     6,
+     0.6735
+    ],
+    [
+     "sales-contracts/ct-2025-0002.md",
+     7,
+     0.6716
+    ],
+    [
+     "sales-contracts/ct-2025-0052.md",
+     8,
+     0.6694
+    ],
+    [
+     "sales-contracts/ct-2025-0069.md",
+     9,
+     0.6668
+    ],
+    [
+     "sales-contracts/ct-2025-0004.md",
+     10,
+     0.6668
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-009",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1075.md",
+     1,
+     0.472
+    ],
+    [
+     "product-catalog/ax-1015.md",
+     2,
+     0.4688
+    ],
+    [
+     "product-catalog/ax-1050.md",
+     3,
+     0.4644
+    ],
+    [
+     "product-catalog/ax-1054.md",
+     4,
+     0.4611
+    ],
+    [
+     "product-catalog/ax-1059.md",
+     5,
+     0.4583
+    ],
+    [
+     "product-catalog/ax-1002.md",
+     6,
+     0.458
+    ],
+    [
+     "product-catalog/ax-1024.md",
+     7,
+     0.4559
+    ],
+    [
+     "product-catalog/ax-1019.md",
+     8,
+     0.4538
+    ],
+    [
+     "product-catalog/ax-1010.md",
+     9,
+     0.4538
+    ],
+    [
+     "product-catalog/ax-1026.md",
+     10,
+     0.4526
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-010",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.5,
+    "ndcg@10": 0.6309297535714575
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0001.md",
+     1,
+     0.7326
+    ],
+    [
+     "sales-contracts/ct-2025-0010.md",
+     2,
+     0.7305
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     3,
+     0.727
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     4,
+     0.7239
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     5,
+     0.7201
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     6,
+     0.7189
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     7,
+     0.7183
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     8,
+     0.7164
+    ],
+    [
+     "sales-contracts/ct-2025-0002.md",
+     9,
+     0.7162
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     10,
+     0.7153
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-010",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1015.md",
+     1,
+     0.4684
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     2,
+     0.4622
+    ],
+    [
+     "product-catalog/ax-1025.md",
+     3,
+     0.4543
+    ],
+    [
+     "product-catalog/ax-1010.md",
+     4,
+     0.4536
+    ],
+    [
+     "product-catalog/ax-1075.md",
+     5,
+     0.4502
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-011",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.3333333333333333,
+    "ndcg@10": 0.5
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0015.md",
+     1,
+     0.6911
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     2,
+     0.6862
+    ],
+    [
+     "sales-contracts/ct-2025-0011.md",
+     3,
+     0.685
+    ],
+    [
+     "sales-contracts/ct-2025-0010.md",
+     4,
+     0.6828
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     5,
+     0.6755
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     6,
+     0.6749
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     7,
+     0.6745
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     8,
+     0.6739
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     9,
+     0.6731
+    ],
+    [
+     "sales-contracts/ct-2025-0004.md",
+     10,
+     0.6699
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-011",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-012",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0012.md",
+     1,
+     0.7406
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.7355
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     3,
+     0.7244
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     4,
+     0.7217
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     5,
+     0.7208
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     6,
+     0.7205
+    ],
+    [
+     "sales-contracts/ct-2025-0002.md",
+     7,
+     0.7202
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     8,
+     0.7176
+    ],
+    [
+     "sales-contracts/ct-2025-0052.md",
+     9,
+     0.7171
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     10,
+     0.7157
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-012",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4658
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-013",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.2,
+    "ndcg@10": 0.38685280723454163
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0031.md",
+     1,
+     0.6919
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     2,
+     0.6815
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     3,
+     0.6778
+    ],
+    [
+     "sales-contracts/ct-2025-0010.md",
+     4,
+     0.6763
+    ],
+    [
+     "sales-contracts/ct-2025-0013.md",
+     5,
+     0.6758
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     6,
+     0.6739
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     7,
+     0.6712
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     8,
+     0.6698
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     9,
+     0.669
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     10,
+     0.6689
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-013",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-014",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0014.md",
+     1,
+     0.7314
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     2,
+     0.7171
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     3,
+     0.7163
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     4,
+     0.7143
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     5,
+     0.7111
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     6,
+     0.709
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     7,
+     0.709
+    ],
+    [
+     "sales-contracts/ct-2025-0024.md",
+     8,
+     0.7089
+    ],
+    [
+     "sales-contracts/ct-2025-0064.md",
+     9,
+     0.7081
+    ],
+    [
+     "sales-contracts/ct-2025-0004.md",
+     10,
+     0.7079
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-014",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1014.md",
+     1,
+     0.4562
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     2,
+     0.4528
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-015",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.2,
+    "ndcg@10": 0.38685280723454163
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0025.md",
+     1,
+     0.699
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.6983
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     3,
+     0.6892
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     4,
+     0.6861
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     5,
+     0.6852
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     6,
+     0.6833
+    ],
+    [
+     "sales-contracts/ct-2025-0075.md",
+     7,
+     0.6822
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     8,
+     0.68
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     9,
+     0.6788
+    ],
+    [
+     "sales-contracts/ct-2025-0038.md",
+     10,
+     0.677
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-015",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1015.md",
+     1,
+     0.5192
+    ],
+    [
+     "product-catalog/ax-1075.md",
+     2,
+     0.4841
+    ],
+    [
+     "product-catalog/ax-1050.md",
+     3,
+     0.4696
+    ],
+    [
+     "product-catalog/ax-1025.md",
+     4,
+     0.4682
+    ],
+    [
+     "product-catalog/ax-1055.md",
+     5,
+     0.4652
+    ],
+    [
+     "product-catalog/ax-1054.md",
+     6,
+     0.4636
+    ],
+    [
+     "product-catalog/ax-1022.md",
+     7,
+     0.4633
+    ],
+    [
+     "product-catalog/ax-1035.md",
+     8,
+     0.4613
+    ],
+    [
+     "product-catalog/ax-1026.md",
+     9,
+     0.4608
+    ],
+    [
+     "product-catalog/ax-1024.md",
+     10,
+     0.4564
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-016",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.5,
+    "ndcg@10": 0.6309297535714575
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0001.md",
+     1,
+     0.7343
+    ],
+    [
+     "sales-contracts/ct-2025-0016.md",
+     2,
+     0.7343
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     3,
+     0.7292
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     4,
+     0.7236
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     5,
+     0.7232
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     6,
+     0.7216
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     7,
+     0.7213
+    ],
+    [
+     "sales-contracts/ct-2025-0021.md",
+     8,
+     0.7208
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     9,
+     0.7207
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     10,
+     0.7196
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-016",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4688
+    ],
+    [
+     "product-catalog/ax-1016.md",
+     2,
+     0.4522
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-017",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0017.md",
+     1,
+     0.6881
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     2,
+     0.6828
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     3,
+     0.6766
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     4,
+     0.6704
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     5,
+     0.6693
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     6,
+     0.6679
+    ],
+    [
+     "sales-contracts/ct-2025-0010.md",
+     7,
+     0.6673
+    ],
+    [
+     "sales-contracts/ct-2025-0037.md",
+     8,
+     0.6668
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     9,
+     0.6649
+    ],
+    [
+     "sales-contracts/ct-2025-0011.md",
+     10,
+     0.6606
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-017",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-018",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0018.md",
+     1,
+     0.7526
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.7377
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     3,
+     0.734
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     4,
+     0.7323
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     5,
+     0.7289
+    ],
+    [
+     "sales-contracts/ct-2025-0038.md",
+     6,
+     0.7268
+    ],
+    [
+     "sales-contracts/ct-2025-0058.md",
+     7,
+     0.7264
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     8,
+     0.7255
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     9,
+     0.7254
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     10,
+     0.7251
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-018",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4634
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-019",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0019.md",
+     1,
+     0.7076
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     2,
+     0.6917
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     3,
+     0.69
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     4,
+     0.6873
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     5,
+     0.6817
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     6,
+     0.6811
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     7,
+     0.6786
+    ],
+    [
+     "sales-contracts/ct-2025-0069.md",
+     8,
+     0.6786
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     9,
+     0.6773
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     10,
+     0.6753
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-019",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-020",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0020.md",
+     1,
+     0.7416
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.7379
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     3,
+     0.726
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     4,
+     0.7201
+    ],
+    [
+     "sales-contracts/ct-2025-0021.md",
+     5,
+     0.72
+    ],
+    [
+     "sales-contracts/ct-2025-0002.md",
+     6,
+     0.72
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     7,
+     0.7199
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     8,
+     0.717
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     9,
+     0.717
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     10,
+     0.7159
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-020",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4537
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-021",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0021.md",
+     1,
+     0.7029
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.7013
+    ],
+    [
+     "sales-contracts/ct-2025-0071.md",
+     3,
+     0.6981
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     4,
+     0.6968
+    ],
+    [
+     "sales-contracts/ct-2025-0025.md",
+     5,
+     0.6947
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     6,
+     0.6912
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     7,
+     0.6902
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     8,
+     0.6832
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     9,
+     0.6829
+    ],
+    [
+     "sales-contracts/ct-2025-0054.md",
+     10,
+     0.681
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-021",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1015.md",
+     1,
+     0.4764
+    ],
+    [
+     "product-catalog/ax-1026.md",
+     2,
+     0.4727
+    ],
+    [
+     "product-catalog/ax-1023.md",
+     3,
+     0.4691
+    ],
+    [
+     "product-catalog/ax-1054.md",
+     4,
+     0.469
+    ],
+    [
+     "product-catalog/ax-1071.md",
+     5,
+     0.4647
+    ],
+    [
+     "product-catalog/ax-1022.md",
+     6,
+     0.4608
+    ],
+    [
+     "product-catalog/ax-1027.md",
+     7,
+     0.4604
+    ],
+    [
+     "product-catalog/ax-1024.md",
+     8,
+     0.4599
+    ],
+    [
+     "product-catalog/ax-1075.md",
+     9,
+     0.4591
+    ],
+    [
+     "product-catalog/ax-1031.md",
+     10,
+     0.4583
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-022",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.2,
+    "ndcg@10": 0.38685280723454163
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0001.md",
+     1,
+     0.7245
+    ],
+    [
+     "sales-contracts/ct-2025-0002.md",
+     2,
+     0.7188
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     3,
+     0.7165
+    ],
+    [
+     "sales-contracts/ct-2025-0052.md",
+     4,
+     0.7128
+    ],
+    [
+     "sales-contracts/ct-2025-0022.md",
+     5,
+     0.7116
+    ],
+    [
+     "sales-contracts/ct-2025-0042.md",
+     6,
+     0.7116
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     7,
+     0.7105
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     8,
+     0.7099
+    ],
+    [
+     "sales-contracts/ct-2025-0021.md",
+     9,
+     0.7097
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     10,
+     0.7089
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-022",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1022.md",
+     1,
+     0.4645
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     2,
+     0.4524
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-023",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.5,
+    "ndcg@10": 0.6309297535714575
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0031.md",
+     1,
+     0.6918
+    ],
+    [
+     "sales-contracts/ct-2025-0023.md",
+     2,
+     0.6914
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     3,
+     0.6807
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     4,
+     0.6755
+    ],
+    [
+     "sales-contracts/ct-2025-0010.md",
+     5,
+     0.6682
+    ],
+    [
+     "sales-contracts/ct-2025-0024.md",
+     6,
+     0.6681
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     7,
+     0.6668
+    ],
+    [
+     "sales-contracts/ct-2025-0037.md",
+     8,
+     0.6647
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     9,
+     0.6642
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     10,
+     0.6639
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-023",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1023.md",
+     1,
+     0.4578
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-024",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0024.md",
+     1,
+     0.7247
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     2,
+     0.7129
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     3,
+     0.7125
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     4,
+     0.7097
+    ],
+    [
+     "sales-contracts/ct-2025-0014.md",
+     5,
+     0.7095
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     6,
+     0.7093
+    ],
+    [
+     "sales-contracts/ct-2025-0054.md",
+     7,
+     0.709
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     8,
+     0.7089
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     9,
+     0.7087
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     10,
+     0.7071
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-024",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1024.md",
+     1,
+     0.453
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-025",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 0.0,
+    "recall@8": 0.0,
+    "mrr": 0.0,
+    "ndcg@10": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0015.md",
+     1,
+     0.6893
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.6815
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     3,
+     0.6769
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     4,
+     0.6744
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     5,
+     0.6738
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     6,
+     0.6737
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     7,
+     0.6736
+    ],
+    [
+     "sales-contracts/ct-2025-0010.md",
+     8,
+     0.6727
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     9,
+     0.6681
+    ],
+    [
+     "sales-contracts/ct-2025-0023.md",
+     10,
+     0.6669
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-025",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1025.md",
+     1,
+     0.4501
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-026",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0026.md",
+     1,
+     0.7381
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.7172
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     3,
+     0.7146
+    ],
+    [
+     "sales-contracts/ct-2025-0046.md",
+     4,
+     0.7138
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     5,
+     0.7132
+    ],
+    [
+     "sales-contracts/ct-2025-0060.md",
+     6,
+     0.7108
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     7,
+     0.7108
+    ],
+    [
+     "sales-contracts/ct-2025-0061.md",
+     8,
+     0.7069
+    ],
+    [
+     "sales-contracts/ct-2025-0021.md",
+     9,
+     0.7062
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     10,
+     0.7058
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-026",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.476
+    ],
+    [
+     "product-catalog/ax-1026.md",
+     2,
+     0.4696
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     3,
+     0.4574
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-027",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0027.md",
+     1,
+     0.6957
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     2,
+     0.6858
+    ],
+    [
+     "sales-contracts/ct-2025-0025.md",
+     3,
+     0.6736
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     4,
+     0.6724
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     5,
+     0.6698
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     6,
+     0.6644
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     7,
+     0.6636
+    ],
+    [
+     "sales-contracts/ct-2025-0075.md",
+     8,
+     0.6629
+    ],
+    [
+     "sales-contracts/ct-2025-0014.md",
+     9,
+     0.6621
+    ],
+    [
+     "sales-contracts/ct-2025-0047.md",
+     10,
+     0.6609
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-027",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1027.md",
+     1,
+     0.5199
+    ],
+    [
+     "product-catalog/ax-1026.md",
+     2,
+     0.4804
+    ],
+    [
+     "product-catalog/ax-1075.md",
+     3,
+     0.4751
+    ],
+    [
+     "product-catalog/ax-1015.md",
+     4,
+     0.4602
+    ],
+    [
+     "product-catalog/ax-1024.md",
+     5,
+     0.4555
+    ],
+    [
+     "product-catalog/ax-1047.md",
+     6,
+     0.4552
+    ],
+    [
+     "product-catalog/ax-1035.md",
+     7,
+     0.4548
+    ],
+    [
+     "product-catalog/ax-1054.md",
+     8,
+     0.4537
+    ],
+    [
+     "product-catalog/ax-1022.md",
+     9,
+     0.4521
+    ],
+    [
+     "product-catalog/ax-1025.md",
+     10,
+     0.4509
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-028",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0028.md",
+     1,
+     0.7306
+    ],
+    [
+     "sales-contracts/ct-2025-0058.md",
+     2,
+     0.7202
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     3,
+     0.7164
+    ],
+    [
+     "sales-contracts/ct-2025-0021.md",
+     4,
+     0.715
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     5,
+     0.7137
+    ],
+    [
+     "sales-contracts/ct-2025-0027.md",
+     6,
+     0.7134
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     7,
+     0.7127
+    ],
+    [
+     "sales-contracts/ct-2025-0038.md",
+     8,
+     0.712
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     9,
+     0.7057
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     10,
+     0.7053
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-028",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-029",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.5,
+    "ndcg@10": 0.6309297535714575
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0031.md",
+     1,
+     0.6878
+    ],
+    [
+     "sales-contracts/ct-2025-0029.md",
+     2,
+     0.6833
+    ],
+    [
+     "sales-contracts/ct-2025-0069.md",
+     3,
+     0.6759
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     4,
+     0.6725
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     5,
+     0.6644
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     6,
+     0.6604
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     7,
+     0.66
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     8,
+     0.6597
+    ],
+    [
+     "sales-contracts/ct-2025-0023.md",
+     9,
+     0.6589
+    ],
+    [
+     "sales-contracts/ct-2025-0052.md",
+     10,
+     0.6585
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-029",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-030",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0030.md",
+     1,
+     0.734
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.7261
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     3,
+     0.7231
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     4,
+     0.722
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     5,
+     0.7201
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     6,
+     0.7192
+    ],
+    [
+     "sales-contracts/ct-2025-0075.md",
+     7,
+     0.7167
+    ],
+    [
+     "sales-contracts/ct-2025-0060.md",
+     8,
+     0.7155
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     9,
+     0.7152
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     10,
+     0.713
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-030",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4592
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-031",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0031.md",
+     1,
+     0.7297
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     2,
+     0.6791
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     3,
+     0.6747
+    ],
+    [
+     "sales-contracts/ct-2025-0061.md",
+     4,
+     0.6691
+    ],
+    [
+     "sales-contracts/ct-2025-0051.md",
+     5,
+     0.6644
+    ],
+    [
+     "sales-contracts/ct-2025-0021.md",
+     6,
+     0.6627
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     7,
+     0.6625
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     8,
+     0.6624
+    ],
+    [
+     "sales-contracts/ct-2025-0037.md",
+     9,
+     0.6609
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     10,
+     0.6602
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-031",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1031.md",
+     1,
+     0.4544
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-032",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0032.md",
+     1,
+     0.7272
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     2,
+     0.718
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     3,
+     0.7122
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     4,
+     0.7072
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     5,
+     0.7064
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     6,
+     0.7053
+    ],
+    [
+     "sales-contracts/ct-2025-0002.md",
+     7,
+     0.705
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     8,
+     0.705
+    ],
+    [
+     "sales-contracts/ct-2025-0042.md",
+     9,
+     0.7041
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     10,
+     0.7037
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-032",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1032.md",
+     1,
+     0.4615
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-033",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0033.md",
+     1,
+     0.7152
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     2,
+     0.6821
+    ],
+    [
+     "sales-contracts/ct-2025-0073.md",
+     3,
+     0.6796
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     4,
+     0.6787
+    ],
+    [
+     "sales-contracts/ct-2025-0023.md",
+     5,
+     0.6774
+    ],
+    [
+     "sales-contracts/ct-2025-0025.md",
+     6,
+     0.6759
+    ],
+    [
+     "sales-contracts/ct-2025-0063.md",
+     7,
+     0.6756
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     8,
+     0.6747
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     9,
+     0.673
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     10,
+     0.672
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-033",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1063.md",
+     1,
+     0.4721
+    ],
+    [
+     "product-catalog/ax-1023.md",
+     2,
+     0.4659
+    ],
+    [
+     "product-catalog/ax-1034.md",
+     3,
+     0.4642
+    ],
+    [
+     "product-catalog/ax-1043.md",
+     4,
+     0.4595
+    ],
+    [
+     "product-catalog/ax-1035.md",
+     5,
+     0.4586
+    ],
+    [
+     "product-catalog/ax-1038.md",
+     6,
+     0.4576
+    ],
+    [
+     "product-catalog/ax-1066.md",
+     7,
+     0.4574
+    ],
+    [
+     "product-catalog/ax-1026.md",
+     8,
+     0.4566
+    ],
+    [
+     "product-catalog/ax-1075.md",
+     9,
+     0.4551
+    ],
+    [
+     "product-catalog/ax-1054.md",
+     10,
+     0.4514
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-034",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.5,
+    "ndcg@10": 0.6309297535714575
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0033.md",
+     1,
+     0.7211
+    ],
+    [
+     "sales-contracts/ct-2025-0034.md",
+     2,
+     0.7167
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     3,
+     0.7151
+    ],
+    [
+     "sales-contracts/ct-2025-0054.md",
+     4,
+     0.7106
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     5,
+     0.7089
+    ],
+    [
+     "sales-contracts/ct-2025-0064.md",
+     6,
+     0.708
+    ],
+    [
+     "sales-contracts/ct-2025-0044.md",
+     7,
+     0.708
+    ],
+    [
+     "sales-contracts/ct-2025-0035.md",
+     8,
+     0.707
+    ],
+    [
+     "sales-contracts/ct-2025-0038.md",
+     9,
+     0.7065
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     10,
+     0.7055
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-034",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1034.md",
+     1,
+     0.4659
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-035",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 0.0,
+    "recall@8": 0.0,
+    "mrr": 0.1,
+    "ndcg@10": 0.2890648263178879
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0031.md",
+     1,
+     0.6978
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     2,
+     0.6789
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     3,
+     0.6773
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     4,
+     0.6719
+    ],
+    [
+     "sales-contracts/ct-2025-0052.md",
+     5,
+     0.6664
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     6,
+     0.6663
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     7,
+     0.6662
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     8,
+     0.6651
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     9,
+     0.665
+    ],
+    [
+     "sales-contracts/ct-2025-0035.md",
+     10,
+     0.6645
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-035",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1035.md",
+     1,
+     0.4586
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-036",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 0.0,
+    "recall@8": 0.0,
+    "mrr": 0.0,
+    "ndcg@10": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0026.md",
+     1,
+     0.722
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     2,
+     0.7205
+    ],
+    [
+     "sales-contracts/ct-2025-0046.md",
+     3,
+     0.7177
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     4,
+     0.7156
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     5,
+     0.7122
+    ],
+    [
+     "sales-contracts/ct-2025-0035.md",
+     6,
+     0.7106
+    ],
+    [
+     "sales-contracts/ct-2025-0060.md",
+     7,
+     0.7088
+    ],
+    [
+     "sales-contracts/ct-2025-0012.md",
+     8,
+     0.7069
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     9,
+     0.7063
+    ],
+    [
+     "sales-contracts/ct-2025-0038.md",
+     10,
+     0.7055
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-036",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4599
+    ],
+    [
+     "product-catalog/ax-1036.md",
+     2,
+     0.4545
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-037",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0037.md",
+     1,
+     0.6923
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     2,
+     0.6754
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     3,
+     0.6687
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     4,
+     0.6639
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     5,
+     0.6588
+    ],
+    [
+     "sales-contracts/ct-2025-0019.md",
+     6,
+     0.6494
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     7,
+     0.6463
+    ],
+    [
+     "sales-contracts/ct-2025-0071.md",
+     8,
+     0.6453
+    ],
+    [
+     "sales-contracts/ct-2025-0004.md",
+     9,
+     0.6449
+    ],
+    [
+     "sales-contracts/ct-2025-0067.md",
+     10,
+     0.6444
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-037",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "duration"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-ct-038",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0038.md",
+     1,
+     0.7382
+    ],
+    [
+     "sales-contracts/ct-2025-0058.md",
+     2,
+     0.7282
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     3,
+     0.7203
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     4,
+     0.7169
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     5,
+     0.7124
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     6,
+     0.7122
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     7,
+     0.7117
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     8,
+     0.7113
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     9,
+     0.7112
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     10,
+     0.7086
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-038",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1038.md",
+     1,
+     0.4814
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     2,
+     0.4594
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-039",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 0.0,
+    "recall@8": 1.0,
+    "mrr": 0.16666666666666666,
+    "ndcg@10": 0.3562071871080222
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0057.md",
+     1,
+     0.6866
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     2,
+     0.6859
+    ],
+    [
+     "sales-contracts/ct-2025-0069.md",
+     3,
+     0.6826
+    ],
+    [
+     "sales-contracts/ct-2025-0001.md",
+     4,
+     0.6819
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     5,
+     0.6808
+    ],
+    [
+     "sales-contracts/ct-2025-0039.md",
+     6,
+     0.677
+    ],
+    [
+     "sales-contracts/ct-2025-0029.md",
+     7,
+     0.6743
+    ],
+    [
+     "sales-contracts/ct-2025-0031.md",
+     8,
+     0.6739
+    ],
+    [
+     "sales-contracts/ct-2025-0075.md",
+     9,
+     0.6726
+    ],
+    [
+     "sales-contracts/ct-2025-0046.md",
+     10,
+     0.672
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-039",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "amount"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1039.md",
+     1,
+     0.4925
+    ],
+    [
+     "product-catalog/ax-1075.md",
+     2,
+     0.4734
+    ],
+    [
+     "product-catalog/ax-1059.md",
+     3,
+     0.4661
+    ],
+    [
+     "product-catalog/ax-1035.md",
+     4,
+     0.4656
+    ],
+    [
+     "product-catalog/ax-1079.md",
+     5,
+     0.4636
+    ],
+    [
+     "product-catalog/ax-1054.md",
+     6,
+     0.4612
+    ],
+    [
+     "product-catalog/ax-1038.md",
+     7,
+     0.4593
+    ],
+    [
+     "product-catalog/ax-1043.md",
+     8,
+     0.459
+    ],
+    [
+     "product-catalog/ax-1019.md",
+     9,
+     0.4556
+    ],
+    [
+     "product-catalog/ax-1023.md",
+     10,
+     0.4555
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-040",
+   "persona": "sales@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.25,
+    "ndcg@10": 0.43067655807339306
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0001.md",
+     1,
+     0.7166
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     2,
+     0.7147
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     3,
+     0.7123
+    ],
+    [
+     "sales-contracts/ct-2025-0040.md",
+     4,
+     0.7117
+    ],
+    [
+     "sales-contracts/ct-2025-0006.md",
+     5,
+     0.7115
+    ],
+    [
+     "sales-contracts/ct-2025-0060.md",
+     6,
+     0.708
+    ],
+    [
+     "sales-contracts/ct-2025-0018.md",
+     7,
+     0.7055
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     8,
+     0.7046
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     9,
+     0.7035
+    ],
+    [
+     "sales-contracts/ct-2025-0057.md",
+     10,
+     0.7033
+    ]
+   ]
+  },
+  {
+   "item": "gen-ct-040",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "payment-term"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4514
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-001",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-401.md",
+     1,
+     0.6508
+    ],
+    [
+     "support-kb/err-421.md",
+     2,
+     0.6294
+    ],
+    [
+     "support-kb/err-451.md",
+     3,
+     0.6283
+    ],
+    [
+     "support-kb/err-403.md",
+     4,
+     0.6246
+    ],
+    [
+     "support-kb/err-405.md",
+     5,
+     0.6168
+    ],
+    [
+     "support-kb/err-409.md",
+     6,
+     0.6114
+    ],
+    [
+     "support-kb/err-402.md",
+     7,
+     0.6101
+    ],
+    [
+     "support-kb/err-407.md",
+     8,
+     0.6079
+    ],
+    [
+     "support-kb/err-404.md",
+     9,
+     0.5991
+    ],
+    [
+     "support-kb/err-457.md",
+     10,
+     0.5971
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-001",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4525
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-002",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-402.md",
+     1,
+     0.6485
+    ],
+    [
+     "support-kb/err-422.md",
+     2,
+     0.6301
+    ],
+    [
+     "support-kb/err-405.md",
+     3,
+     0.6186
+    ],
+    [
+     "support-kb/err-404.md",
+     4,
+     0.6109
+    ],
+    [
+     "support-kb/err-403.md",
+     5,
+     0.6062
+    ],
+    [
+     "support-kb/err-401.md",
+     6,
+     0.6045
+    ],
+    [
+     "support-kb/err-458.md",
+     8,
+     0.5984
+    ],
+    [
+     "support-kb/err-407.md",
+     10,
+     0.5968
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-002",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-003",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "portal"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-403.md",
+     1,
+     0.659
+    ],
+    [
+     "support-kb/err-423.md",
+     2,
+     0.6293
+    ],
+    [
+     "support-kb/err-404.md",
+     4,
+     0.6069
+    ],
+    [
+     "support-kb/err-405.md",
+     5,
+     0.6012
+    ],
+    [
+     "support-kb/err-458.md",
+     6,
+     0.598
+    ],
+    [
+     "support-kb/err-410.md",
+     8,
+     0.596
+    ],
+    [
+     "support-kb/err-430.md",
+     10,
+     0.5917
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-003",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "portal"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-004",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-404.md",
+     1,
+     0.6228
+    ],
+    [
+     "support-kb/err-403.md",
+     2,
+     0.6185
+    ],
+    [
+     "support-kb/err-402.md",
+     3,
+     0.6159
+    ],
+    [
+     "support-kb/err-401.md",
+     4,
+     0.6154
+    ],
+    [
+     "support-kb/err-405.md",
+     5,
+     0.6125
+    ],
+    [
+     "support-kb/err-407.md",
+     6,
+     0.6114
+    ],
+    [
+     "support-kb/err-414.md",
+     7,
+     0.6095
+    ],
+    [
+     "support-kb/err-421.md",
+     8,
+     0.6088
+    ],
+    [
+     "support-kb/err-409.md",
+     9,
+     0.6065
+    ],
+    [
+     "support-kb/err-445.md",
+     10,
+     0.604
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-004",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4511
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-005",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "portal"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-405.md",
+     1,
+     0.6644
+    ],
+    [
+     "support-kb/err-455.md",
+     2,
+     0.6527
+    ],
+    [
+     "support-kb/err-407.md",
+     4,
+     0.6291
+    ],
+    [
+     "support-kb/err-409.md",
+     5,
+     0.6254
+    ],
+    [
+     "support-kb/err-401.md",
+     6,
+     0.6245
+    ],
+    [
+     "support-kb/err-403.md",
+     7,
+     0.6235
+    ],
+    [
+     "support-kb/err-457.md",
+     8,
+     0.6208
+    ],
+    [
+     "support-kb/err-402.md",
+     9,
+     0.6193
+    ],
+    [
+     "support-kb/err-458.md",
+     10,
+     0.6175
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-005",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "portal"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-006",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "api"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-406.md",
+     1,
+     0.6303
+    ],
+    [
+     "support-kb/err-408.md",
+     2,
+     0.6116
+    ],
+    [
+     "support-kb/err-426.md",
+     3,
+     0.6073
+    ],
+    [
+     "support-kb/err-403.md",
+     4,
+     0.6054
+    ],
+    [
+     "support-kb/err-446.md",
+     6,
+     0.5921
+    ],
+    [
+     "support-kb/err-439.md",
+     7,
+     0.5909
+    ],
+    [
+     "support-kb/err-409.md",
+     8,
+     0.5859
+    ],
+    [
+     "support-kb/err-438.md",
+     9,
+     0.5838
+    ],
+    [
+     "support-kb/err-436.md",
+     10,
+     0.5772
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-006",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "api"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4747
+    ],
+    [
+     "general-handbook/it-security-basics.md",
+     2,
+     0.4511
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-007",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-407.md",
+     1,
+     0.6619
+    ],
+    [
+     "support-kb/err-457.md",
+     2,
+     0.6547
+    ],
+    [
+     "support-kb/err-403.md",
+     3,
+     0.627
+    ],
+    [
+     "support-kb/err-409.md",
+     4,
+     0.627
+    ],
+    [
+     "support-kb/err-427.md",
+     5,
+     0.6177
+    ],
+    [
+     "support-kb/err-401.md",
+     7,
+     0.6096
+    ],
+    [
+     "support-kb/err-405.md",
+     8,
+     0.6088
+    ],
+    [
+     "support-kb/err-421.md",
+     9,
+     0.6075
+    ],
+    [
+     "support-kb/err-451.md",
+     10,
+     0.5991
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-007",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1007.md",
+     1,
+     0.4593
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-008",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "portal"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-408.md",
+     1,
+     0.6599
+    ],
+    [
+     "support-kb/err-438.md",
+     3,
+     0.6132
+    ],
+    [
+     "support-kb/err-410.md",
+     4,
+     0.6068
+    ],
+    [
+     "support-kb/err-458.md",
+     5,
+     0.6066
+    ],
+    [
+     "support-kb/err-403.md",
+     6,
+     0.6046
+    ],
+    [
+     "support-kb/err-405.md",
+     7,
+     0.6018
+    ],
+    [
+     "support-kb/err-428.md",
+     8,
+     0.5999
+    ],
+    [
+     "support-kb/err-409.md",
+     9,
+     0.5945
+    ],
+    [
+     "support-kb/err-446.md",
+     10,
+     0.5902
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-008",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "portal"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-009",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-409.md",
+     1,
+     0.6571
+    ],
+    [
+     "support-kb/err-458.md",
+     3,
+     0.6047
+    ],
+    [
+     "support-kb/err-403.md",
+     4,
+     0.6043
+    ],
+    [
+     "support-kb/err-405.md",
+     5,
+     0.6008
+    ],
+    [
+     "support-kb/err-404.md",
+     7,
+     0.5967
+    ],
+    [
+     "support-kb/err-410.md",
+     8,
+     0.5959
+    ],
+    [
+     "support-kb/err-402.md",
+     9,
+     0.595
+    ],
+    [
+     "support-kb/err-429.md",
+     10,
+     0.5949
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-009",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-010",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-410.md",
+     1,
+     0.6421
+    ],
+    [
+     "support-kb/err-415.md",
+     3,
+     0.6031
+    ],
+    [
+     "support-kb/err-458.md",
+     4,
+     0.6019
+    ],
+    [
+     "support-kb/err-414.md",
+     5,
+     0.6018
+    ],
+    [
+     "support-kb/err-430.md",
+     6,
+     0.5989
+    ],
+    [
+     "support-kb/err-421.md",
+     7,
+     0.5947
+    ],
+    [
+     "support-kb/err-416.md",
+     8,
+     0.5935
+    ],
+    [
+     "support-kb/err-427.md",
+     9,
+     0.5917
+    ],
+    [
+     "support-kb/err-417.md",
+     10,
+     0.5901
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-010",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1010.md",
+     1,
+     0.4783
+    ],
+    [
+     "product-catalog/ax-1014.md",
+     2,
+     0.4502
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-011",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-411.md",
+     1,
+     0.6652
+    ],
+    [
+     "support-kb/err-421.md",
+     2,
+     0.6631
+    ],
+    [
+     "support-kb/err-415.md",
+     3,
+     0.6417
+    ],
+    [
+     "support-kb/err-427.md",
+     4,
+     0.6365
+    ],
+    [
+     "support-kb/err-414.md",
+     5,
+     0.6262
+    ],
+    [
+     "support-kb/err-417.md",
+     6,
+     0.626
+    ],
+    [
+     "support-kb/err-413.md",
+     8,
+     0.6203
+    ],
+    [
+     "support-kb/err-445.md",
+     9,
+     0.618
+    ],
+    [
+     "support-kb/err-410.md",
+     10,
+     0.6159
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-011",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4565
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-012",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "mobile"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-412.md",
+     1,
+     0.6329
+    ],
+    [
+     "support-kb/err-421.md",
+     2,
+     0.6221
+    ],
+    [
+     "support-kb/err-432.md",
+     3,
+     0.6172
+    ],
+    [
+     "support-kb/err-415.md",
+     4,
+     0.6162
+    ],
+    [
+     "support-kb/err-427.md",
+     5,
+     0.6111
+    ],
+    [
+     "support-kb/err-414.md",
+     6,
+     0.6084
+    ],
+    [
+     "support-kb/err-416.md",
+     7,
+     0.6064
+    ],
+    [
+     "support-kb/err-422.md",
+     8,
+     0.6041
+    ],
+    [
+     "support-kb/err-413.md",
+     9,
+     0.6027
+    ],
+    [
+     "support-kb/err-417.md",
+     10,
+     0.6014
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-012",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "mobile"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-013",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-413.md",
+     1,
+     0.6612
+    ],
+    [
+     "support-kb/err-421.md",
+     2,
+     0.6161
+    ],
+    [
+     "support-kb/err-427.md",
+     3,
+     0.6151
+    ],
+    [
+     "support-kb/err-415.md",
+     4,
+     0.6031
+    ],
+    [
+     "support-kb/err-416.md",
+     5,
+     0.6029
+    ],
+    [
+     "support-kb/err-417.md",
+     6,
+     0.5989
+    ],
+    [
+     "support-kb/err-403.md",
+     7,
+     0.5985
+    ],
+    [
+     "support-kb/err-423.md",
+     8,
+     0.5979
+    ],
+    [
+     "support-kb/err-414.md",
+     10,
+     0.5904
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-013",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1013.md",
+     1,
+     0.4531
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-014",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sync"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-414.md",
+     1,
+     0.6442
+    ],
+    [
+     "support-kb/err-415.md",
+     2,
+     0.6155
+    ],
+    [
+     "support-kb/err-421.md",
+     4,
+     0.6072
+    ],
+    [
+     "support-kb/err-427.md",
+     5,
+     0.6046
+    ],
+    [
+     "support-kb/err-417.md",
+     6,
+     0.6027
+    ],
+    [
+     "support-kb/err-416.md",
+     7,
+     0.6005
+    ],
+    [
+     "support-kb/err-413.md",
+     8,
+     0.6001
+    ],
+    [
+     "support-kb/err-434.md",
+     10,
+     0.5936
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-014",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sync"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1014.md",
+     1,
+     0.4792
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-015",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-415.md",
+     1,
+     0.6842
+    ],
+    [
+     "support-kb/err-417.md",
+     3,
+     0.6138
+    ],
+    [
+     "support-kb/err-458.md",
+     4,
+     0.6124
+    ],
+    [
+     "support-kb/err-445.md",
+     5,
+     0.6121
+    ],
+    [
+     "support-kb/err-421.md",
+     6,
+     0.6119
+    ],
+    [
+     "support-kb/err-414.md",
+     8,
+     0.6082
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-015",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "gateway"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1015.md",
+     1,
+     0.4733
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-016",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "portal"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-416.md",
+     1,
+     0.664
+    ],
+    [
+     "support-kb/err-421.md",
+     2,
+     0.629
+    ],
+    [
+     "support-kb/err-415.md",
+     4,
+     0.6171
+    ],
+    [
+     "support-kb/err-427.md",
+     5,
+     0.6144
+    ],
+    [
+     "support-kb/err-414.md",
+     6,
+     0.6067
+    ],
+    [
+     "support-kb/err-417.md",
+     7,
+     0.6064
+    ],
+    [
+     "support-kb/err-413.md",
+     8,
+     0.6004
+    ],
+    [
+     "support-kb/err-458.md",
+     9,
+     0.5982
+    ],
+    [
+     "support-kb/err-410.md",
+     10,
+     0.5969
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-016",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "portal"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4701
+    ],
+    [
+     "product-catalog/ax-1016.md",
+     2,
+     0.4559
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-017",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "portal"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-417.md",
+     1,
+     0.6745
+    ],
+    [
+     "support-kb/err-427.md",
+     2,
+     0.6525
+    ],
+    [
+     "support-kb/err-415.md",
+     4,
+     0.6291
+    ],
+    [
+     "support-kb/err-421.md",
+     5,
+     0.6285
+    ],
+    [
+     "support-kb/err-457.md",
+     7,
+     0.6185
+    ],
+    [
+     "support-kb/err-411.md",
+     8,
+     0.6105
+    ],
+    [
+     "support-kb/err-414.md",
+     9,
+     0.6083
+    ],
+    [
+     "support-kb/err-447.md",
+     10,
+     0.6074
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-017",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "portal"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1017.md",
+     1,
+     0.4589
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-018",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sync"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-418.md",
+     1,
+     0.6434
+    ],
+    [
+     "support-kb/err-421.md",
+     2,
+     0.6248
+    ],
+    [
+     "support-kb/err-417.md",
+     3,
+     0.6243
+    ],
+    [
+     "support-kb/err-427.md",
+     4,
+     0.623
+    ],
+    [
+     "support-kb/err-415.md",
+     5,
+     0.6204
+    ],
+    [
+     "support-kb/err-458.md",
+     7,
+     0.6132
+    ],
+    [
+     "support-kb/err-414.md",
+     8,
+     0.6108
+    ],
+    [
+     "support-kb/err-411.md",
+     10,
+     0.6072
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-018",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sync"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1018.md",
+     1,
+     0.4622
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-019",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "sync"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-419.md",
+     1,
+     0.6625
+    ],
+    [
+     "support-kb/err-427.md",
+     2,
+     0.6147
+    ],
+    [
+     "support-kb/err-413.md",
+     3,
+     0.6107
+    ],
+    [
+     "support-kb/err-415.md",
+     4,
+     0.6103
+    ],
+    [
+     "support-kb/err-429.md",
+     5,
+     0.6079
+    ],
+    [
+     "support-kb/err-421.md",
+     7,
+     0.6069
+    ],
+    [
+     "support-kb/err-417.md",
+     8,
+     0.6007
+    ],
+    [
+     "support-kb/err-411.md",
+     10,
+     0.5962
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-019",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "sync"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-020",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "mobile"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-420.md",
+     1,
+     0.6505
+    ],
+    [
+     "support-kb/err-421.md",
+     2,
+     0.5985
+    ],
+    [
+     "support-kb/err-426.md",
+     3,
+     0.5972
+    ],
+    [
+     "support-kb/err-431.md",
+     4,
+     0.5899
+    ],
+    [
+     "support-kb/err-407.md",
+     5,
+     0.5893
+    ],
+    [
+     "support-kb/err-438.md",
+     7,
+     0.5852
+    ],
+    [
+     "support-kb/err-401.md",
+     8,
+     0.5837
+    ],
+    [
+     "support-kb/err-408.md",
+     9,
+     0.5814
+    ],
+    [
+     "support-kb/err-409.md",
+     10,
+     0.5808
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-020",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "mobile"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-021",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "sync"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-421.md",
+     1,
+     0.6771
+    ],
+    [
+     "support-kb/err-458.md",
+     3,
+     0.6211
+    ],
+    [
+     "support-kb/err-410.md",
+     4,
+     0.6197
+    ],
+    [
+     "support-kb/err-416.md",
+     5,
+     0.6169
+    ],
+    [
+     "support-kb/err-411.md",
+     6,
+     0.615
+    ],
+    [
+     "support-kb/err-404.md",
+     7,
+     0.6069
+    ],
+    [
+     "support-kb/err-415.md",
+     8,
+     0.6051
+    ],
+    [
+     "support-kb/err-417.md",
+     9,
+     0.6008
+    ],
+    [
+     "support-kb/err-422.md",
+     10,
+     0.6008
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-021",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "sync"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1021.md",
+     1,
+     0.4739
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-022",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "api"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-422.md",
+     1,
+     0.6464
+    ],
+    [
+     "support-kb/err-402.md",
+     2,
+     0.6142
+    ],
+    [
+     "support-kb/err-423.md",
+     3,
+     0.5984
+    ],
+    [
+     "support-kb/err-458.md",
+     5,
+     0.5946
+    ],
+    [
+     "support-kb/err-421.md",
+     6,
+     0.5941
+    ],
+    [
+     "support-kb/err-404.md",
+     8,
+     0.581
+    ],
+    [
+     "support-kb/err-410.md",
+     9,
+     0.5782
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-022",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "api"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-023",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "sync"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-423.md",
+     1,
+     0.638
+    ],
+    [
+     "support-kb/err-403.md",
+     2,
+     0.6288
+    ],
+    [
+     "support-kb/err-422.md",
+     4,
+     0.6099
+    ],
+    [
+     "support-kb/err-458.md",
+     5,
+     0.5975
+    ],
+    [
+     "support-kb/err-404.md",
+     7,
+     0.5822
+    ],
+    [
+     "support-kb/err-410.md",
+     8,
+     0.582
+    ],
+    [
+     "support-kb/err-421.md",
+     9,
+     0.5814
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-023",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "sync"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-024",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "api"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-424.md",
+     1,
+     0.6337
+    ],
+    [
+     "support-kb/err-427.md",
+     2,
+     0.6206
+    ],
+    [
+     "support-kb/err-414.md",
+     3,
+     0.6203
+    ],
+    [
+     "support-kb/err-421.md",
+     4,
+     0.6157
+    ],
+    [
+     "support-kb/err-425.md",
+     5,
+     0.6023
+    ],
+    [
+     "support-kb/err-445.md",
+     6,
+     0.6022
+    ],
+    [
+     "support-kb/err-412.md",
+     7,
+     0.6012
+    ],
+    [
+     "support-kb/err-415.md",
+     8,
+     0.6003
+    ],
+    [
+     "support-kb/err-416.md",
+     9,
+     0.5974
+    ],
+    [
+     "support-kb/err-418.md",
+     10,
+     0.5938
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-024",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "api"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-025",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "sync"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-425.md",
+     1,
+     0.6627
+    ],
+    [
+     "support-kb/err-415.md",
+     2,
+     0.6419
+    ],
+    [
+     "support-kb/err-427.md",
+     3,
+     0.6268
+    ],
+    [
+     "support-kb/err-421.md",
+     4,
+     0.6124
+    ],
+    [
+     "support-kb/err-445.md",
+     5,
+     0.61
+    ],
+    [
+     "support-kb/err-429.md",
+     7,
+     0.5971
+    ],
+    [
+     "support-kb/err-414.md",
+     8,
+     0.5969
+    ],
+    [
+     "support-kb/err-432.md",
+     9,
+     0.5956
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-025",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "sync"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1025.md",
+     1,
+     0.4624
+    ],
+    [
+     "general-handbook/it-security-basics.md",
+     2,
+     0.4528
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-026",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-426.md",
+     1,
+     0.6586
+    ],
+    [
+     "support-kb/err-446.md",
+     3,
+     0.5912
+    ],
+    [
+     "support-kb/err-428.md",
+     5,
+     0.575
+    ],
+    [
+     "support-kb/err-436.md",
+     6,
+     0.5722
+    ],
+    [
+     "support-kb/err-431.md",
+     7,
+     0.5665
+    ],
+    [
+     "support-kb/err-420.md",
+     8,
+     0.5663
+    ],
+    [
+     "support-kb/err-438.md",
+     9,
+     0.5561
+    ],
+    [
+     "support-kb/err-434.md",
+     10,
+     0.5531
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-026",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4712
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-027",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "api"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-427.md",
+     1,
+     0.6859
+    ],
+    [
+     "support-kb/err-417.md",
+     2,
+     0.6249
+    ],
+    [
+     "support-kb/err-421.md",
+     3,
+     0.6203
+    ],
+    [
+     "support-kb/err-457.md",
+     4,
+     0.6124
+    ],
+    [
+     "support-kb/err-447.md",
+     5,
+     0.6114
+    ],
+    [
+     "support-kb/err-415.md",
+     6,
+     0.6052
+    ],
+    [
+     "support-kb/err-445.md",
+     8,
+     0.6007
+    ],
+    [
+     "support-kb/err-429.md",
+     10,
+     0.599
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-027",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "api"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1027.md",
+     1,
+     0.4685
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-028",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "api"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-428.md",
+     1,
+     0.6673
+    ],
+    [
+     "support-kb/err-438.md",
+     2,
+     0.6068
+    ],
+    [
+     "support-kb/err-431.md",
+     5,
+     0.5973
+    ],
+    [
+     "support-kb/err-435.md",
+     6,
+     0.5934
+    ],
+    [
+     "support-kb/err-421.md",
+     7,
+     0.5903
+    ],
+    [
+     "support-kb/err-458.md",
+     8,
+     0.5902
+    ],
+    [
+     "support-kb/err-434.md",
+     9,
+     0.5882
+    ],
+    [
+     "support-kb/err-426.md",
+     10,
+     0.5879
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-028",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "api"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "gen-err-029",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "portal"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-429.md",
+     1,
+     0.668
+    ],
+    [
+     "support-kb/err-427.md",
+     3,
+     0.6332
+    ],
+    [
+     "support-kb/err-421.md",
+     4,
+     0.6255
+    ],
+    [
+     "support-kb/err-419.md",
+     6,
+     0.6154
+    ],
+    [
+     "support-kb/err-432.md",
+     7,
+     0.6152
+    ],
+    [
+     "support-kb/err-415.md",
+     8,
+     0.6103
+    ],
+    [
+     "support-kb/err-445.md",
+     9,
+     0.6072
+    ],
+    [
+     "support-kb/err-439.md",
+     10,
+     0.6059
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-029",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "es",
+    "portal"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1029.md",
+     1,
+     0.4796
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-030",
+   "persona": "support@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sync"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-430.md",
+     1,
+     0.6368
+    ],
+    [
+     "support-kb/err-429.md",
+     2,
+     0.6257
+    ],
+    [
+     "support-kb/err-415.md",
+     3,
+     0.6151
+    ],
+    [
+     "support-kb/err-421.md",
+     5,
+     0.6084
+    ],
+    [
+     "support-kb/err-432.md",
+     7,
+     0.6055
+    ],
+    [
+     "support-kb/err-445.md",
+     8,
+     0.6053
+    ],
+    [
+     "support-kb/err-427.md",
+     9,
+     0.6022
+    ],
+    [
+     "support-kb/err-458.md",
+     10,
+     0.5981
+    ]
+   ]
+  },
+  {
+   "item": "gen-err-030",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sync"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1030.md",
+     1,
+     0.4656
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-001",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sensor"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1001.md",
+     1,
+     0.6047
+    ],
+    [
+     "product-catalog/ax-1004.md",
+     2,
+     0.5762
+    ],
+    [
+     "product-catalog/ax-1051.md",
+     3,
+     0.5727
+    ],
+    [
+     "product-catalog/ax-1007.md",
+     4,
+     0.5627
+    ],
+    [
+     "product-catalog/ax-1008.md",
+     5,
+     0.5562
+    ],
+    [
+     "product-catalog/ax-1002.md",
+     6,
+     0.5512
+    ],
+    [
+     "product-catalog/ax-1006.md",
+     7,
+     0.5482
+    ],
+    [
+     "product-catalog/ax-1003.md",
+     8,
+     0.5458
+    ],
+    [
+     "product-catalog/ax-1011.md",
+     9,
+     0.5456
+    ],
+    [
+     "product-catalog/ax-1005.md",
+     10,
+     0.5436
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-002",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1002.md",
+     1,
+     0.664
+    ],
+    [
+     "product-catalog/ax-1005.md",
+     2,
+     0.6362
+    ],
+    [
+     "product-catalog/ax-1001.md",
+     3,
+     0.6311
+    ],
+    [
+     "product-catalog/ax-1009.md",
+     4,
+     0.6188
+    ],
+    [
+     "product-catalog/ax-1049.md",
+     5,
+     0.6112
+    ],
+    [
+     "product-catalog/ax-1025.md",
+     6,
+     0.6103
+    ],
+    [
+     "product-catalog/ax-1077.md",
+     7,
+     0.6083
+    ],
+    [
+     "product-catalog/ax-1004.md",
+     8,
+     0.6077
+    ],
+    [
+     "product-catalog/ax-1007.md",
+     9,
+     0.6069
+    ],
+    [
+     "product-catalog/ax-1029.md",
+     10,
+     0.602
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-003",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "controller"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1003.md",
+     1,
+     0.6276
+    ],
+    [
+     "product-catalog/ax-1033.md",
+     2,
+     0.5451
+    ],
+    [
+     "product-catalog/ax-1007.md",
+     3,
+     0.5426
+    ],
+    [
+     "product-catalog/ax-1004.md",
+     4,
+     0.5353
+    ],
+    [
+     "product-catalog/ax-1063.md",
+     5,
+     0.5347
+    ],
+    [
+     "product-catalog/ax-1008.md",
+     6,
+     0.5334
+    ],
+    [
+     "product-catalog/ax-1006.md",
+     7,
+     0.5322
+    ],
+    [
+     "product-catalog/ax-1043.md",
+     8,
+     0.5301
+    ],
+    [
+     "product-catalog/ax-1053.md",
+     9,
+     0.5278
+    ],
+    [
+     "product-catalog/ax-1073.md",
+     10,
+     0.5265
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-004",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "relay"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1004.md",
+     1,
+     0.6592
+    ],
+    [
+     "product-catalog/ax-1001.md",
+     2,
+     0.6299
+    ],
+    [
+     "product-catalog/ax-1005.md",
+     3,
+     0.6262
+    ],
+    [
+     "product-catalog/ax-1049.md",
+     4,
+     0.6192
+    ],
+    [
+     "product-catalog/ax-1041.md",
+     5,
+     0.616
+    ],
+    [
+     "product-catalog/ax-1009.md",
+     6,
+     0.6003
+    ],
+    [
+     "product-catalog/ax-1077.md",
+     7,
+     0.5975
+    ],
+    [
+     "product-catalog/ax-1007.md",
+     8,
+     0.5971
+    ],
+    [
+     "product-catalog/ax-1017.md",
+     9,
+     0.5915
+    ],
+    [
+     "product-catalog/ax-1044.md",
+     10,
+     0.5899
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-005",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sensor"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1005.md",
+     1,
+     0.604
+    ],
+    [
+     "product-catalog/ax-1052.md",
+     2,
+     0.5702
+    ],
+    [
+     "product-catalog/ax-1008.md",
+     3,
+     0.5615
+    ],
+    [
+     "product-catalog/ax-1004.md",
+     4,
+     0.5571
+    ],
+    [
+     "product-catalog/ax-1006.md",
+     5,
+     0.557
+    ],
+    [
+     "product-catalog/ax-1007.md",
+     6,
+     0.5565
+    ],
+    [
+     "product-catalog/ax-1051.md",
+     7,
+     0.5562
+    ],
+    [
+     "product-catalog/ax-1055.md",
+     8,
+     0.5562
+    ],
+    [
+     "product-catalog/ax-1002.md",
+     9,
+     0.5521
+    ],
+    [
+     "product-catalog/ax-1059.md",
+     10,
+     0.5481
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-006",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1006.md",
+     1,
+     0.6684
+    ],
+    [
+     "product-catalog/ax-1061.md",
+     2,
+     0.6414
+    ],
+    [
+     "product-catalog/ax-1005.md",
+     3,
+     0.6412
+    ],
+    [
+     "product-catalog/ax-1001.md",
+     4,
+     0.6369
+    ],
+    [
+     "product-catalog/ax-1009.md",
+     5,
+     0.6313
+    ],
+    [
+     "product-catalog/ax-1069.md",
+     6,
+     0.6277
+    ],
+    [
+     "product-catalog/ax-1056.md",
+     7,
+     0.6216
+    ],
+    [
+     "product-catalog/ax-1004.md",
+     8,
+     0.6198
+    ],
+    [
+     "product-catalog/ax-1049.md",
+     9,
+     0.6169
+    ],
+    [
+     "product-catalog/ax-1073.md",
+     10,
+     0.6165
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-007",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "controller"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1007.md",
+     1,
+     0.6313
+    ],
+    [
+     "product-catalog/ax-1008.md",
+     2,
+     0.5692
+    ],
+    [
+     "product-catalog/ax-1004.md",
+     3,
+     0.5687
+    ],
+    [
+     "product-catalog/ax-1006.md",
+     4,
+     0.5529
+    ],
+    [
+     "product-catalog/ax-1072.md",
+     5,
+     0.5524
+    ],
+    [
+     "product-catalog/ax-1002.md",
+     6,
+     0.5489
+    ],
+    [
+     "product-catalog/ax-1077.md",
+     7,
+     0.5469
+    ],
+    [
+     "product-catalog/ax-1005.md",
+     8,
+     0.5465
+    ],
+    [
+     "product-catalog/ax-1070.md",
+     9,
+     0.5445
+    ],
+    [
+     "product-catalog/ax-1057.md",
+     10,
+     0.5432
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-008",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "relay"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1008.md",
+     1,
+     0.6793
+    ],
+    [
+     "product-catalog/ax-1005.md",
+     2,
+     0.6425
+    ],
+    [
+     "product-catalog/ax-1009.md",
+     3,
+     0.6345
+    ],
+    [
+     "product-catalog/ax-1001.md",
+     4,
+     0.6308
+    ],
+    [
+     "product-catalog/ax-1077.md",
+     5,
+     0.6154
+    ],
+    [
+     "product-catalog/ax-1073.md",
+     6,
+     0.6097
+    ],
+    [
+     "product-catalog/ax-1049.md",
+     7,
+     0.6072
+    ],
+    [
+     "product-catalog/ax-1007.md",
+     8,
+     0.6061
+    ],
+    [
+     "product-catalog/ax-1006.md",
+     9,
+     0.603
+    ],
+    [
+     "product-catalog/ax-1068.md",
+     10,
+     0.6004
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-009",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sensor"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1009.md",
+     1,
+     0.5936
+    ],
+    [
+     "product-catalog/ax-1079.md",
+     2,
+     0.5665
+    ],
+    [
+     "product-catalog/ax-1008.md",
+     3,
+     0.5639
+    ],
+    [
+     "product-catalog/ax-1007.md",
+     4,
+     0.5594
+    ],
+    [
+     "product-catalog/ax-1059.md",
+     5,
+     0.5578
+    ],
+    [
+     "product-catalog/ax-1004.md",
+     6,
+     0.5517
+    ],
+    [
+     "product-catalog/ax-1052.md",
+     7,
+     0.549
+    ],
+    [
+     "product-catalog/ax-1006.md",
+     8,
+     0.5479
+    ],
+    [
+     "product-catalog/ax-1051.md",
+     9,
+     0.5469
+    ],
+    [
+     "product-catalog/ax-1019.md",
+     10,
+     0.5461
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-010",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1010.md",
+     1,
+     0.6781
+    ],
+    [
+     "product-catalog/ax-1017.md",
+     2,
+     0.6699
+    ],
+    [
+     "product-catalog/ax-1013.md",
+     3,
+     0.6629
+    ],
+    [
+     "product-catalog/ax-1025.md",
+     4,
+     0.6477
+    ],
+    [
+     "product-catalog/ax-1037.md",
+     5,
+     0.6423
+    ],
+    [
+     "product-catalog/ax-1021.md",
+     6,
+     0.6418
+    ],
+    [
+     "product-catalog/ax-1011.md",
+     7,
+     0.6415
+    ],
+    [
+     "product-catalog/ax-1049.md",
+     8,
+     0.6391
+    ],
+    [
+     "product-catalog/ax-1041.md",
+     9,
+     0.6381
+    ],
+    [
+     "product-catalog/ax-1077.md",
+     10,
+     0.6365
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-011",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "controller"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1011.md",
+     1,
+     0.6114
+    ],
+    [
+     "product-catalog/ax-1010.md",
+     2,
+     0.5772
+    ],
+    [
+     "product-catalog/ax-1014.md",
+     3,
+     0.5746
+    ],
+    [
+     "product-catalog/ax-1018.md",
+     4,
+     0.571
+    ],
+    [
+     "product-catalog/ax-1016.md",
+     5,
+     0.5633
+    ],
+    [
+     "product-catalog/ax-1051.md",
+     6,
+     0.5612
+    ],
+    [
+     "product-catalog/ax-1022.md",
+     7,
+     0.5607
+    ],
+    [
+     "product-catalog/ax-1017.md",
+     8,
+     0.5573
+    ],
+    [
+     "product-catalog/ax-1015.md",
+     9,
+     0.5561
+    ],
+    [
+     "product-catalog/ax-1021.md",
+     10,
+     0.5559
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-012",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "relay"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1012.md",
+     1,
+     0.6602
+    ],
+    [
+     "product-catalog/ax-1017.md",
+     2,
+     0.6358
+    ],
+    [
+     "product-catalog/ax-1025.md",
+     3,
+     0.6213
+    ],
+    [
+     "product-catalog/ax-1029.md",
+     4,
+     0.6194
+    ],
+    [
+     "product-catalog/ax-1013.md",
+     5,
+     0.619
+    ],
+    [
+     "product-catalog/ax-1022.md",
+     6,
+     0.6135
+    ],
+    [
+     "product-catalog/ax-1021.md",
+     7,
+     0.6105
+    ],
+    [
+     "product-catalog/ax-1019.md",
+     8,
+     0.6104
+    ],
+    [
+     "product-catalog/ax-1049.md",
+     9,
+     0.6073
+    ],
+    [
+     "product-catalog/ax-1010.md",
+     10,
+     0.6072
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-013",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sensor"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1013.md",
+     1,
+     0.6204
+    ],
+    [
+     "product-catalog/ax-1014.md",
+     2,
+     0.5632
+    ],
+    [
+     "product-catalog/ax-1023.md",
+     3,
+     0.5528
+    ],
+    [
+     "product-catalog/ax-1043.md",
+     4,
+     0.5527
+    ],
+    [
+     "product-catalog/ax-1016.md",
+     5,
+     0.5454
+    ],
+    [
+     "product-catalog/ax-1018.md",
+     6,
+     0.5427
+    ],
+    [
+     "product-catalog/ax-1010.md",
+     7,
+     0.5426
+    ],
+    [
+     "product-catalog/ax-1031.md",
+     8,
+     0.5413
+    ],
+    [
+     "product-catalog/ax-1033.md",
+     9,
+     0.5411
+    ],
+    [
+     "product-catalog/ax-1017.md",
+     10,
+     0.5388
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-014",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1014.md",
+     1,
+     0.6896
+    ],
+    [
+     "product-catalog/ax-1017.md",
+     2,
+     0.6451
+    ],
+    [
+     "product-catalog/ax-1041.md",
+     3,
+     0.6451
+    ],
+    [
+     "product-catalog/ax-1013.md",
+     4,
+     0.6388
+    ],
+    [
+     "product-catalog/ax-1021.md",
+     5,
+     0.6308
+    ],
+    [
+     "product-catalog/ax-1049.md",
+     6,
+     0.623
+    ],
+    [
+     "product-catalog/ax-1024.md",
+     7,
+     0.6173
+    ],
+    [
+     "product-catalog/ax-1037.md",
+     8,
+     0.6171
+    ],
+    [
+     "product-catalog/ax-1019.md",
+     9,
+     0.617
+    ],
+    [
+     "product-catalog/ax-1027.md",
+     10,
+     0.6152
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-015",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "controller"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1015.md",
+     1,
+     0.638
+    ],
+    [
+     "product-catalog/ax-1010.md",
+     2,
+     0.5702
+    ],
+    [
+     "product-catalog/ax-1018.md",
+     3,
+     0.5693
+    ],
+    [
+     "product-catalog/ax-1025.md",
+     4,
+     0.5681
+    ],
+    [
+     "product-catalog/ax-1014.md",
+     5,
+     0.566
+    ],
+    [
+     "product-catalog/ax-1017.md",
+     6,
+     0.5655
+    ],
+    [
+     "product-catalog/ax-1011.md",
+     7,
+     0.5636
+    ],
+    [
+     "product-catalog/ax-1030.md",
+     8,
+     0.5617
+    ],
+    [
+     "product-catalog/ax-1022.md",
+     9,
+     0.5601
+    ],
+    [
+     "product-catalog/ax-1050.md",
+     10,
+     0.5599
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-016",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "relay"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1016.md",
+     1,
+     0.6892
+    ],
+    [
+     "product-catalog/ax-1017.md",
+     2,
+     0.6499
+    ],
+    [
+     "product-catalog/ax-1013.md",
+     3,
+     0.6402
+    ],
+    [
+     "product-catalog/ax-1021.md",
+     4,
+     0.6332
+    ],
+    [
+     "product-catalog/ax-1046.md",
+     5,
+     0.6247
+    ],
+    [
+     "product-catalog/ax-1026.md",
+     6,
+     0.6234
+    ],
+    [
+     "product-catalog/ax-1041.md",
+     7,
+     0.6233
+    ],
+    [
+     "product-catalog/ax-1025.md",
+     8,
+     0.6207
+    ],
+    [
+     "product-catalog/ax-1014.md",
+     9,
+     0.6184
+    ],
+    [
+     "product-catalog/ax-1061.md",
+     10,
+     0.6145
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-017",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "sensor"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1017.md",
+     1,
+     0.6206
+    ],
+    [
+     "product-catalog/ax-1027.md",
+     2,
+     0.5875
+    ],
+    [
+     "product-catalog/ax-1018.md",
+     3,
+     0.5711
+    ],
+    [
+     "product-catalog/ax-1014.md",
+     4,
+     0.5678
+    ],
+    [
+     "product-catalog/ax-1047.md",
+     5,
+     0.56
+    ],
+    [
+     "product-catalog/ax-1022.md",
+     6,
+     0.5573
+    ],
+    [
+     "product-catalog/ax-1016.md",
+     7,
+     0.5564
+    ],
+    [
+     "product-catalog/ax-1010.md",
+     8,
+     0.5556
+    ],
+    [
+     "product-catalog/ax-1011.md",
+     9,
+     0.5547
+    ],
+    [
+     "product-catalog/ax-1037.md",
+     10,
+     0.5523
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-018",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "gateway"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1018.md",
+     1,
+     0.6845
+    ],
+    [
+     "product-catalog/ax-1017.md",
+     2,
+     0.6662
+    ],
+    [
+     "product-catalog/ax-1021.md",
+     3,
+     0.6433
+    ],
+    [
+     "product-catalog/ax-1013.md",
+     4,
+     0.643
+    ],
+    [
+     "product-catalog/ax-1025.md",
+     5,
+     0.6371
+    ],
+    [
+     "product-catalog/ax-1037.md",
+     6,
+     0.6343
+    ],
+    [
+     "product-catalog/ax-1041.md",
+     7,
+     0.6331
+    ],
+    [
+     "product-catalog/ax-1028.md",
+     8,
+     0.6329
+    ],
+    [
+     "product-catalog/ax-1019.md",
+     9,
+     0.6324
+    ],
+    [
+     "product-catalog/ax-1029.md",
+     10,
+     0.6255
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-019",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "controller"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1019.md",
+     1,
+     0.6273
+    ],
+    [
+     "product-catalog/ax-1039.md",
+     2,
+     0.5644
+    ],
+    [
+     "product-catalog/ax-1014.md",
+     3,
+     0.5626
+    ],
+    [
+     "product-catalog/ax-1018.md",
+     4,
+     0.5602
+    ],
+    [
+     "product-catalog/ax-1079.md",
+     5,
+     0.5557
+    ],
+    [
+     "product-catalog/ax-1059.md",
+     6,
+     0.5553
+    ],
+    [
+     "product-catalog/ax-1027.md",
+     7,
+     0.5553
+    ],
+    [
+     "product-catalog/ax-1011.md",
+     8,
+     0.5542
+    ],
+    [
+     "product-catalog/ax-1026.md",
+     9,
+     0.552
+    ],
+    [
+     "product-catalog/ax-1024.md",
+     10,
+     0.552
+    ]
+   ]
+  },
+  {
+   "item": "gen-ax-020",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "relay"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1020.md",
+     1,
+     0.6779
+    ],
+    [
+     "product-catalog/ax-1025.md",
+     2,
+     0.6463
+    ],
+    [
+     "product-catalog/ax-1017.md",
+     3,
+     0.6443
+    ],
+    [
+     "product-catalog/ax-1021.md",
+     4,
+     0.6375
+    ],
+    [
+     "product-catalog/ax-1010.md",
+     5,
+     0.6324
+    ],
+    [
+     "product-catalog/ax-1013.md",
+     6,
+     0.6314
+    ],
+    [
+     "product-catalog/ax-1019.md",
+     7,
+     0.6208
+    ],
+    [
+     "product-catalog/ax-1077.md",
+     8,
+     0.6168
+    ],
+    [
+     "product-catalog/ax-1037.md",
+     9,
+     0.616
+    ],
+    [
+     "product-catalog/ax-1027.md",
+     10,
+     0.6158
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-001",
+   "persona": "finance@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.25,
+    "ndcg@10": 0.43067655807339306
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0106.md",
+     1,
+     0.6636
+    ],
+    [
+     "finance/inv-2026-0102.md",
+     2,
+     0.6612
+    ],
+    [
+     "finance/inv-2026-0103.md",
+     3,
+     0.66
+    ],
+    [
+     "finance/inv-2026-0101.md",
+     4,
+     0.6551
+    ],
+    [
+     "finance/inv-2026-0107.md",
+     5,
+     0.6547
+    ],
+    [
+     "finance/inv-2026-0105.md",
+     6,
+     0.6544
+    ],
+    [
+     "finance/inv-2026-0115.md",
+     7,
+     0.6378
+    ],
+    [
+     "finance/inv-2026-0119.md",
+     8,
+     0.6358
+    ],
+    [
+     "finance/inv-2026-0109.md",
+     9,
+     0.6331
+    ],
+    [
+     "finance/inv-2026-0121.md",
+     10,
+     0.6328
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-001",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/vendor-integration-notes.md",
+     1,
+     0.4718
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-002",
+   "persona": "finance@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0102.md",
+     1,
+     0.6843
+    ],
+    [
+     "finance/inv-2026-0107.md",
+     2,
+     0.6589
+    ],
+    [
+     "finance/inv-2026-0106.md",
+     3,
+     0.6557
+    ],
+    [
+     "finance/inv-2026-0103.md",
+     4,
+     0.6425
+    ],
+    [
+     "finance/inv-2026-0105.md",
+     5,
+     0.6357
+    ],
+    [
+     "finance/inv-2026-0101.md",
+     6,
+     0.6322
+    ],
+    [
+     "finance/inv-2026-0122.md",
+     7,
+     0.6278
+    ],
+    [
+     "finance/inv-2026-0120.md",
+     8,
+     0.6199
+    ],
+    [
+     "finance/inv-2026-0119.md",
+     9,
+     0.6182
+    ],
+    [
+     "finance/inv-2026-0115.md",
+     10,
+     0.6169
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-002",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/vendor-integration-notes.md",
+     1,
+     0.4695
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-003",
+   "persona": "finance@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0103.md",
+     1,
+     0.6698
+    ],
+    [
+     "finance/inv-2026-0102.md",
+     2,
+     0.6661
+    ],
+    [
+     "finance/inv-2026-0107.md",
+     3,
+     0.6659
+    ],
+    [
+     "finance/inv-2026-0106.md",
+     4,
+     0.6655
+    ],
+    [
+     "finance/inv-2026-0105.md",
+     5,
+     0.6421
+    ],
+    [
+     "finance/inv-2026-0113.md",
+     6,
+     0.638
+    ],
+    [
+     "finance/inv-2026-0123.md",
+     7,
+     0.634
+    ],
+    [
+     "finance/inv-2026-0101.md",
+     8,
+     0.6315
+    ],
+    [
+     "finance/inv-2026-0121.md",
+     9,
+     0.621
+    ],
+    [
+     "finance/inv-2026-0119.md",
+     10,
+     0.6163
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-003",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/vendor-integration-notes.md",
+     1,
+     0.4693
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-004",
+   "persona": "finance@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.3333333333333333,
+    "ndcg@10": 0.5
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0126.md",
+     1,
+     0.6753
+    ],
+    [
+     "finance/inv-2026-0109.md",
+     2,
+     0.6742
+    ],
+    [
+     "finance/inv-2026-0104.md",
+     3,
+     0.6732
+    ],
+    [
+     "finance/inv-2026-0114.md",
+     4,
+     0.6726
+    ],
+    [
+     "finance/inv-2026-0110.md",
+     5,
+     0.6713
+    ],
+    [
+     "finance/inv-2026-0116.md",
+     6,
+     0.666
+    ],
+    [
+     "finance/inv-2026-0113.md",
+     7,
+     0.665
+    ],
+    [
+     "finance/inv-2026-0119.md",
+     8,
+     0.6639
+    ],
+    [
+     "finance/inv-2026-0106.md",
+     9,
+     0.6636
+    ],
+    [
+     "finance/inv-2026-0120.md",
+     10,
+     0.6619
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-004",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.5155
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-005",
+   "persona": "finance@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0105.md",
+     1,
+     0.6608
+    ],
+    [
+     "finance/inv-2026-0106.md",
+     2,
+     0.6541
+    ],
+    [
+     "finance/inv-2026-0102.md",
+     3,
+     0.6517
+    ],
+    [
+     "finance/inv-2026-0107.md",
+     4,
+     0.651
+    ],
+    [
+     "finance/inv-2026-0103.md",
+     5,
+     0.6484
+    ],
+    [
+     "finance/inv-2026-0101.md",
+     6,
+     0.6307
+    ],
+    [
+     "finance/inv-2026-0115.md",
+     7,
+     0.6242
+    ],
+    [
+     "finance/inv-2026-0108.md",
+     8,
+     0.6116
+    ],
+    [
+     "finance/inv-2026-0109.md",
+     9,
+     0.6107
+    ],
+    [
+     "finance/inv-2026-0110.md",
+     10,
+     0.6092
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-005",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/vendor-integration-notes.md",
+     1,
+     0.4675
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-006",
+   "persona": "finance@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0106.md",
+     1,
+     0.6882
+    ],
+    [
+     "finance/inv-2026-0102.md",
+     2,
+     0.6758
+    ],
+    [
+     "finance/inv-2026-0107.md",
+     3,
+     0.6753
+    ],
+    [
+     "finance/inv-2026-0103.md",
+     4,
+     0.6748
+    ],
+    [
+     "finance/inv-2026-0105.md",
+     5,
+     0.6669
+    ],
+    [
+     "finance/inv-2026-0101.md",
+     6,
+     0.6502
+    ],
+    [
+     "finance/inv-2026-0109.md",
+     7,
+     0.6412
+    ],
+    [
+     "finance/inv-2026-0116.md",
+     8,
+     0.6399
+    ],
+    [
+     "finance/inv-2026-0113.md",
+     9,
+     0.6395
+    ],
+    [
+     "finance/inv-2026-0110.md",
+     10,
+     0.639
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-006",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4716
+    ],
+    [
+     "engineering/vendor-integration-notes.md",
+     2,
+     0.4681
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-007",
+   "persona": "finance@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0107.md",
+     1,
+     0.6742
+    ],
+    [
+     "finance/inv-2026-0102.md",
+     2,
+     0.6517
+    ],
+    [
+     "finance/inv-2026-0106.md",
+     3,
+     0.6445
+    ],
+    [
+     "finance/inv-2026-0103.md",
+     4,
+     0.6445
+    ],
+    [
+     "finance/inv-2026-0105.md",
+     5,
+     0.6382
+    ],
+    [
+     "finance/inv-2026-0127.md",
+     6,
+     0.6278
+    ],
+    [
+     "finance/inv-2026-0117.md",
+     7,
+     0.6208
+    ],
+    [
+     "finance/inv-2026-0101.md",
+     8,
+     0.6206
+    ],
+    [
+     "finance/inv-2026-0110.md",
+     9,
+     0.6141
+    ],
+    [
+     "finance/inv-2026-0109.md",
+     10,
+     0.6134
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-007",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/vendor-integration-notes.md",
+     1,
+     0.4667
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-008",
+   "persona": "finance@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0108.md",
+     1,
+     0.6821
+    ],
+    [
+     "finance/inv-2026-0109.md",
+     2,
+     0.6702
+    ],
+    [
+     "finance/inv-2026-0126.md",
+     3,
+     0.6697
+    ],
+    [
+     "finance/inv-2026-0116.md",
+     4,
+     0.6677
+    ],
+    [
+     "finance/inv-2026-0128.md",
+     5,
+     0.6648
+    ],
+    [
+     "finance/inv-2026-0118.md",
+     6,
+     0.6646
+    ],
+    [
+     "finance/inv-2026-0110.md",
+     7,
+     0.6631
+    ],
+    [
+     "finance/inv-2026-0130.md",
+     8,
+     0.661
+    ],
+    [
+     "finance/inv-2026-0120.md",
+     9,
+     0.6609
+    ],
+    [
+     "finance/inv-2026-0113.md",
+     10,
+     0.6604
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-008",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4747
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-009",
+   "persona": "finance@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0109.md",
+     1,
+     0.7077
+    ],
+    [
+     "finance/inv-2026-0119.md",
+     2,
+     0.6767
+    ],
+    [
+     "finance/inv-2026-0126.md",
+     3,
+     0.6762
+    ],
+    [
+     "finance/inv-2026-0110.md",
+     4,
+     0.6753
+    ],
+    [
+     "finance/inv-2026-0120.md",
+     5,
+     0.6697
+    ],
+    [
+     "finance/inv-2026-0116.md",
+     6,
+     0.6697
+    ],
+    [
+     "finance/inv-2026-0115.md",
+     7,
+     0.668
+    ],
+    [
+     "finance/inv-2026-0129.md",
+     8,
+     0.6647
+    ],
+    [
+     "finance/inv-2026-0113.md",
+     9,
+     0.664
+    ],
+    [
+     "finance/inv-2026-0127.md",
+     10,
+     0.6635
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-009",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4867
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-010",
+   "persona": "finance@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0110.md",
+     1,
+     0.7015
+    ],
+    [
+     "finance/inv-2026-0109.md",
+     2,
+     0.6695
+    ],
+    [
+     "finance/inv-2026-0126.md",
+     3,
+     0.6686
+    ],
+    [
+     "finance/inv-2026-0116.md",
+     4,
+     0.666
+    ],
+    [
+     "finance/inv-2026-0120.md",
+     5,
+     0.6627
+    ],
+    [
+     "finance/inv-2026-0130.md",
+     6,
+     0.6597
+    ],
+    [
+     "finance/inv-2026-0115.md",
+     7,
+     0.6591
+    ],
+    [
+     "finance/inv-2026-0118.md",
+     8,
+     0.6581
+    ],
+    [
+     "finance/inv-2026-0103.md",
+     9,
+     0.6578
+    ],
+    [
+     "finance/inv-2026-0119.md",
+     10,
+     0.6559
+    ]
+   ]
+  },
+  {
+   "item": "gen-inv-010",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "generated",
+    "exact-id",
+    "en",
+    "invoice"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4941
+    ],
+    [
+     "product-catalog/ax-1026.md",
+     2,
+     0.4771
+    ]
+   ]
+  },
+  {
+   "item": "hw-001",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "paraphrase",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.6751
+    ]
+   ]
+  },
+  {
+   "item": "hw-002",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "cross-lingual",
+    "es"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.6595
+    ]
+   ]
+  },
+  {
+   "item": "hw-003",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "paraphrase",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.6059
+    ]
+   ]
+  },
+  {
+   "item": "hw-004",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "paraphrase",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.6629
+    ]
+   ]
+  },
+  {
+   "item": "hw-005",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "cross-lingual",
+    "es"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.5847
+    ]
+   ]
+  },
+  {
+   "item": "hw-006",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "acronym",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/it-security-basics.md",
+     1,
+     0.6466
+    ]
+   ]
+  },
+  {
+   "item": "hw-007",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "paraphrase",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/it-security-basics.md",
+     1,
+     0.6568
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     2,
+     0.5058
+    ],
+    [
+     "product-docs/product-overview.md",
+     4,
+     0.465
+    ]
+   ]
+  },
+  {
+   "item": "hw-008",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "paraphrase",
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/it-security-basics.md",
+     1,
+     0.4857
+    ]
+   ]
+  },
+  {
+   "item": "hw-010",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/product-overview.md",
+     1,
+     0.7294
+    ],
+    [
+     "product-catalog/ax-1070.md",
+     2,
+     0.5302
+    ],
+    [
+     "product-catalog/ax-1007.md",
+     3,
+     0.528
+    ],
+    [
+     "product-catalog/ax-1015.md",
+     4,
+     0.5226
+    ],
+    [
+     "product-catalog/ax-1018.md",
+     5,
+     0.5208
+    ],
+    [
+     "product-catalog/ax-1011.md",
+     6,
+     0.5192
+    ],
+    [
+     "product-catalog/ax-1030.md",
+     7,
+     0.5186
+    ],
+    [
+     "product-catalog/ax-1050.md",
+     8,
+     0.5184
+    ],
+    [
+     "product-catalog/ax-1075.md",
+     9,
+     0.5159
+    ],
+    [
+     "product-catalog/ax-1047.md",
+     10,
+     0.5142
+    ]
+   ]
+  },
+  {
+   "item": "hw-011",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "acronym",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/product-overview.md",
+     1,
+     0.5659
+    ]
+   ]
+  },
+  {
+   "item": "hw-012",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "exact-id",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.5652
+    ]
+   ]
+  },
+  {
+   "item": "hw-013",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "paraphrase",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.6508
+    ]
+   ]
+  },
+  {
+   "item": "hw-014",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "exact-id",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.6537
+    ]
+   ]
+  },
+  {
+   "item": "hw-020",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/deploy-and-oncall.md",
+     1,
+     0.6854
+    ],
+    [
+     "product-docs/release-notes-2026.md",
+     5,
+     0.4655
+    ]
+   ]
+  },
+  {
+   "item": "hw-020",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-docs/release-notes-2026.md",
+     1,
+     0.4655
+    ]
+   ]
+  },
+  {
+   "item": "hw-021",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "paraphrase",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/deploy-and-oncall.md",
+     1,
+     0.6792
+    ],
+    [
+     "general-handbook/it-security-basics.md",
+     3,
+     0.5137
+    ],
+    [
+     "product-docs/release-notes-2026.md",
+     5,
+     0.4846
+    ],
+    [
+     "engineering/vendor-integration-notes.md",
+     6,
+     0.4825
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     8,
+     0.4686
+    ]
+   ]
+  },
+  {
+   "item": "hw-022",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/deploy-and-oncall.md",
+     1,
+     0.6947
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     4,
+     0.4642
+    ]
+   ]
+  },
+  {
+   "item": "hw-023",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "cross-lingual",
+    "es"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/deploy-and-oncall.md",
+     1,
+     0.6158
+    ]
+   ]
+  },
+  {
+   "item": "hw-024",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/career-ladder.md",
+     1,
+     0.706
+    ]
+   ]
+  },
+  {
+   "item": "hw-024",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "hw-025",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/vendor-integration-notes.md",
+     1,
+     0.5586
+    ]
+   ]
+  },
+  {
+   "item": "hw-026",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "forbidden",
+    "injection",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/career-ladder.md",
+     1,
+     0.5077
+    ],
+    [
+     "engineering/vendor-integration-notes.md",
+     2,
+     0.5053
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     3,
+     0.4712
+    ]
+   ]
+  },
+  {
+   "item": "hw-030",
+   "persona": "finance@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/q3-2026-budget.md",
+     1,
+     0.733
+    ],
+    [
+     "finance/inv-2026-0111.md",
+     2,
+     0.476
+    ],
+    [
+     "finance/inv-2026-0104.md",
+     3,
+     0.4726
+    ],
+    [
+     "finance/inv-2026-0124.md",
+     4,
+     0.4711
+    ],
+    [
+     "finance/inv-2026-0103.md",
+     5,
+     0.4699
+    ],
+    [
+     "finance/inv-2026-0126.md",
+     6,
+     0.4698
+    ],
+    [
+     "finance/inv-2026-0129.md",
+     7,
+     0.4653
+    ],
+    [
+     "finance/inv-2026-0110.md",
+     8,
+     0.4635
+    ],
+    [
+     "finance/inv-2026-0116.md",
+     9,
+     0.4627
+    ],
+    [
+     "finance/inv-2026-0101.md",
+     10,
+     0.4574
+    ]
+   ]
+  },
+  {
+   "item": "hw-030",
+   "persona": "exec@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/q3-2026-budget.md",
+     1,
+     0.733
+    ],
+    [
+     "hr-confidential/salary-bands-2026.md",
+     2,
+     0.4915
+    ],
+    [
+     "finance/inv-2026-0111.md",
+     4,
+     0.476
+    ],
+    [
+     "finance/inv-2026-0104.md",
+     5,
+     0.4726
+    ],
+    [
+     "sales-contracts/ct-2025-0003.md",
+     6,
+     0.4725
+    ],
+    [
+     "finance/inv-2026-0124.md",
+     8,
+     0.4711
+    ],
+    [
+     "finance/inv-2026-0103.md",
+     9,
+     0.4699
+    ],
+    [
+     "finance/inv-2026-0126.md",
+     10,
+     0.4698
+    ]
+   ]
+  },
+  {
+   "item": "hw-030",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "hw-031",
+   "persona": "finance@acme.test",
+   "tags": [
+    "paraphrase",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/q3-2026-budget.md",
+     1,
+     0.5745
+    ]
+   ]
+  },
+  {
+   "item": "hw-032",
+   "persona": "finance@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/vendor-payment-policy.md",
+     1,
+     0.6228
+    ],
+    [
+     "finance/inv-2026-0106.md",
+     2,
+     0.5847
+    ],
+    [
+     "finance/inv-2026-0107.md",
+     3,
+     0.5732
+    ],
+    [
+     "finance/inv-2026-0115.md",
+     4,
+     0.5693
+    ],
+    [
+     "finance/inv-2026-0121.md",
+     5,
+     0.5693
+    ],
+    [
+     "finance/inv-2026-0108.md",
+     6,
+     0.5681
+    ],
+    [
+     "finance/inv-2026-0130.md",
+     7,
+     0.567
+    ],
+    [
+     "finance/inv-2026-0113.md",
+     8,
+     0.567
+    ],
+    [
+     "finance/inv-2026-0102.md",
+     9,
+     0.5646
+    ],
+    [
+     "finance/inv-2026-0125.md",
+     10,
+     0.5642
+    ]
+   ]
+  },
+  {
+   "item": "hw-032",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.509
+    ]
+   ]
+  },
+  {
+   "item": "hw-033",
+   "persona": "finance@acme.test",
+   "tags": [
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/vendor-payment-policy.md",
+     1,
+     0.6287
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     2,
+     0.5098
+    ],
+    [
+     "finance/inv-2026-0121.md",
+     4,
+     0.4568
+    ]
+   ]
+  },
+  {
+   "item": "hw-034",
+   "persona": "finance@acme.test",
+   "tags": [
+    "cross-lingual",
+    "es"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/vendor-payment-policy.md",
+     1,
+     0.6256
+    ],
+    [
+     "finance/inv-2026-0123.md",
+     2,
+     0.5126
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     3,
+     0.5104
+    ],
+    [
+     "finance/inv-2026-0127.md",
+     5,
+     0.5089
+    ],
+    [
+     "finance/inv-2026-0121.md",
+     6,
+     0.5056
+    ],
+    [
+     "finance/inv-2026-0107.md",
+     7,
+     0.505
+    ],
+    [
+     "finance/inv-2026-0109.md",
+     8,
+     0.5043
+    ],
+    [
+     "finance/inv-2026-0117.md",
+     9,
+     0.4979
+    ],
+    [
+     "finance/inv-2026-0119.md",
+     10,
+     0.4971
+    ]
+   ]
+  },
+  {
+   "item": "hw-035",
+   "persona": "exec@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/q3-2026-budget.md",
+     1,
+     0.6223
+    ]
+   ]
+  },
+  {
+   "item": "hw-035",
+   "persona": "sales@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "hw-036",
+   "persona": "finance@acme.test",
+   "tags": [
+    "bare-id",
+    "exact-id"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0125.md",
+     1,
+     0.6014
+    ],
+    [
+     "finance/inv-2026-0126.md",
+     2,
+     0.5854
+    ],
+    [
+     "finance/inv-2026-0110.md",
+     3,
+     0.5818
+    ],
+    [
+     "finance/inv-2026-0116.md",
+     4,
+     0.5781
+    ],
+    [
+     "finance/inv-2026-0115.md",
+     5,
+     0.5752
+    ],
+    [
+     "finance/inv-2026-0128.md",
+     6,
+     0.5744
+    ],
+    [
+     "finance/inv-2026-0127.md",
+     7,
+     0.5733
+    ],
+    [
+     "finance/inv-2026-0120.md",
+     8,
+     0.5704
+    ],
+    [
+     "finance/inv-2026-0109.md",
+     9,
+     0.5703
+    ],
+    [
+     "finance/inv-2026-0112.md",
+     10,
+     0.5686
+    ]
+   ]
+  },
+  {
+   "item": "hw-040",
+   "persona": "hr@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "hr-confidential/salary-bands-2026.md",
+     1,
+     0.7156
+    ]
+   ]
+  },
+  {
+   "item": "hw-040",
+   "persona": "engineer@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/career-ladder.md",
+     1,
+     0.6026
+    ]
+   ]
+  },
+  {
+   "item": "hw-040",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "hw-041",
+   "persona": "hr@acme.test",
+   "tags": [
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "hr-confidential/salary-bands-2026.md",
+     1,
+     0.5303
+    ]
+   ]
+  },
+  {
+   "item": "hw-041",
+   "persona": "exec@acme.test",
+   "tags": [
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 0.5,
+    "ndcg@10": 0.6309297535714575
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "engineering/career-ladder.md",
+     1,
+     0.5737
+    ],
+    [
+     "hr-confidential/salary-bands-2026.md",
+     2,
+     0.5303
+    ],
+    [
+     "sales-contracts/ct-2025-0080.md",
+     5,
+     0.465
+    ],
+    [
+     "sales-contracts/ct-2025-0050.md",
+     6,
+     0.4647
+    ],
+    [
+     "sales-contracts/ct-2025-0010.md",
+     8,
+     0.4589
+    ],
+    [
+     "sales-contracts/ct-2025-0040.md",
+     9,
+     0.4567
+    ],
+    [
+     "sales-contracts/ct-2025-0008.md",
+     10,
+     0.4528
+    ]
+   ]
+  },
+  {
+   "item": "hw-042",
+   "persona": "hr@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "hr-confidential/performance-review-process.md",
+     1,
+     0.6511
+    ]
+   ]
+  },
+  {
+   "item": "hw-042",
+   "persona": "hr.assistant@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "hr-confidential/performance-review-process.md",
+     1,
+     0.6511
+    ]
+   ]
+  },
+  {
+   "item": "hw-042",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "hw-043",
+   "persona": "hr@acme.test",
+   "tags": [
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "hr-confidential/performance-review-process.md",
+     1,
+     0.5525
+    ]
+   ]
+  },
+  {
+   "item": "hw-044",
+   "persona": "hr@acme.test",
+   "tags": [
+    "restricted",
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "hr-confidential/investigation-2026-03.md",
+     1,
+     0.6949
+    ],
+    [
+     "hr-confidential/investigation-2026-07.md",
+     2,
+     0.6193
+    ],
+    [
+     "hr-confidential/settlement-2026-05.md",
+     3,
+     0.5474
+    ],
+    [
+     "hr-confidential/salary-bands-2026.md",
+     4,
+     0.4946
+    ]
+   ]
+  },
+  {
+   "item": "hw-044",
+   "persona": "exec@acme.test",
+   "tags": [
+    "restricted",
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/q3-2026-budget.md",
+     1,
+     0.5236
+    ],
+    [
+     "hr-confidential/salary-bands-2026.md",
+     2,
+     0.4946
+    ],
+    [
+     "finance/inv-2026-0108.md",
+     5,
+     0.4508
+    ]
+   ]
+  },
+  {
+   "item": "hw-044",
+   "persona": "hr.assistant@acme.test",
+   "tags": [
+    "restricted",
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "hr-confidential/salary-bands-2026.md",
+     1,
+     0.4946
+    ]
+   ]
+  },
+  {
+   "item": "hw-045",
+   "persona": "hr@acme.test",
+   "tags": [
+    "restricted",
+    "forbidden",
+    "paraphrase",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "hr-confidential/investigation-2026-07.md",
+     1,
+     0.6435
+    ],
+    [
+     "hr-confidential/investigation-2026-03.md",
+     2,
+     0.5462
+    ],
+    [
+     "hr-confidential/settlement-2026-05.md",
+     3,
+     0.5063
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     4,
+     0.4746
+    ]
+   ]
+  },
+  {
+   "item": "hw-045",
+   "persona": "exec@acme.test",
+   "tags": [
+    "restricted",
+    "forbidden",
+    "paraphrase",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "finance/inv-2026-0115.md",
+     1,
+     0.477
+    ],
+    [
+     "finance/inv-2026-0130.md",
+     2,
+     0.4759
+    ],
+    [
+     "general-handbook/employee-handbook.md",
+     3,
+     0.4746
+    ],
+    [
+     "finance/inv-2026-0119.md",
+     4,
+     0.474
+    ],
+    [
+     "finance/inv-2026-0117.md",
+     5,
+     0.4714
+    ],
+    [
+     "finance/inv-2026-0120.md",
+     6,
+     0.47
+    ],
+    [
+     "finance/inv-2026-0118.md",
+     7,
+     0.4689
+    ],
+    [
+     "finance/inv-2026-0127.md",
+     8,
+     0.4664
+    ],
+    [
+     "finance/inv-2026-0107.md",
+     9,
+     0.4656
+    ],
+    [
+     "finance/inv-2026-0108.md",
+     10,
+     0.463
+    ]
+   ]
+  },
+  {
+   "item": "hw-046",
+   "persona": "hr@acme.test",
+   "tags": [
+    "restricted",
+    "forbidden",
+    "cross-lingual",
+    "es"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "hr-confidential/settlement-2026-05.md",
+     1,
+     0.5362
+    ]
+   ]
+  },
+  {
+   "item": "hw-046",
+   "persona": "exec@acme.test",
+   "tags": [
+    "restricted",
+    "forbidden",
+    "cross-lingual",
+    "es"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0002.md",
+     1,
+     0.4676
+    ],
+    [
+     "sales-contracts/ct-2025-0074.md",
+     2,
+     0.4649
+    ],
+    [
+     "sales-contracts/ct-2025-0070.md",
+     3,
+     0.4643
+    ],
+    [
+     "sales-contracts/ct-2025-0003.md",
+     4,
+     0.4642
+    ],
+    [
+     "sales-contracts/ct-2025-0080.md",
+     5,
+     0.463
+    ],
+    [
+     "sales-contracts/ct-2025-0008.md",
+     6,
+     0.4622
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     7,
+     0.4613
+    ],
+    [
+     "sales-contracts/ct-2025-0042.md",
+     8,
+     0.4611
+    ],
+    [
+     "sales-contracts/ct-2025-0061.md",
+     9,
+     0.4611
+    ],
+    [
+     "sales-contracts/ct-2025-0048.md",
+     10,
+     0.461
+    ]
+   ]
+  },
+  {
+   "item": "hw-046",
+   "persona": "hr.assistant@acme.test",
+   "tags": [
+    "restricted",
+    "forbidden",
+    "cross-lingual",
+    "es"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "hw-050",
+   "persona": "sales@acme.test",
+   "tags": [
+    "multi-doc",
+    "name",
+    "forbidden",
+    "es"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0001.md",
+     1,
+     0.6813
+    ],
+    [
+     "sales-contracts/ct-2025-0041.md",
+     2,
+     0.6779
+    ],
+    [
+     "sales-contracts/ct-2025-0061.md",
+     3,
+     0.6303
+    ],
+    [
+     "sales-contracts/ct-2025-0021.md",
+     4,
+     0.6252
+    ],
+    [
+     "sales-contracts/ct-2025-0017.md",
+     6,
+     0.5781
+    ],
+    [
+     "sales-contracts/ct-2025-0058.md",
+     7,
+     0.5755
+    ]
+   ]
+  },
+  {
+   "item": "hw-050",
+   "persona": "support@acme.test",
+   "tags": [
+    "multi-doc",
+    "name",
+    "forbidden",
+    "es"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "hw-051",
+   "persona": "sales@acme.test",
+   "tags": [
+    "exact-id",
+    "cross-lingual",
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0042.md",
+     1,
+     0.651
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     2,
+     0.6311
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     3,
+     0.6256
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     4,
+     0.6228
+    ],
+    [
+     "sales-contracts/ct-2025-0032.md",
+     5,
+     0.6205
+    ],
+    [
+     "sales-contracts/ct-2025-0061.md",
+     6,
+     0.6203
+    ],
+    [
+     "sales-contracts/ct-2025-0045.md",
+     7,
+     0.6201
+    ],
+    [
+     "sales-contracts/ct-2025-0021.md",
+     8,
+     0.6174
+    ],
+    [
+     "sales-contracts/ct-2025-0060.md",
+     9,
+     0.6174
+    ],
+    [
+     "sales-contracts/ct-2025-0004.md",
+     10,
+     0.6148
+    ]
+   ]
+  },
+  {
+   "item": "hw-051",
+   "persona": "exec@acme.test",
+   "tags": [
+    "exact-id",
+    "cross-lingual",
+    "forbidden",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0042.md",
+     1,
+     0.651
+    ],
+    [
+     "sales-contracts/ct-2025-0020.md",
+     2,
+     0.6311
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     3,
+     0.6256
+    ],
+    [
+     "sales-contracts/ct-2025-0015.md",
+     4,
+     0.6228
+    ],
+    [
+     "sales-contracts/ct-2025-0032.md",
+     5,
+     0.6205
+    ],
+    [
+     "sales-contracts/ct-2025-0061.md",
+     6,
+     0.6203
+    ],
+    [
+     "sales-contracts/ct-2025-0045.md",
+     7,
+     0.6201
+    ],
+    [
+     "sales-contracts/ct-2025-0021.md",
+     8,
+     0.6174
+    ],
+    [
+     "sales-contracts/ct-2025-0060.md",
+     9,
+     0.6174
+    ],
+    [
+     "sales-contracts/ct-2025-0004.md",
+     10,
+     0.6148
+    ]
+   ]
+  },
+  {
+   "item": "hw-051",
+   "persona": "support@acme.test",
+   "tags": [
+    "exact-id",
+    "cross-lingual",
+    "forbidden",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 1.0
+   },
+   "leaked": [],
+   "documents": []
+  },
+  {
+   "item": "hw-052",
+   "persona": "sales@acme.test",
+   "tags": [
+    "bare-id",
+    "exact-id",
+    "forbidden"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0063.md",
+     1,
+     0.6106
+    ],
+    [
+     "sales-contracts/ct-2025-0033.md",
+     2,
+     0.5758
+    ],
+    [
+     "sales-contracts/ct-2025-0073.md",
+     3,
+     0.5758
+    ],
+    [
+     "sales-contracts/ct-2025-0043.md",
+     5,
+     0.5593
+    ],
+    [
+     "sales-contracts/ct-2025-0005.md",
+     7,
+     0.5551
+    ],
+    [
+     "sales-contracts/ct-2025-0055.md",
+     8,
+     0.5541
+    ],
+    [
+     "sales-contracts/ct-2025-0069.md",
+     10,
+     0.5484
+    ]
+   ]
+  },
+  {
+   "item": "hw-052",
+   "persona": "finance@acme.test",
+   "tags": [
+    "bare-id",
+    "exact-id",
+    "forbidden"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1063.md",
+     1,
+     0.4789
+    ],
+    [
+     "finance/inv-2026-0125.md",
+     2,
+     0.4669
+    ],
+    [
+     "finance/inv-2026-0123.md",
+     3,
+     0.4553
+    ]
+   ]
+  },
+  {
+   "item": "hw-060",
+   "persona": "support@acme.test",
+   "tags": [
+    "paraphrase",
+    "acronym",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-449.md",
+     1,
+     0.7268
+    ],
+    [
+     "support-kb/err-455.md",
+     2,
+     0.7262
+    ],
+    [
+     "support-kb/err-401.md",
+     3,
+     0.7225
+    ],
+    [
+     "support-kb/err-443.md",
+     4,
+     0.7188
+    ],
+    [
+     "support-kb/err-407.md",
+     7,
+     0.7161
+    ],
+    [
+     "support-kb/err-431.md",
+     8,
+     0.7146
+    ],
+    [
+     "support-kb/err-437.md",
+     9,
+     0.7123
+    ],
+    [
+     "support-kb/err-413.md",
+     10,
+     0.7114
+    ]
+   ]
+  },
+  {
+   "item": "hw-060",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "paraphrase",
+    "acronym",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/it-security-basics.md",
+     1,
+     0.493
+    ],
+    [
+     "product-docs/release-notes-2026.md",
+     3,
+     0.4669
+    ],
+    [
+     "product-catalog/ax-1053.md",
+     4,
+     0.4658
+    ],
+    [
+     "product-catalog/ax-1045.md",
+     5,
+     0.4578
+    ],
+    [
+     "product-catalog/ax-1013.md",
+     6,
+     0.456
+    ],
+    [
+     "product-catalog/ax-1031.md",
+     7,
+     0.4557
+    ],
+    [
+     "product-catalog/ax-1044.md",
+     8,
+     0.4555
+    ],
+    [
+     "product-catalog/ax-1020.md",
+     9,
+     0.4551
+    ],
+    [
+     "product-catalog/ax-1005.md",
+     10,
+     0.4545
+    ]
+   ]
+  },
+  {
+   "item": "hw-061",
+   "persona": "support@acme.test",
+   "tags": [
+    "paraphrase",
+    "acronym",
+    "es"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-423.md",
+     1,
+     0.6073
+    ],
+    [
+     "support-kb/err-435.md",
+     2,
+     0.6018
+    ],
+    [
+     "support-kb/err-405.md",
+     3,
+     0.6008
+    ],
+    [
+     "support-kb/err-429.md",
+     4,
+     0.6003
+    ],
+    [
+     "support-kb/err-441.md",
+     5,
+     0.5984
+    ],
+    [
+     "support-kb/err-453.md",
+     6,
+     0.5957
+    ],
+    [
+     "support-kb/err-459.md",
+     7,
+     0.5931
+    ],
+    [
+     "support-kb/err-447.md",
+     8,
+     0.585
+    ],
+    [
+     "support-kb/err-417.md",
+     9,
+     0.5838
+    ],
+    [
+     "support-kb/err-411.md",
+     10,
+     0.5754
+    ]
+   ]
+  },
+  {
+   "item": "hw-062",
+   "persona": "support@acme.test",
+   "tags": [
+    "paraphrase",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-421.md",
+     1,
+     0.6509
+    ],
+    [
+     "support-kb/err-457.md",
+     2,
+     0.6504
+    ],
+    [
+     "support-kb/err-415.md",
+     3,
+     0.6325
+    ],
+    [
+     "support-kb/err-409.md",
+     4,
+     0.6321
+    ],
+    [
+     "support-kb/err-403.md",
+     5,
+     0.6265
+    ],
+    [
+     "support-kb/err-451.md",
+     6,
+     0.624
+    ],
+    [
+     "support-kb/err-445.md",
+     7,
+     0.6225
+    ],
+    [
+     "support-kb/err-427.md",
+     8,
+     0.6191
+    ],
+    [
+     "support-kb/err-439.md",
+     9,
+     0.6173
+    ],
+    [
+     "support-kb/err-433.md",
+     10,
+     0.6093
+    ]
+   ]
+  },
+  {
+   "item": "hw-063",
+   "persona": "support@acme.test",
+   "tags": [
+    "bare-id",
+    "exact-id"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "support-kb/err-455.md",
+     1,
+     0.6242
+    ],
+    [
+     "support-kb/err-405.md",
+     3,
+     0.6046
+    ],
+    [
+     "support-kb/err-457.md",
+     5,
+     0.598
+    ],
+    [
+     "support-kb/err-458.md",
+     7,
+     0.5918
+    ],
+    [
+     "support-kb/err-451.md",
+     9,
+     0.5804
+    ]
+   ]
+  },
+  {
+   "item": "hw-070",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "exact-id",
+    "en"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1050.md",
+     1,
+     0.6645
+    ],
+    [
+     "product-catalog/ax-1052.md",
+     2,
+     0.617
+    ],
+    [
+     "product-catalog/ax-1051.md",
+     3,
+     0.6099
+    ],
+    [
+     "product-catalog/ax-1010.md",
+     4,
+     0.5936
+    ],
+    [
+     "product-catalog/ax-1055.md",
+     5,
+     0.588
+    ],
+    [
+     "product-catalog/ax-1075.md",
+     6,
+     0.5868
+    ],
+    [
+     "product-catalog/ax-1048.md",
+     7,
+     0.5857
+    ],
+    [
+     "product-catalog/ax-1054.md",
+     8,
+     0.5835
+    ],
+    [
+     "product-catalog/ax-1015.md",
+     9,
+     0.5835
+    ],
+    [
+     "product-catalog/ax-1059.md",
+     10,
+     0.5833
+    ]
+   ]
+  },
+  {
+   "item": "hw-071",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "bare-id",
+    "exact-id"
+   ],
+   "answerable": true,
+   "metrics": {
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr": 1.0,
+    "ndcg@10": 1.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "product-catalog/ax-1077.md",
+     1,
+     0.6589
+    ],
+    [
+     "product-catalog/ax-1067.md",
+     2,
+     0.6092
+    ],
+    [
+     "product-catalog/ax-1079.md",
+     3,
+     0.6037
+    ],
+    [
+     "product-catalog/ax-1078.md",
+     4,
+     0.5992
+    ],
+    [
+     "product-catalog/ax-1047.md",
+     5,
+     0.5983
+    ],
+    [
+     "product-catalog/ax-1076.md",
+     6,
+     0.5981
+    ],
+    [
+     "product-catalog/ax-1074.md",
+     7,
+     0.5959
+    ],
+    [
+     "product-catalog/ax-1037.md",
+     8,
+     0.5954
+    ],
+    [
+     "product-catalog/ax-1027.md",
+     9,
+     0.5913
+    ],
+    [
+     "product-catalog/ax-1071.md",
+     10,
+     0.5861
+    ]
+   ]
+  },
+  {
+   "item": "hw-080",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "unanswerable",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.4642
+    ]
+   ]
+  },
+  {
+   "item": "hw-081",
+   "persona": "exec@acme.test",
+   "tags": [
+    "unanswerable",
+    "en"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "sales-contracts/ct-2025-0077.md",
+     1,
+     0.5027
+    ],
+    [
+     "sales-contracts/ct-2025-0037.md",
+     2,
+     0.5013
+    ],
+    [
+     "sales-contracts/ct-2025-0016.md",
+     3,
+     0.4973
+    ],
+    [
+     "sales-contracts/ct-2025-0029.md",
+     4,
+     0.4969
+    ],
+    [
+     "sales-contracts/ct-2025-0026.md",
+     5,
+     0.4967
+    ],
+    [
+     "sales-contracts/ct-2025-0073.md",
+     6,
+     0.4967
+    ],
+    [
+     "sales-contracts/ct-2025-0066.md",
+     7,
+     0.4965
+    ],
+    [
+     "sales-contracts/ct-2025-0033.md",
+     8,
+     0.4935
+    ],
+    [
+     "sales-contracts/ct-2025-0030.md",
+     9,
+     0.493
+    ],
+    [
+     "sales-contracts/ct-2025-0070.md",
+     10,
+     0.493
+    ]
+   ]
+  },
+  {
+   "item": "hw-082",
+   "persona": "newhire@acme.test",
+   "tags": [
+    "unanswerable",
+    "es"
+   ],
+   "answerable": false,
+   "metrics": {
+    "abstained": 0.0
+   },
+   "leaked": [],
+   "documents": [
+    [
+     "general-handbook/employee-handbook.md",
+     1,
+     0.6372
+    ]
+   ]
+  }
+ ]
+}
