@@ -14,3 +14,4 @@ What you can do today:
 - Dependencies must be permissive (MIT/BSD/Apache/ISC/MPL); `uv run python scripts/check_licenses.py` fails on copyleft.
 - No fake or mock LLM providers in tests: assert on retrieved chunk IDs, built prompts, outgoing requests and tool decisions (ADR 0008).
 - Record non-obvious decisions as ADRs in `docs/adr/`.
+- Every release PR adds its section to [`CHANGELOG.md`](CHANGELOG.md) (Added / Changed / Fixed / Removed, and **Upgrade notes** for anything an operator must do: migrations that need downtime, settings that change meaning or disappear, manual steps). After merging into `main`: tag `vX.Y.Z` on the merge commit and publish a GitHub Release with that section.
