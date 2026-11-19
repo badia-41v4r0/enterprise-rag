@@ -244,7 +244,7 @@ async def change_password(
     from app.services.setup import password_problems
 
     user = auth.user
-    if not mfa_limiter.allow(f"pw:{user.id}"):
+    if not await mfa_limiter.allow(f"pw:{user.id}"):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts")
     if not verify_password(user.password_hash, body.current_password):
         audit(db, "auth.password.change", user_id=user.id, decision="deny")

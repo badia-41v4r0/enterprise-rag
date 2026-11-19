@@ -91,6 +91,8 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+# A coroutine that is never awaited is a bug (an un-awaited limiter check once allowed every request): fail the test.
+filterwarnings = ["error:coroutine .* was never awaited:RuntimeWarning"]
 markers = [
   "db: needs the PostgreSQL test database (skipped when unreachable)",
   "embeddings: needs the local Ollama embedding model bge-m3 (skipped when unreachable)",

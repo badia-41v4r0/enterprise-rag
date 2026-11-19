@@ -25,6 +25,8 @@ Many users in one company, hybrid search with a reranker and a permission-aware 
 - Embeddings are stored as `halfvec` (half the size; identical results on the evaluation set).
 - `ERAG_CONNECTOR_MAX_ITEMS` is now the default of each connector's own `max_items`, no longer a global ceiling.
 - A parse failure (an unreadable file) fails the job at once instead of being retried.
+- Rate limits, including the setup token's, are shared by every replica. Users created by the CSV import must change their temporary password at the first login, like every other user an administrator creates.
+- The decision records of this release are ADRs 0042 to 0053 and the threats T51 to T58 (v0.4's are 0034 to 0041 and T43 to T50).
 
 ### Fixed
 - Concurrent requests could overspend a budget or a quota pool (budgets were checked, not reserved).
@@ -32,7 +34,9 @@ Many users in one company, hybrid search with a reranker and a permission-aware 
 - Sync runs left `running` by a crashed worker stayed stuck.
 
 ### Upgrade notes
-- **Stop the app and the workers during the migration.** One migration changes the embedding column type (`vector` → `halfvec`) and rebuilds the vector index; the previous release cannot run against the new schema, and on a large corpus the rebuild takes time (raise `maintenance_work_mem` first).
+- Migrations 0013 to 0020 follow v0.4's 0012.
+- **Stop the app and the workers during the migration.** Migration 0019 changes the embedding column type (`vector` → `halfvec`) and rebuilds the vector index; the previous release cannot run against the new schema, and on a large corpus the rebuild takes time (raise `maintenance_work_mem` first).
+- Development databases migrated from the v0.5 branch before it was integrated with v0.4 (stamped 0012-0019 without a `setup_state` table) need `scripts/restamp_v05_dev_db.py --apply` before `alembic upgrade head`. Released installations do not.
 - Optional: install the reranker (`erag models install mmarco-minilm-l12`); without it search uses the fused order and says so.
 - New settings, all with defaults (see the README configuration reference): sessions (`ERAG_SESSION_IDLE_MINUTES`), retention, the generation queue, embedding endpoints, workers, S3, connection pools, metrics, traces.
 - Point your monitoring at the metrics ports (9464 app, 9465 worker); they must not be public.

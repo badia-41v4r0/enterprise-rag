@@ -4,6 +4,15 @@
 
 Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from `docs/plan-v0.5`, so the plan travels with the code. Releases R13 to R20; this section is updated at each release boundary.
 
+### Integration with v0.4 (2026-11-19)
+
+v0.5 was started from `main` before v0.4 was merged, and reused v0.4's numbers: migration 0012, ADRs 0034 to 0041 and threats T43 to T50. GitHub reported the PR as mergeable because the files had different names, but `alembic upgrade` would have failed on two revisions 0012.
+
+**What was done** (branch `fix/v0.5-integrate-v0.4`)
+- v0.5's numbers were moved on the v0.5 side, before merging, so released v0.4 installations keep their history: migrations 0012-0019 → **0013-0020** (0013 now follows v0.4's 0012), ADRs 0034-0045 → **0042-0053**, threats T43-T50 → **T51-T58**. Every reference in code, docs and this file was updated by a script that only touches ADR, migration and threat contexts (evaluation-corpus ids such as `CT-2025-0034` were left alone).
+- `main` merged; 21 conflicts in 16 files resolved by keeping both sides (v0.5's routers behind v0.4's setup gate; the worker's heartbeat, reaper and graceful shutdown in one loop; `seed_structure` with both the evaluation structure arguments and `include_admin`; Admin with the setup assistant and v0.5's tabs).
+- Fixes the merge exposed: v0.4's setup-token limiters moved to the shared, async `RateLimiter`; **v0.4's password-change limit was silently disabled** (its `allow()` was no longer awaited, and a coroutine counts as "allowed"): fixed, with a test, and pytest now fails on any never-awaited coroutine; users created by the CSV import must change their temporary password (ADR 0037), with a test; Helm writes a generated setup token to `/tmp` and documents `ERAG_SETUP_TOKEN_SHA256` for several replicas; `scripts/restamp_v05_dev_db.py` for development databases migrated from the pre-integration branch (tested on a copy of the demo database: old 0015 → v0.4's 0012 applied → stamped 0016 → `alembic upgrade head` to 0020, setup recorded as completed).
+
 ### R13: permission-aware evaluation, evaluation corpus, baseline and synthetic benchmark
 
 **What was built**
