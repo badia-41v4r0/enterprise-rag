@@ -1,4 +1,4 @@
-"""Admin > Retrieval: runtime retrieval settings and the state of the local models (R14, ADR 0038/0039).
+"""Admin > Retrieval: runtime retrieval settings and the state of the local models (R14, ADR 0046/0047).
 
 The settings change ranking only; the authorization filter, the ACL recheck and classification routing do not
 depend on them, so changing them needs an administrator but not step-up. Every change is audited with the old

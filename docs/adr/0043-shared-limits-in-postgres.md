@@ -1,4 +1,4 @@
-# 0035. Shared limits in Postgres behind `LimitStore`
+# 0043. Shared limits in Postgres behind `LimitStore`
 
 **Status:** Accepted (2026-11-18, PLAN-v0.5 decision 3).
 
@@ -8,7 +8,7 @@ Rate limiters (login, MFA, chat, tools) were in-process sliding windows: with tw
 ## Decision
 - A `LimitStore` interface with one Postgres implementation: an **UNLOGGED** `rate_limit_counters` table, one row per key and fixed window. A check is a single `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` (with the previous window read in the same statement) on an **autocommit** connection, so it takes no lock inside the request's transaction.
 - The window is the usual sliding-window approximation: current window plus the previous one weighted by its remaining overlap. Refused attempts count too, so hammering keeps the door closed.
-- UNLOGGED: not WAL-logged, faster, emptied after a crash. Losing rate-limit counts at a crash is acceptable; money never lives there (ADR 0036).
+- UNLOGGED: not WAL-logged, faster, emptied after a crash. Losing rate-limit counts at a crash is acceptable; money never lives there (ADR 0044).
 - Old windows are deleted by the maintenance task. A memory store exists for unit tests only.
 
 ## Consequences

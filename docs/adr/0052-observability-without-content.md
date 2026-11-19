@@ -1,4 +1,4 @@
-# 0044. Observability without content
+# 0052. Observability without content
 
 **Status:** Accepted (2026-11-19).
 

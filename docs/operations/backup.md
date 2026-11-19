@@ -1,6 +1,6 @@
 # Backup and restore
 
-Targets: **RPO 15 minutes, RTO 4 hours** (ADR 0043). Four things must be backed up, and two of them separately:
+Targets: **RPO 15 minutes, RTO 4 hours** (ADR 0051). Four things must be backed up, and two of them separately:
 
 | What | How | Where |
 |---|---|---|
@@ -36,6 +36,6 @@ uv run python scripts/restore_drill.py \
     --email <an existing user> --password <their password>
 ```
 
-It records searches as that user, dumps and restores into a throw-away database, migrates it, runs `backup verify`, logs in through the real app, repeats the searches and compares. It prints ids and counts only. Last run on the evaluation database (2026-11-19): migrated 0018 → 0019, verify passed, 20/20 searches identical.
+It records searches as that user, dumps and restores into a throw-away database, migrates it, runs `backup verify`, logs in through the real app, repeats the searches and compares. It prints ids and counts only. Last run on the evaluation database (2026-11-19): migrated 0019 → 0020, verify passed, 20/20 searches identical.
 
 The drill's dump is logical (`pg_dump -Fc`). It proves that a backup of this release restores, migrates and answers the same; rehearse the pgBackRest PITR path itself (above) on your own infrastructure.

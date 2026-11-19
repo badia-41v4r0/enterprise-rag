@@ -52,7 +52,7 @@ worker:
   # The worker finishes the jobs it holds on SIGTERM; give it time.
   terminationGracePeriodSeconds: 130
 
-# Reranker model files (ADR 0039): installed by an init container into an emptyDir at each start (pinned by
+# Reranker model files (ADR 0047): installed by an init container into an emptyDir at each start (pinned by
 # hash), or mounted from a volume you prepare (offline clusters: `erag models install --from-dir`).
 models:
   install: [mmarco-minilm-l12]

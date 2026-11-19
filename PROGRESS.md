@@ -7,7 +7,7 @@ Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from 
 ### R13: permission-aware evaluation, evaluation corpus, baseline and synthetic benchmark
 
 **What was built**
-- **`app.eval` package** (ADR 0040):
+- **`app.eval` package** (ADR 0048):
   - `corpus.py`: an evaluation structure that extends ACME. Three new containers (`sales-contracts` confidential, `support-kb` internal, `product-catalog` public), two new personas (`sales@`, `support@`), two more restricted HR files, and an independent `Oracle` built from the declared structure.
   - A deterministic generator (fixed seed) writes 252 documents to `eval/corpus/acme-eval/` and 100 exact-identifier questions to `eval/sets/acme.generated.yaml`:
     - 80 Spanish contracts in near-duplicate pairs;
@@ -20,7 +20,7 @@ Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from 
   - `runner.py`: asks every item as every persona through `effective_permissions` and `Retriever.retrieve_by_vector`, the chat's path. It stores the run with a configuration snapshot and the commit, and writes a JSON report. `compare()` shows metric, per-tag and per-run differences.
   - `metrics.py`: document-level recall@5/8, MRR, nDCG@10, abstention, leakage (`must_not_see` plus the oracle), per-tag figures, latency percentiles and `gate()`.
 - **CLI:** `erag eval generate | prepare [--live] | run | compare | baseline | gate | embed-cache`.
-- **Migration 0012:** `eval_sets`, `eval_items`, `eval_runs`, `eval_results` (document keys and scores only, never text).
+- **Migration 0013:** `eval_sets`, `eval_items`, `eval_runs`, `eval_results` (document keys and scores only, never text).
 - `demo.acme.seed`: `seed_structure`, `seed_documents`, `readable_slugs` and `readable_restricted` take optional structure arguments (default ACME, so the demo is unchanged).
 - `rag.vector_store.HNSW_EF_SEARCH`: a constant instead of a literal, recorded in every run's snapshot.
 - **Set `acme`:** 146 items, 247 persona runs (146 answerable, 101 unanswerable or forbidden). 46 items are written by hand: paraphrases, acronyms, cross-lingual, multi-document, bare identifiers, a prompt injection, restricted HR files, unanswerable questions.
@@ -28,7 +28,7 @@ Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from 
 - **Benchmark scripts:** `scripts/synth_corpus.py` (synthetic clustered vectors via `COPY` into `erag_bench`, 500 containers, 1 percent restricted documents) and `scripts/bench_search.py` (production search for users who see 90, 10 and 1 percent of the containers, k = 8 and 50, p50/p95 latency, short results, recall against an exact scan).
 - **CI:** `erag eval prepare && erag eval gate` after pytest, with the report uploaded as an artifact.
 - **Dependencies:** `pyyaml` (MIT) declared. Dev group: `numpy` (BSD, benchmark scripts only) and `types-PyYAML`.
-- **Docs:** README (status, the "Retrieval evaluation" bullet, an Evaluation section, configuration, development commands), ADR 0040.
+- **Docs:** README (status, the "Retrieval evaluation" bullet, an Evaluation section, configuration, development commands), ADR 0048.
 
 **Verified (R13)**
 - `erag eval prepare --live`: 264 documents and 701 chunks indexed with the real `bge-m3` in 2 min 37 s on this machine.
@@ -47,7 +47,7 @@ Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from 
   - cache round trip and strict miss;
   - the database guard for eval and bench;
   - end to end on `erag_test` with the recorded embeddings: load, mini set without leaks, results without text, then a planted grant makes the run leak and the gate fail.
-- `uv run pytest`: **303 passed, 4 skipped** (238 s), run on its own after the Postgres restart described below. Migration 0012: downgrade/upgrade round trip on `erag_test`.
+- `uv run pytest`: **303 passed, 4 skipped** (238 s), run on its own after the Postgres restart described below. Migration 0013: downgrade/upgrade round trip on `erag_test`.
 - `ruff check`, `ruff format --check`, `mypy` (strict, 112 files): pass.
 - **Synthetic benchmark** (`docs/benchmarks/r13-baseline.md`, 60,000 chunks, 500 containers, Ryzen 3 3100):
 
@@ -62,24 +62,24 @@ Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from 
 **Known issues / not done (R13)**
 - Benchmark size is limited by this machine. The HNSW build needs the graph in `maintenance_work_mem` (about 4.5 KB per vector), and the Compose Postgres has 1 GB of memory and 64 MB of `/dev/shm`. 200,000 chunks fell back to the slow build. During that attempt, the old build, the new one and a full test run together took Postgres down (it stayed in recovery mode until restarted). The test results quoted above come from a clean run afterwards. `synth_corpus.py` now builds serially and takes `--maintenance-work-mem`.
 - `--with-answers` (citation correctness with a local chat model) is moved to R15, together with the faithfulness judge. The R13 gate measures retrieval only, as planned.
-- While developing, `erag_test` was once found stamped at 0012 without the evaluation tables. Re-applying the migration fixed it and the cause could not be reproduced. The migration round trip below runs on a clean state.
+- While developing, `erag_test` was once found stamped at 0013 without the evaluation tables. Re-applying the migration fixed it and the cause could not be reproduced. The migration round trip below runs on a clean state.
 
 
 ### R14 and R15: hybrid search, reranker, Admin > Retrieval; Admin > Evaluation, feedback, faithfulness judge
 
-Built in the session of 2026-11-18 (morning) and committed with R16 on branch `feat/v0.5-cont` (commit `de6d315`), because that session ended before committing. Details are in ADR 0038 and ADR 0039 and the code (`app.rag.lexical`, `fusion`, `reranker`, `settings`, `app.services.reindex`, `app.eval.answers`, `app.eval.live`, `app.api.retrieval`, `app.api.evaluation`, migrations 0013 and 0014).
+Built in the session of 2026-11-18 (morning) and committed with R16 on branch `feat/v0.5-cont` (commit `de6d315`), because that session ended before committing. Details are in ADR 0046 and ADR 0047 and the code (`app.rag.lexical`, `fusion`, `reranker`, `settings`, `app.services.reindex`, `app.eval.answers`, `app.eval.live`, `app.api.retrieval`, `app.api.evaluation`, migrations 0014 and 0015).
 
 **Fixed afterwards (2026-11-18)**
 - **The full-text OR query matched almost everything.** The question was passed through both the Spanish and the English analyzer, and each keeps the other language's stop words, so "what", "is", "the", "el", "de" became search terms. Words that are stop words in either language are now dropped. Found by `test_no_authorized_context_means_no_model_call`: a new hire asking about salaries got handbook chunks as context. Not a leak (all were chunks the new hire may read), but a model call where none was needed.
 - **A term every document shares** (the company name in every title) was enough to bring an unrelated chunk into the context when the reranker is not installed, which raised the classification of public questions and blocked cloud routing (`test_public_context_may_use_cloud_even_with_the_strictest_ceiling`). Text-only hits now also need `text_relative_floor` (default 0.5) of the best full-text match; adjustable in Admin > Retrieval.
 
 **Not done / to check**
-- `docs/benchmarks/r14-retrieval.md`, cited by ADR 0039 for the reranker calibration, **does not exist**: the calibration numbers were not written down. The reranker model is not installed on this machine, so the default pipeline (hybrid + reranker) has not been measured here; every evaluation run below used the fallback (247 reranker fallbacks).
+- `docs/benchmarks/r14-retrieval.md`, cited by ADR 0047 for the reranker calibration, **does not exist**: the calibration numbers were not written down. The reranker model is not installed on this machine, so the default pipeline (hybrid + reranker) has not been measured here; every evaluation run below used the fallback (247 reranker fallbacks).
 
 ### R16: many users in one company
 
 **What was built**
-- Permission cache by (user, epoch), invalidated in the same transaction as any permission change (ADR 0034, migration 0015).
+- Permission cache by (user, epoch), invalidated in the same transaction as any permission change (ADR 0042, migration 0016).
 - The index-driven vector search (commit `69ae29d`); an exact plan for users who read little (planner estimate, cached per container set); ACL id lists as one array parameter.
 - Admin > Users: keyset pagination, search, filters (role, status, admin, never logged in), bulk actions (add/remove role, activate, deactivate, sign out), CSV export (formula cells neutralized) and CSV import (`app.services.user_directory`, reusable by the v0.4 wizard: whole-file validation, dry run by default, step-up to apply, roles only added, no admin by file, temporary passwords shown once and never audited). `users.last_login_at`.
 - Admin > Audit: keyset pagination, prefix filters (literal `%` and `_`), decision, date range.
@@ -92,7 +92,7 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 
 ### R17: shared limits, reservations, generation queue, endpoint pools
 
-**What was built** (ADR 0035, 0036, 0037; migration 0016)
+**What was built** (ADR 0043, 0044, 0045; migration 0017)
 - Rate limits in an UNLOGGED Postgres table behind `LimitStore` (login, MFA, chat, tools).
 - Budget reservations: ordered advisory locks per scope, check with others' reservations, reserve, settle with the usage record; usage of a stream that fails mid-way is recorded.
 - Fair generation queue: leases with heartbeat, waiters, role priority, fewest in flight, LISTEN/NOTIFY plus polling, position shown in the chat, timeout. Endpoint pools (`llm_endpoints`, `max_concurrency`), least-loaded endpoint, locality checked when added and at every build. Admin UI for both and for role priority.
@@ -103,7 +103,7 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 
 ### R18: ingestion at scale, storage, PgBouncer
 
-**What was built** (ADR 0041, 0042; migrations 0017 and 0018)
+**What was built** (ADR 0049, 0050; migrations 0018 and 0019)
 - Job priorities, exponential backoff, dead letters with Retry (API and Jobs tab), heartbeat and reaper for jobs and sync runs, N jobs per worker, memory cap per job, parse failures permanent, SIGTERM drains the worker. Back-pressure on connectors; `max_items` per connector. Ingestion embeddings over a pool with several batches in flight.
 - S3-compatible blob store (SigV4 on httpx) and `erag blobs migrate --to s3`.
 - `halfvec` embeddings.
@@ -116,12 +116,12 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 
 **Known issues / not done (R18)**
 - "Streaming parse" is a memory cap (refuse before reading), not a streaming parser: PDF and DOCX parsing still loads the file.
-- Migration 0018 is not rolling-update compatible (column type change); it declares `REQUIRES_DOWNTIME` and the README says to stop the app.
+- Migration 0019 is not rolling-update compatible (column type change); it declares `REQUIRES_DOWNTIME` and the README says to stop the app.
 - The 50,000 documents/day throughput target has not been measured.
 
 ### R19: observability, backups
 
-**What was built** (ADR 0043, 0044; migration 0019)
+**What was built** (ADR 0051, 0052; migration 0020)
 - Prometheus metrics from a built-in registry on an internal port (app 9464, worker 9465): stage latencies, HTTP by route template, generations, queue depth and timeouts, refusals, tokens and cost, ingestion, and security signals. Alert rules (`deploy/monitoring/alerts.yml`, 16 rules) and a reference (`docs/operations/metrics.md`).
 - Correlation id in responses, logs, audit entries (`audit_log.correlation_id`) and spans; OpenTelemetry API spans (export when an SDK is installed).
 - `/health/live`, `/health/ready`.
@@ -130,7 +130,7 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 
 **Verified (R19)**
 - `tests/integration/test_observability.py` (5: text format, internal endpoint, correlation id in header, logs and audit, no user text in a scrape, health), `tests/integration/test_backup_verify.py` (4: passes, wrong key, corrupt and missing blobs, missing embeddings).
-- **Restore drill** on `erag_eval`: dump, restore into a throw-away database, migrate 0018 → 0019, verify, 20/20 searches identical. The login step was not exercised (the evaluation personas have no known password); blobs skipped (the evaluation database keeps none, by design, and `verify` correctly reported them all missing when not skipped).
+- **Restore drill** on `erag_eval`: dump, restore into a throw-away database, migrate 0019 → 0020, verify, 20/20 searches identical. The login step was not exercised (the evaluation personas have no known password); blobs skipped (the evaluation database keeps none, by design, and `verify` correctly reported them all missing when not skipped).
 - Full suite: **363 passed, 5 skipped** (S3, PgBouncer, reranker-dependent tests skip without their servers or model).
 
 **Not done (R19)**
@@ -140,10 +140,10 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 ### R20: Helm, load tests, the reranker measured, final pass
 
 **What was built**
-- Helm chart `deploy/helm/enterprise-rag` (app with HPA, PDB and probes; workers; PgBouncer; migrations as a pre-install/pre-upgrade hook; internal metrics service; optional ingress; reranker files by init container), a CloudNativePG `Cluster` example, `docs/operations/kubernetes.md`, ADR 0045.
+- Helm chart `deploy/helm/enterprise-rag` (app with HPA, PDB and probes; workers; PgBouncer; migrations as a pre-install/pre-upgrade hook; internal metrics service; optional ingress; reranker files by init container), a CloudNativePG `Cluster` example, `docs/operations/kubernetes.md`, ADR 0053.
 - Load test: `loadtest/` (Locust, a stand-in model server, a setup that imports users through the app's CSV import).
-- `docs/benchmarks/r14-retrieval.md` (the file ADR 0039 cited) with the default pipeline measured for the first time.
-- ROADMAP, architecture, threat model (T43-T50), README final pass.
+- `docs/benchmarks/r14-retrieval.md` (the file ADR 0047 cited) with the default pipeline measured for the first time.
+- ROADMAP, architecture, threat model (T51-T58), README final pass.
 
 **Verified (R20)**
 - `helm lint` passes; the rendered chart (11 resources) validates with `kubeconform -strict`.

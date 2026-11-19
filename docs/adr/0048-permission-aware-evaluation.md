@@ -1,4 +1,4 @@
-# 0040. Permission-aware retrieval evaluation, recorded embeddings and a separate database
+# 0048. Permission-aware retrieval evaluation, recorded embeddings and a separate database
 
 **Status:** Accepted (2026-11-18)
 

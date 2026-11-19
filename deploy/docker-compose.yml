@@ -91,7 +91,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # The reranker runs in this process (ADR 0039): about 300 MB with mmarco-minilm-l12, 1 GB with bge-reranker-v2-m3.
+    # The reranker runs in this process (ADR 0047): about 300 MB with mmarco-minilm-l12, 1 GB with bge-reranker-v2-m3.
     mem_limit: 2g
 
   worker:

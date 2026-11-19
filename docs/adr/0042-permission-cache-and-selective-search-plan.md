@@ -1,4 +1,4 @@
-# 0034. Permission cache by epoch, and the search plan for selective users
+# 0042. Permission cache by epoch, and the search plan for selective users
 
 **Status:** Accepted (2026-11-18).
 

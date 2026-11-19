@@ -1,4 +1,4 @@
-"""Reciprocal rank fusion of the retrieval legs (R14, ADR 0038)."""
+"""Reciprocal rank fusion of the retrieval legs (R14, ADR 0046)."""
 
 from __future__ import annotations
 

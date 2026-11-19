@@ -35,7 +35,7 @@ jobs:
       - run: uv run erag models install mmarco-minilm-l12 && uv run erag models install bge-m3-tokenizer
       # No Ollama in CI: tests marked `embeddings` / `provider_*` skip themselves.
       - run: uv run pytest -q
-      # Retrieval evaluation gate (ADR 0040): real recorded bge-m3 embeddings, no Ollama needed.
+      # Retrieval evaluation gate (ADR 0048): real recorded bge-m3 embeddings, no Ollama needed.
       - run: uv run erag eval prepare && uv run erag eval gate --json eval-report.json
         env:
           ERAG_EVAL_DATABASE_URL: postgresql+asyncpg://erag:erag@localhost:5432/erag_eval

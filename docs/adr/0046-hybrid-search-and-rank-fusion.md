@@ -1,4 +1,4 @@
-# 0038. Hybrid search and rank fusion, with one authorization clause for both legs
+# 0046. Hybrid search and rank fusion, with one authorization clause for both legs
 
 **Status:** Accepted (2026-11-18)
 
@@ -6,7 +6,7 @@
 Vector search alone misses exact identifiers (contract numbers, error codes, SKUs) and is poor at saying "nothing relevant here". The R13 evaluation measured both: MRR 0.57 to 0.76 on Spanish contract identifiers, and abstention 0.307. A second retrieval path is also a second path to the data.
 
 ## Decision
-- **Full-text leg in Postgres.** Every chunk gets `lang`, a `tsvector` and a GIN index (migration 0013). The `tsvector` combines:
+- **Full-text leg in Postgres.** Every chunk gets `lang`, a `tsvector` and a GIN index (migration 0014). The `tsvector` combines:
   - the title (weight A);
   - the heading and text in the document's language (`spanish` or `english`, detected by stop-word counts);
   - the same text again with `simple`, so identifiers match exactly.
@@ -22,7 +22,7 @@ Vector search alone misses exact identifiers (contract numbers, error codes, SKU
 - **Index-driven query** (also R16): the inner query filters `chunks` columns only, so the HNSW scan (vector leg) or the GIN index (text leg) drives it. Documents rejected afterwards are compensated by over-fetching, up to 2,000 candidates.
 
 ## Consequences
-- On the `acme` set, hybrid search **without** a reranker is slightly worse than vector search (MRR 0.886 against 0.899, abstention 0.198 against 0.307): fusion lets more weak candidates through. Its value shows with the reranker (ADR 0039), which needs good candidates from both legs.
+- On the `acme` set, hybrid search **without** a reranker is slightly worse than vector search (MRR 0.886 against 0.899, abstention 0.198 against 0.307): fusion lets more weak candidates through. Its value shows with the reranker (ADR 0047), which needs good candidates from both legs.
 - Existing chunks get a language-neutral `tsvector` from the migration. `erag reindex --all` recomputes them per language.
 - Tests: `tests/security/test_hybrid_retrieval.py`:
   - a forbidden exact identifier is found only by the authorized user;

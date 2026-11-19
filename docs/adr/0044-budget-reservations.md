@@ -1,4 +1,4 @@
-# 0036. Budget reservations
+# 0044. Budget reservations
 
 **Status:** Accepted (2026-11-18). Closes the open item of ADR 0026 ("budgets are checked, not reserved").
 

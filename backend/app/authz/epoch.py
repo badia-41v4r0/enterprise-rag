@@ -1,4 +1,4 @@
-"""Permission-cache invalidation by epoch (R16, ADR 0034).
+"""Permission-cache invalidation by epoch (R16, ADR 0042).
 
 `authz_state.epoch` is increased in the same transaction as any change that can alter what someone may read or
 do: grants, role memberships, roles, containers, a user's active/admin flags, and a document's container or

@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     db_side_max_overflow: int = 20
     db_pgbouncer: bool = False
     db_direct_url: str = ""
-    # Evaluation and benchmark databases (ADR 0040). Default: the application's server with the database names
+    # Evaluation and benchmark databases (ADR 0048). Default: the application's server with the database names
     # `erag_eval` / `erag_bench`. The eval and bench commands refuse to run against the application database.
     eval_database_url: str | None = None
     bench_database_url: str | None = None
@@ -122,7 +122,7 @@ class Settings(BaseSettings):
     claude_code_enabled: bool = False
     claude_code_bin: str = "claude"
 
-    # Local model files (reranker, tokenizer), installed only with `erag models install` (ADR 0039).
+    # Local model files (reranker, tokenizer), installed only with `erag models install` (ADR 0047).
     models_dir: Path = REPO_ROOT / "data" / "models"
     # In-process reranker: concurrent rerank batches per process, ONNX Runtime threads (0 = its default),
     # how long a request may wait for a slot plus scoring before falling back to the fused order.

@@ -1,4 +1,4 @@
-"""Full-text leg of hybrid search (R14, ADR 0038): language detection, the chunk tsvector and the query.
+"""Full-text leg of hybrid search (R14, ADR 0046): language detection, the chunk tsvector and the query.
 
 Every chunk gets a tsvector made of
 - the title, weighted A, in the document's language and without stemming (`simple`);

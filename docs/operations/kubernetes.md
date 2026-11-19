@@ -1,6 +1,6 @@
 # Kubernetes
 
-The chart in `deploy/helm/enterprise-rag` deploys the app (with a horizontal autoscaler, a disruption budget and probes), the workers, PgBouncer, an internal metrics service and a migration job. Postgres comes from CloudNativePG (`deploy/helm/cloudnativepg-cluster.yaml`) or a managed service with pgvector 0.8 or newer. Model servers (Ollama, vLLM) are deployed separately; register them in Admin > Providers with an endpoint pool (ADR 0037). The MCP runner needs a container engine socket and runs outside the cluster (on a dedicated VM), as in ADR 0022.
+The chart in `deploy/helm/enterprise-rag` deploys the app (with a horizontal autoscaler, a disruption budget and probes), the workers, PgBouncer, an internal metrics service and a migration job. Postgres comes from CloudNativePG (`deploy/helm/cloudnativepg-cluster.yaml`) or a managed service with pgvector 0.8 or newer. Model servers (Ollama, vLLM) are deployed separately; register them in Admin > Providers with an endpoint pool (ADR 0045). The MCP runner needs a container engine socket and runs outside the cluster (on a dedicated VM), as in ADR 0022.
 
 ## Install
 
@@ -14,7 +14,7 @@ The chart in `deploy/helm/enterprise-rag` deploys the app (with a horizontal aut
 
 - The migration job runs before the new pods start (Helm `pre-upgrade` hook), against the direct database URL.
 - Migrations are expand/contract (tested by `tests/unit/test_migrations_expand_contract.py`), so the old pods keep serving during the rollout. Pods roll one at a time (`maxUnavailable: 0`) and only receive traffic once `/health/ready` passes.
-- **Exception:** a migration that declares `REQUIRES_DOWNTIME` cannot run under the previous release. In v0.5 that is 0018 (`halfvec`). Scale the app and workers to 0, run the upgrade, scale back:
+- **Exception:** a migration that declares `REQUIRES_DOWNTIME` cannot run under the previous release. In v0.5 that is 0019 (`halfvec`). Scale the app and workers to 0, run the upgrade, scale back:
   ```
   kubectl scale deploy/erag-enterprise-rag-app deploy/erag-enterprise-rag-worker --replicas=0
   helm upgrade erag deploy/helm/enterprise-rag -f my-values.yaml

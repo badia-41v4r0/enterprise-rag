@@ -264,7 +264,7 @@ class ChatOrchestrator:
         yield {"type": "meta", "conversation_id": str(conv.id)}
         yield {"type": "citations", "items": citations}
         if prep.retrieval.reranker_fallback:
-            # Degraded mode (ADR 0039): the answer uses the fused order; say so instead of hiding it.
+            # Degraded mode (ADR 0047): the answer uses the fused order; say so instead of hiding it.
             yield {"type": "notice", "code": "reranker_fallback", "message": "Results were not reranked this time."}
 
         classification = prep.classification

@@ -5,8 +5,8 @@ operation: run it in a maintenance window, with `maintenance_work_mem` raised an
 `max_parallel_maintenance_workers` set (docs/operations/capacity.md). Recall is checked on the evaluation set
 (docs/benchmarks/r18-halfvec.md).
 
-Revision ID: 0018
-Revises: 0017
+Revision ID: 0019
+Revises: 0018
 Create Date: 2026-11-18 22:00:00.000000
 """
 
@@ -14,8 +14,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0018"
-down_revision: str | None = "0017"
+revision: str = "0019"
+down_revision: str | None = "0018"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

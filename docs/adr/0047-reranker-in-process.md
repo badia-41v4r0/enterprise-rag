@@ -1,4 +1,4 @@
-# 0039. A cross-encoder reranker inside the application process
+# 0047. A cross-encoder reranker inside the application process
 
 **Status:** Accepted (2026-11-18). The owner chose in process over a separate service.
 

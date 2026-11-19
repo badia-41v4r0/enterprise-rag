@@ -1,4 +1,4 @@
-# 0037. Endpoint pools and the fair generation queue
+# 0045. Endpoint pools and the fair generation queue
 
 **Status:** Accepted (2026-11-18).
 

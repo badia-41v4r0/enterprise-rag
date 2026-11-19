@@ -347,18 +347,18 @@ Runs as personas use those personas' real permissions and are audited as evaluat
 **ADRs:**
 | ADR | Topic |
 |---|---|
-| 0034 | Permission cache by epoch and the search plan for selective users |
-| 0035 | Shared limits in Postgres behind `LimitStore` |
-| 0036 | Budget reservations |
-| 0037 | Endpoint pools and the fair generation queue |
-| 0038 | Hybrid search and rank fusion |
-| 0039 | Reranker inside the application process |
-| 0040 | Permission-aware evaluation |
-| 0041 | Horizontal scaling: PgBouncer and advisory locks |
-| 0042 | S3 blob store and the vector-store scaling path |
-| 0043 | Backup and recovery |
-| 0044 | Observability without content |
-| 0045 | Helm and zero-downtime upgrades |
+| 0042 | Permission cache by epoch and the search plan for selective users |
+| 0043 | Shared limits in Postgres behind `LimitStore` |
+| 0044 | Budget reservations |
+| 0045 | Endpoint pools and the fair generation queue |
+| 0046 | Hybrid search and rank fusion |
+| 0047 | Reranker inside the application process |
+| 0048 | Permission-aware evaluation |
+| 0049 | Horizontal scaling: PgBouncer and advisory locks |
+| 0050 | S3 blob store and the vector-store scaling path |
+| 0051 | Backup and recovery |
+| 0052 | Observability without content |
+| 0053 | Helm and zero-downtime upgrades |
 
 **README:** updated at every release, with a full pass at the end:
 - the status line and "What it does";

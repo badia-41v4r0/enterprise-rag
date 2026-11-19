@@ -1,7 +1,7 @@
 {{- if .Values.migrations.enabled }}
 # Runs before install and before every upgrade, with the direct database URL (not PgBouncer). Migrations are
 # expand/contract, so the previous release keeps serving while this runs; a migration that cannot be
-# (it declares REQUIRES_DOWNTIME, e.g. 0018) is called out in the upgrade notes: scale the app to 0 first.
+# (it declares REQUIRES_DOWNTIME, e.g. 0019) is called out in the upgrade notes: scale the app to 0 first.
 apiVersion: batch/v1
 kind: Job
 metadata:

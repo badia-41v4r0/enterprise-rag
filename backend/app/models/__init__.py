@@ -690,7 +690,7 @@ class AuditLog(Base):
     correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
 
-# --- Evaluation (ADR 0040) ----------------------------------------------------------------------------
+# --- Evaluation (ADR 0048) ----------------------------------------------------------------------------
 
 
 class EvaluationSet(TimestampMixin, Base):
@@ -767,7 +767,7 @@ class AnswerFeedback(TimestampMixin, Base):
 
 class AuthzState(Base):
     """Singleton row: `epoch` increases in the same transaction as any change that can alter someone's
-    permissions, so every replica's permission cache is invalidated at commit (R16, ADR 0034)."""
+    permissions, so every replica's permission cache is invalidated at commit (R16, ADR 0042)."""
 
     __tablename__ = "authz_state"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)

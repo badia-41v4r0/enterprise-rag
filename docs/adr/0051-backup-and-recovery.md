@@ -1,4 +1,4 @@
-# 0043. Backup and recovery
+# 0051. Backup and recovery
 
 **Status:** Accepted (2026-11-19). Recovery targets (decision 6): RPO 15 minutes, RTO 4 hours.
 
