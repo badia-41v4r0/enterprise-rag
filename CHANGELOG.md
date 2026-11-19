@@ -6,7 +6,7 @@ What changed in each version of EnterpriseRAG, and what you must do to upgrade. 
 
 ## [Unreleased]
 
-## [0.5.0] - not yet released (PR #12)
+## [0.5.0] - 2026-11-19
 
 Many users in one company, hybrid search with a reranker and a permission-aware evaluation set, and scale and operations. Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md).
 
@@ -133,8 +133,8 @@ The MVP: permission-aware RAG and an MCP gateway. Plan: [`docs/PLAN.md`](docs/PL
 - MCP gateway with tool authorization, a signed permission context and a result validator; `files` and `tickets` reference servers.
 - React chat with streaming answers and citations, admin panel; the seeded ACME Corp demo and a security test suite (canary leakage matrix, revocation, routing, tools).
 
-[Unreleased]: https://github.com/badia-41v4r0/enterprise-rag/compare/v0.4.0...HEAD
-[0.5.0]: https://github.com/badia-41v4r0/enterprise-rag/pull/12
+[Unreleased]: https://github.com/badia-41v4r0/enterprise-rag/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/badia-41v4r0/enterprise-rag/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/badia-41v4r0/enterprise-rag/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/badia-41v4r0/enterprise-rag/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/badia-41v4r0/enterprise-rag/compare/v0.2.1...v0.3.0

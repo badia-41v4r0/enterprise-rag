@@ -1,6 +1,6 @@
 # EnterpriseRAG: progress report
 
-## v0.5, branch `feat/v0.5`
+## v0.5 (released)
 
 Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from `docs/plan-v0.5`, so the plan travels with the code. Releases R13 to R20; this section is updated at each release boundary.
 

@@ -2,7 +2,7 @@
 
 **Permission-aware RAG + MCP for enterprise generative AI.** A self-hosted reference implementation by [Badia Partners](https://badiapartners.com).
 
-> **Status: v0.5 in development** (on top of v0.4, released). Runnable end to end: install it for a company with `erag init` and the setup wizard, or explore the seeded demo company. v0.5 adds many users in one company, hybrid search with a reranker and a permission-aware evaluation set, and scale and operations (R13 to R20 built). What changed in each version, and how to upgrade: [`CHANGELOG.md`](CHANGELOG.md). Progress and verification notes: [`PROGRESS.md`](PROGRESS.md). Plans: [`docs/PLAN.md`](docs/PLAN.md) (MVP), [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md) (administration, connectors, MCP extensibility), [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md) (cost limits and quotas, paid models, model router), [`docs/PLAN-v0.4.md`](docs/PLAN-v0.4.md) (guided first-run setup), [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md).
+> **Status: v0.5 released**. Runnable end to end: install it for a company with `erag init` and the setup wizard, or explore the seeded demo company. v0.5 adds many users in one company, hybrid search with a reranker and a permission-aware evaluation set, and scale and operations (R13 to R20). What changed in each version, and how to upgrade: [`CHANGELOG.md`](CHANGELOG.md). Progress and verification notes: [`PROGRESS.md`](PROGRESS.md). Plans: [`docs/PLAN.md`](docs/PLAN.md) (MVP), [`docs/PLAN-v0.2.md`](docs/PLAN-v0.2.md) (administration, connectors, MCP extensibility), [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md) (cost limits and quotas, paid models, model router), [`docs/PLAN-v0.4.md`](docs/PLAN-v0.4.md) (guided first-run setup), [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md).
 
 ## The idea
 
