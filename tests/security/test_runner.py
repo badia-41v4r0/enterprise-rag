@@ -28,6 +28,7 @@ import app.mcp.gateway as gateway_module
 import app.runner.client as runner_client
 from app.authz.policy import effective_permissions
 from app.core.config import get_settings
+from app.core.ratelimit import reset_limits
 from app.llm.providers.base import ToolCall
 from app.mcp.tool_loop import McpToolRuntime
 from app.models import Action, AuditLog, Classification, Grant, McpServer, ResourceType, ServerStatus, Tool, User
@@ -72,6 +73,7 @@ async def runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterat
     monkeypatch.setattr(runner_client, "transport_override", httpx.ASGITransport(app=app))
     gateway_module._limiter = None
     gateway_module._tool_limiters.clear()
+    await reset_limits("tool")
     yield app.state.runner, engine
     for c in await engine.list_containers("erag.runner"):
         if c["Names"][0].startswith("/erag-mcp-erag-test-"):

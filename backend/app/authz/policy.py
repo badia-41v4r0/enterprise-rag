@@ -16,11 +16,14 @@ Rules (PLAN.md section 5):
 from __future__ import annotations
 
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.epoch import READ as READ_EPOCH
+from app.authz.epoch import install as _install_epoch_listeners
 from app.models import Action, Container, Document, Grant, ResourceType, User, UserRole
 
 
@@ -40,10 +43,38 @@ class EffectivePermissions:
         return cls(user_id=user_id)
 
 
+_CACHE: OrderedDict[tuple[uuid.UUID, int, bool, bool], EffectivePermissions] = OrderedDict()
+_CACHE_SIZE = 20_000
+
+
+def clear_permission_cache() -> None:
+    _CACHE.clear()
+
+
 async def effective_permissions(db: AsyncSession, user: User) -> EffectivePermissions:
-    """Compute a user's effective permissions from PostgreSQL. Called on every request."""
+    """A user's effective permissions, called on every request.
+
+    Cached per process by (user, authz epoch): one indexed read of the epoch replaces the role and grant queries
+    until something that affects permissions changes anywhere (app.authz.epoch). Revocation stays immediate.
+    """
     if not user.is_active:
         return EffectivePermissions.none(user.id)
+    epoch = await db.scalar(READ_EPOCH)
+    if epoch is None:  # no state row (a freshly truncated database): never cache
+        return await _compute(db, user)
+    key = (user.id, int(epoch), user.is_active, user.is_admin)
+    hit = _CACHE.get(key)
+    if hit is not None:
+        _CACHE.move_to_end(key)
+        return hit
+    perms = await _compute(db, user)
+    _CACHE[key] = perms
+    if len(_CACHE) > _CACHE_SIZE:
+        _CACHE.popitem(last=False)
+    return perms
+
+
+async def _compute(db: AsyncSession, user: User) -> EffectivePermissions:
 
     role_ids = frozenset((await db.scalars(select(UserRole.role_id).where(UserRole.user_id == user.id))).all())
     if not role_ids:
@@ -175,3 +206,6 @@ async def readable_containers(db: AsyncSession, perms: EffectivePermissions) -> 
             )
         ).all()
     )
+
+
+_install_epoch_listeners()

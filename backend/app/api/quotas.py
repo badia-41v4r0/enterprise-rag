@@ -9,10 +9,12 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import uuid
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -258,6 +260,75 @@ async def admin_usage(_: AuthContext = Depends(require_admin), db: AsyncSession 
         ),
         "pools": pools,
     }
+
+
+@router.get("/admin/usage/by-role", response_model=None)
+async def usage_by_role(
+    since: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="first UTC day, YYYY-MM-DD"),
+    until: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="last UTC day, inclusive"),
+    format: Literal["json", "csv"] = "json",
+    auth: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any] | Response:
+    """Requests, tokens and cost per role over a range of days (R16). A user counts in every role they hold
+    today (memberships are not historical); usage of users with no role is the `(no role)` row, so the column
+    totals can exceed the company total. Figures only."""
+    if since > until:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "since must not be after until")
+    in_range = LlmUsage.day.between(since, until)
+    figures = (
+        func.count(func.distinct(LlmUsage.user_id)),
+        func.sum(LlmUsage.requests),
+        func.sum(LlmUsage.prompt_tokens),
+        func.sum(LlmUsage.completion_tokens),
+        func.sum(LlmUsage.cost_usd),
+    )
+    by_role = (
+        await db.execute(
+            select(Role.name, *figures)
+            .select_from(LlmUsage)
+            .join(UserRole, UserRole.user_id == LlmUsage.user_id)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(in_range)
+            .group_by(Role.name)
+        )
+    ).all()
+    no_role = (
+        await db.execute(
+            select(*figures).where(
+                in_range, ~select(UserRole.user_id).where(UserRole.user_id == LlmUsage.user_id).exists()
+            )
+        )
+    ).one()
+    rows: list[dict[str, Any]] = [
+        {
+            "role": name,
+            "users": int(n or 0),
+            "requests": int(r or 0),
+            "prompt_tokens": int(p or 0),
+            "completion_tokens": int(c or 0),
+            "cost_usd": round(float(cost or 0), 6),
+        }
+        for name, n, r, p, c, cost in [*sorted(by_role, key=lambda x: -(x[5] or 0)), ("(no role)", *no_role)]
+        if r
+    ]
+    audit(db, "admin.usage.report", user_id=auth.user.id, details={"since": since, "until": until, "format": format})
+    await db.commit()
+    if format == "csv":
+        buf = io.StringIO()
+        writer = csv.DictWriter(
+            buf, fieldnames=["role", "users", "requests", "prompt_tokens", "completion_tokens", "cost_usd"]
+        )
+        writer.writeheader()
+        for row in rows:
+            name = str(row["role"])
+            writer.writerow({**row, "role": "'" + name if name[:1] in ("=", "+", "-", "@") else name})
+        return Response(
+            buf.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="usage-by-role-{since}-{until}.csv"'},
+        )
+    return {"since": since, "until": until, "roles": rows}
 
 
 @router.get("/admin/users/{user_id}/usage")

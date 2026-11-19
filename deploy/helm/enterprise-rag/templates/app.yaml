@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "erag.name" . }}-app
+  labels:
+    {{- include "erag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  {{- if not .Values.app.autoscaling.enabled }}
+  replicas: {{ .Values.app.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "erag.selector" . | nindent 6 }}
+      app.kubernetes.io/component: app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels:
+        {{- include "erag.selector" . | nindent 8 }}
+        app.kubernetes.io/component: app
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.app.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      {{- if and .Values.models.install (not .Values.models.existingClaim) }}
+      initContainers:
+        - name: install-models
+          image: {{ include "erag.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- include "erag.security" . | nindent 10 }}
+          command: ["sh", "-c"]
+          args:
+            - {{ printf "for m in %s; do erag models install $m; done" (join " " .Values.models.install) | quote }}
+          env:
+            - name: ERAG_MODELS_DIR
+              value: /models
+          volumeMounts:
+            - { name: models, mountPath: /models }
+            - { name: tmp, mountPath: /tmp }
+      {{- end }}
+      containers:
+        - name: app
+          image: {{ include "erag.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--timeout-graceful-shutdown", "60"]
+          {{- include "erag.env" . | nindent 10 }}
+          {{- include "erag.security" . | nindent 10 }}
+          ports:
+            - { name: http, containerPort: 8000 }
+            - { name: metrics, containerPort: 9464 }
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            # Let the endpoint removal reach the proxies before uvicorn stops accepting.
+            preStop:
+              exec: { command: ["sleep", "5"] }
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+          volumeMounts:
+            - { name: models, mountPath: /models, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: models
+          {{- if .Values.models.existingClaim }}
+          persistentVolumeClaim: { claimName: {{ .Values.models.existingClaim }}, readOnly: true }
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "erag.name" . }}
+  labels:
+    {{- include "erag.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "erag.selector" . | nindent 4 }}
+    app.kubernetes.io/component: app
+  ports:
+    - { name: http, port: {{ .Values.app.service.port }}, targetPort: http }
+{{- if .Values.app.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "erag.name" . }}-app
+  labels:
+    {{- include "erag.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "erag.name" . }}-app
+  minReplicas: {{ .Values.app.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.app.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: {{ .Values.app.autoscaling.targetCPUUtilizationPercentage }} }
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "erag.name" . }}-app
+  labels:
+    {{- include "erag.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.app.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "erag.selector" . | nindent 6 }}
+      app.kubernetes.io/component: app

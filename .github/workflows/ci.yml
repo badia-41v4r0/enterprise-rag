@@ -27,8 +27,24 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run python scripts/check_licenses.py
+      # The in-process reranker and tokenizer (pinned files verified by SHA-256), cached between runs.
+      - uses: actions/cache@v4
+        with:
+          path: data/models
+          key: models-${{ hashFiles('backend/app/ml/models.py') }}
+      - run: uv run erag models install mmarco-minilm-l12 && uv run erag models install bge-m3-tokenizer
       # No Ollama in CI: tests marked `embeddings` / `provider_*` skip themselves.
       - run: uv run pytest -q
+      # Retrieval evaluation gate (ADR 0040): real recorded bge-m3 embeddings, no Ollama needed.
+      - run: uv run erag eval prepare && uv run erag eval gate --json eval-report.json
+        env:
+          ERAG_EVAL_DATABASE_URL: postgresql+asyncpg://erag:erag@localhost:5432/erag_eval
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: eval-report.json
+          if-no-files-found: ignore
 
   frontend:
     runs-on: ubuntu-latest

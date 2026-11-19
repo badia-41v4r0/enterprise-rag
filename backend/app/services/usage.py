@@ -24,6 +24,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import LlmUsage, Quota, QuotaPoolUsage, Role
+from app.services import reservations
 from app.services.spend import BudgetExceeded, day_key, month_key, month_spend
 
 
@@ -341,7 +342,16 @@ async def check_quotas(
     """Refuse when the worst case of this request would exceed any applicable cap. The message names the
     allowance and when it resets, and never shows anyone else's usage."""
     for cap in caps:
-        used = await cap_usage(db, cap, user_id, now)
+        used = dict(await cap_usage(db, cap, user_id, now))
+        # In-flight requests hold their worst case (R17): count it as used.
+        if cap.kind == "collective" and cap.quota_id is not None:
+            held_tokens, held_usd = await reservations.reserved(db, reservations.pool_scope(cap.quota_id))
+        elif cap.provider:
+            held_tokens, held_usd = await reservations.reserved(db, reservations.user_scope(user_id, cap.provider))
+        else:
+            held_tokens, held_usd = await reservations.reserved(db, f"user:{user_id}:", prefix=True)
+        for dim in used:
+            used[dim] += held_tokens if dim.startswith("tokens") else held_usd
         for dim, add in (
             ("tokens_per_day", worst_tokens),
             ("tokens_per_month", worst_tokens),
@@ -405,15 +415,18 @@ async def check_limits(
         )
     worst_usd = lim.worst_case_usd(input_tokens)
     day, month = day_key(now), month_key(now)
+    # In-flight requests of others hold their worst case (R17): count it as spent.
+    prov_held_t, prov_held_usd = await reservations.reserved(db, reservations.provider_scope(lim.provider))
+    model_held_t, model_held_usd = await reservations.reserved(db, reservations.model_scope(lim.provider, lim.model))
     if lim.provider_monthly_usd is not None:
-        spent = await month_spend(db, lim.provider, now)
+        spent = await month_spend(db, lim.provider, now) + prov_held_usd
         if spent >= lim.provider_monthly_usd or spent + worst_usd > lim.provider_monthly_usd:
             raise LimitReached(
                 f"Monthly spend limit for {lim.provider} reached (limit ${lim.provider_monthly_usd:.4f}; this "
                 "request could cost more than what remains); no more requests are sent to it this month."
             )
     if lim.model_monthly_usd is not None:
-        spent = (await totals(db, provider=lim.provider, model=lim.model, month=month)).cost_usd
+        spent = (await totals(db, provider=lim.provider, model=lim.model, month=month)).cost_usd + model_held_usd
         if spent >= lim.model_monthly_usd or spent + worst_usd > lim.model_monthly_usd:
             raise LimitReached(f"Monthly spend limit for {who} reached (limit ${lim.model_monthly_usd:.4f}).")
     for limit, scope, model, period in (
@@ -431,7 +444,8 @@ async def check_limits(
             day=day if period == "day" else None,
             month=month if period == "month" else None,
         )
-        if t.tokens >= limit or t.tokens + worst_tokens > limit:
+        used_tokens = t.tokens + (prov_held_t if model is None else model_held_t)
+        if used_tokens >= limit or used_tokens + worst_tokens > limit:
             when = "today" if period == "day" else "this month"
             raise LimitReached(f"The token limit of {scope} for {when} ({limit} tokens) is reached.")
 
@@ -440,6 +454,41 @@ async def check_limits(
 class Preflight:
     input_tokens: int
     caps: list[Cap]
+    request_id: uuid.UUID | None = None  # set when the worst case is reserved (see `reserve`)
+
+
+async def reserve(
+    lim: ModelLimits,
+    *,
+    user_id: uuid.UUID | None,
+    role_ids: frozenset[uuid.UUID] | set[uuid.UUID],
+    input_tokens: int,
+    turn_tokens: int = 0,
+) -> Preflight:
+    """The same checks as `preflight`, made atomic across requests and replicas (R17, app.services.reservations):
+    in its own transaction, lock every budget this request touches (fixed order), check with the reservations
+    of others included, reserve this request's worst case and commit. Settle with `reservations.release` in
+    the transaction that records the real usage."""
+    from app.core.db import get_side_sessionmaker
+
+    request_id = uuid.uuid4()
+    worst_tokens = input_tokens + lim.max_output_tokens
+    worst_usd = lim.worst_case_usd(input_tokens)
+    async with get_side_sessionmaker()() as db:
+        caps = await applicable_caps(db, user_id, role_ids, lim.provider) if user_id is not None else []
+        pools = [reservations.pool_scope(c.quota_id) for c in caps if c.kind == "collective" and c.quota_id]
+        scopes = [reservations.provider_scope(lim.provider), reservations.model_scope(lim.provider, lim.model), *pools]
+        locks = list(scopes)
+        if user_id is not None:
+            scopes.append(reservations.user_scope(user_id, lim.provider))
+            locks.append(f"user:{user_id}")  # one lock per user: caps may span providers
+        await reservations.lock_scopes(db, locks)
+        await check_limits(db, lim, input_tokens, turn_tokens=turn_tokens)
+        if user_id is not None:
+            await check_quotas(db, caps, user_id, worst_tokens, worst_usd)
+        reservations.add(db, request_id, scopes, worst_tokens, worst_usd)
+        await db.commit()
+    return Preflight(input_tokens, caps, request_id)
 
 
 async def preflight(

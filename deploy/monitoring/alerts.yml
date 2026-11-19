@@ -1,0 +1,107 @@
+# Prometheus alert rules for EnterpriseRAG (R19). Load them in your Prometheus (rule_files); metric names and
+# meanings are in docs/operations/metrics.md. Thresholds are starting points: tune them to your traffic.
+groups:
+  - name: enterprise-rag-security
+    rules:
+      # Expected to be exactly 0: a hit the vector/full-text filter let through but the Postgres recheck
+      # dropped. Any increase means the filter and the policy disagree: investigate at once.
+      - alert: EragAclRecheckMismatch
+        expr: increase(erag_acl_recheck_mismatches_total[5m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "ACL recheck dropped {{ $value }} hits in 5 minutes (expected 0)"
+          runbook: "docs/operations/metrics.md#acl-recheck-mismatches"
+      - alert: EragLoginFailuresHigh
+        expr: sum(rate(erag_login_failures_total[5m])) * 60 > 30
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 30 failed logins or second factors per minute (possible credential stuffing)"
+      - alert: EragStepUpFailures
+        expr: increase(erag_step_up_failures_total[15m]) > 5
+        labels: { severity: warning }
+        annotations:
+          summary: "Repeated failed re-authentications before sensitive admin actions"
+      - alert: EragToolDenialsSpike
+        expr: sum(increase(erag_tool_denials_total{reason!="rate_limit"}[15m])) > 20
+        labels: { severity: warning }
+        annotations:
+          summary: "Many refused tool calls (permissions, classification or unavailable tools)"
+
+  - name: enterprise-rag-service
+    rules:
+      - alert: EragNotReady
+        expr: up{job="enterprise-rag"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "An EnterpriseRAG process stopped exposing metrics"
+      - alert: EragGenerationQueueBacklog
+        expr: max(erag_generation_queue_depth) > 20
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 20 requests waiting for a model slot: add endpoints or raise max concurrency"
+          runbook: "docs/operations/capacity.md"
+      - alert: EragGenerationQueueTimeouts
+        expr: sum(increase(erag_generation_queue_timeouts_total[10m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Requests gave up waiting for a model slot"
+      - alert: EragQueueWaitP95High
+        expr: histogram_quantile(0.95, sum by (le) (rate(erag_stage_seconds_bucket{stage="queue_wait"}[10m]))) > 30
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 wait for a generation slot above 30 s"
+      - alert: EragRetrievalSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(erag_stage_seconds_bucket{stage="vector"}[10m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 vector search above 1 s (index not used, or ef_search too high)"
+      - alert: EragRerankerFallbacks
+        expr: sum(rate(erag_reranker_fallbacks_total[10m])) > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Answers are not reranked (model missing or failing): quality is degraded"
+      - alert: EragModelErrors
+        expr: sum by (model) (rate(erag_generations_total{outcome="error"}[10m])) / sum by (model) (rate(erag_generations_total[10m])) > 0.1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 10% of generations of {{ $labels.model }} fail"
+
+  - name: enterprise-rag-ingestion
+    rules:
+      - alert: EragIngestionStalled
+        expr: max(erag_ingestion_oldest_queued_seconds) > 900
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "A ready ingestion job has waited over 15 minutes: workers down or saturated"
+      - alert: EragDeadLetters
+        expr: max(erag_ingestion_queue{state="dead"}) > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Ingestion jobs exhausted their retries (Admin > Jobs: Retry)"
+      - alert: EragWorkersReaped
+        expr: increase(erag_reaped_total[30m]) > 0
+        labels: { severity: info }
+        annotations:
+          summary: "Work was re-queued because a worker died (check worker memory limits)"
+
+  - name: enterprise-rag-cost
+    rules:
+      - alert: EragQuotaRefusals
+        expr: sum by (code) (increase(erag_limit_refusals_total[1h])) > 50
+        labels: { severity: info }
+        annotations:
+          summary: "Many requests refused by {{ $labels.code }} in the last hour: review quotas"
+      - alert: EragSpendRate
+        expr: sum by (provider) (increase(erag_cost_usd_total[1h])) > 5
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.provider }} cost over $5 in the last hour"

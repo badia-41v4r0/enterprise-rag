@@ -17,9 +17,31 @@ class Settings(BaseSettings):
     env: str = "dev"
     log_level: str = "INFO"
     log_json: bool = True
+    # Observability (R19): Prometheus metrics on an internal port, never routed by the proxy (0 = off). The
+    # worker uses metrics_port + 1. Traces go to an OTLP collector when the OpenTelemetry SDK is installed and
+    # otel_endpoint is set; spans carry ids and sizes only, never text.
+    metrics_host: str = "127.0.0.1"
+    metrics_port: int = 9464
+    otel_endpoint: str = ""
+    otel_service_name: str = "enterprise-rag"
 
     # Database (asyncpg driver; psycopg is avoided because it is LGPL, see ADR 0004)
     database_url: str = "postgresql+asyncpg://erag:erag@localhost:55432/erag"
+    # Connections (R18): pool per process; behind PgBouncer in transaction mode set db_pgbouncer=true (no
+    # asyncpg statement cache, unique prepared statement names). LISTEN/NOTIFY needs a direct connection:
+    # db_direct_url (default: database_url).
+    db_pool_size: int = 10
+    db_max_overflow: int = 10
+    # Short side operations (rate limits, session activity, reservations, queue leases) use their own pool so
+    # they never wait behind the requests that need them (R20).
+    db_side_pool_size: int = 5
+    db_side_max_overflow: int = 20
+    db_pgbouncer: bool = False
+    db_direct_url: str = ""
+    # Evaluation and benchmark databases (ADR 0040). Default: the application's server with the database names
+    # `erag_eval` / `erag_bench`. The eval and bench commands refuse to run against the application database.
+    eval_database_url: str | None = None
+    bench_database_url: str | None = None
 
     # Secrets. The defaults are only usable in dev; the app refuses to start with them in prod.
     secret_key: SecretStr = SecretStr("dev-insecure-secret-change-me")
@@ -36,18 +58,40 @@ class Settings(BaseSettings):
     mfa_max_attempts: int = 5
 
     # Sessions
-    session_ttl_hours: int = 12
+    session_ttl_hours: int = 12  # absolute lifetime
+    session_idle_minutes: int = 120  # a session unused for this long ends; 0 = no idle timeout (R16)
+    # Conversations with no activity for this many days are deleted (audited); 0 = keep forever (R16).
+    conversation_retention_days: int = 0
+    maintenance_interval_minutes: int = 15  # expired sessions and retention, in the app process
+    # A chat request waits at most this long for a generation slot when a model pool is full (R17).
+    generation_queue_timeout_seconds: float = 120.0
     cookie_secure: bool = False
     session_cookie_name: str = "erag_session"
 
     # Storage
     blob_dir: Path = REPO_ROOT / "data" / "blobs"
+    # Blob store (R18): "local" (blob_dir) or "s3" (any S3-compatible server; see app.ingestion.s3).
+    blob_backend: str = "local"
+    s3_endpoint: str = ""
+    s3_bucket: str = ""
+    s3_region: str = "us-east-1"
+    s3_prefix: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_sse: str = "AES256"
     max_upload_mb: int = 25
 
     # Ollama (embeddings always local; local chat model)
     ollama_base_url: str = "http://localhost:11434"
     embed_model: str = "bge-m3"
     embed_dim: int = 1024
+    # Query embeddings first (R17): chat questions use their own endpoint when set, so a large ingestion never
+    # slows down every chat. Bulk ingestion spreads batches over a pool (comma-separated URLs; default: the
+    # Ollama URL) with several requests in flight per worker (R18).
+    query_embed_url: str = ""
+    ingest_embed_urls: str = ""
+    ingest_embed_concurrency: int = 2
+    embed_batch_size: int = 16
     # Non-thinking instruct variant: fast, no reasoning preamble (ADR 0007).
     local_chat_model: str = "qwen3:4b-instruct-2507-q4_K_M"
     # Set true only for a "thinking" model that emits reasoning inline before `</think>`.
@@ -77,6 +121,15 @@ class Settings(BaseSettings):
     # Dev-only provider that shells out to `claude -p`. Never enabled in the demo/production.
     claude_code_enabled: bool = False
     claude_code_bin: str = "claude"
+
+    # Local model files (reranker, tokenizer), installed only with `erag models install` (ADR 0039).
+    models_dir: Path = REPO_ROOT / "data" / "models"
+    # In-process reranker: concurrent rerank batches per process, ONNX Runtime threads (0 = its default),
+    # how long a request may wait for a slot plus scoring before falling back to the fused order.
+    reranker_concurrency: int = 2
+    reranker_threads: int = 0
+    reranker_timeout_seconds: float = 8.0
+    reranker_use_cuda: bool = False
 
     # Retrieval / context
     retrieval_top_k: int = 8
@@ -134,8 +187,24 @@ class Settings(BaseSettings):
     # Worker
     worker_poll_seconds: float = 1.0
     job_max_attempts: int = 3
+    # R18: parallel jobs per worker process, the first retry delay (doubled each attempt, capped at an hour), the
+    # heartbeat lease of a running job or sync, and the queue depth above which connectors stop enqueueing.
+    worker_concurrency: int = 2
+    job_retry_base_seconds: float = 30.0
+    job_lease_seconds: float = 120.0
+    ingest_queue_max: int = 5000
+    # Memory cap per job: a blob larger than this is refused before it is read into memory.
+    ingest_max_blob_mb: int = 200
 
     allowed_hosts: list[str] = Field(default_factory=lambda: ["*"])
+
+    @property
+    def eval_db_url(self) -> str:
+        return self.eval_database_url or self.database_url.rsplit("/", 1)[0] + "/erag_eval"
+
+    @property
+    def bench_db_url(self) -> str:
+        return self.bench_database_url or self.database_url.rsplit("/", 1)[0] + "/erag_bench"
 
     @property
     def is_prod(self) -> bool:
