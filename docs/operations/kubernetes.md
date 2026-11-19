@@ -7,7 +7,11 @@ The chart in `deploy/helm/enterprise-rag` deploys the app (with a horizontal aut
 1. Postgres: `kubectl apply -f deploy/helm/cloudnativepg-cluster.yaml` (after installing the operator), or a managed service.
 2. A Secret named `enterprise-rag` with: `ERAG_DATABASE_URL` (through PgBouncer: `postgresql+asyncpg://erag:...@<release>-enterprise-rag-pgbouncer:5432/erag`), `ERAG_DB_DIRECT_URL` (direct to Postgres, for LISTEN and migrations), `PGBOUNCER_DATABASE_URL` (`postgres://erag:...@erag-db-rw:5432/erag`), `ERAG_SECRET_KEY`, `ERAG_MCP_CONTEXT_SECRET`, `ERAG_SECRETS_KEY` (back it up apart from the database), and the S3 credentials if blobs are in S3. An external secret operator can create it.
 3. `helm install erag deploy/helm/enterprise-rag -f my-values.yaml` (image, Ollama URL, S3 bucket, ingress host).
-4. Create the first administrator: `kubectl exec deploy/erag-enterprise-rag-app -- erag create-admin --email you@example.com`.
+4. First start: a fresh database starts in **setup mode** (ADR 0034) and every API answers `503 setup required` except health, login and the setup wizard. Either
+   - open the wizard with the one-time setup token: put the SHA-256 of a token you generated (`erag init` prints both) in the Secret as `ERAG_SETUP_TOKEN_SHA256`, so every replica accepts it; without it each replica generates its own token, written to its log and to `/tmp/setup-token`; or
+   - skip the wizard: `kubectl exec deploy/erag-enterprise-rag-app -- erag create-admin --email you@example.com`, which also completes a pending setup.
+
+   An existing database (upgrades) is never put into setup mode.
 5. Point Prometheus at `<release>-enterprise-rag-metrics` (ports 9464 and 9465) and load `deploy/monitoring/alerts.yml`.
 
 ## Upgrades

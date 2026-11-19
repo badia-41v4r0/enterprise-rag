@@ -3,7 +3,8 @@ import and export.
 
 The import is a service, not an endpoint detail, so the first-run wizard (v0.4) can reuse it. Its rules:
 - columns `email`, `display_name`, `roles` (role names separated by `;`); a header row is required;
-- new users get a random temporary password, returned once in the result: no mail server is assumed
+- new users get a random temporary password, returned once in the result, that they must change at the first
+  login (ADR 0037): no mail server is assumed
   (PLAN-v0.4 non-goals), so the administrator hands it over and the user changes it;
 - existing users keep their password; listed roles are added, never removed (removals are deliberate and go
   through the bulk action or the user's row);
@@ -262,7 +263,13 @@ async def import_csv(db: AsyncSession, content: str, *, dry_run: bool) -> Import
             out.added_roles = [r.name for r in wanted_roles]
             if not dry_run:
                 password = secrets.token_urlsafe(12)
-                user = User(email=email, display_name=name or email, password_hash=hash_password(password))
+                # A temporary password: changed at the first login before anything else works (ADR 0037).
+                user = User(
+                    email=email,
+                    display_name=name or email,
+                    password_hash=hash_password(password),
+                    must_change_password=True,
+                )
                 db.add(user)
                 await db.flush()
                 db.add_all(UserRole(user_id=user.id, role_id=r.id) for r in wanted_roles)
