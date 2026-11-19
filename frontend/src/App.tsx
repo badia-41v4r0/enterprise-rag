@@ -2,17 +2,22 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FolderUp, LogOut, MessageSquare, Shield, UserCog } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { api, setCsrf, type Me } from "@/lib/api";
+import { api, setCsrf, type Info, type Me } from "@/lib/api";
+import { T } from "@/lib/texts";
 import { StepUpDialog } from "@/components/StepUp";
 import AccountPage from "@/pages/Account";
 import AdminPage from "@/pages/Admin";
 import ChatPage from "@/pages/Chat";
 import ContentPage from "@/pages/Content";
+import ChangePasswordPage from "@/pages/ChangePassword";
 import LoginPage from "@/pages/Login";
+import SetupWizard from "@/pages/Setup";
 
 export default function App() {
   const qc = useQueryClient();
   const [view, setView] = useState<"chat" | "content" | "admin" | "account">("chat");
+  // Public: setup mode, company name, demo data present (PLAN-v0.4).
+  const info = useQuery({ queryKey: ["info"], queryFn: () => api<Info>("/api/info") });
   const me = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
@@ -26,9 +31,6 @@ export default function App() {
     },
   });
 
-  if (me.isLoading) return <div className="p-8 text-sm text-muted-foreground">Loading...</div>;
-  if (!me.data) return <LoginPage onLogin={(m) => qc.setQueryData(["me"], m)} />;
-
   const logout = async () => {
     await qc.cancelQueries(); // an in-flight /me must not resurrect the session in the UI
     await api("/api/auth/logout", { method: "POST" });
@@ -40,11 +42,27 @@ export default function App() {
     setView("chat");
   };
 
+  if (info.isLoading || me.isLoading) return <div className="p-8 text-sm text-muted-foreground">Loading...</div>;
+  if (info.data?.setup_required)
+    return (
+      <SetupWizard
+        info={info.data}
+        onFinished={(m) => {
+          qc.setQueryData(["me"], m);
+          qc.invalidateQueries({ queryKey: ["info"] });
+          setView("admin");
+        }}
+      />
+    );
+  if (!me.data) return <LoginPage info={info.data} onLogin={(m) => qc.setQueryData(["me"], m)} />;
+  if (me.data.must_change_password)
+    return <ChangePasswordPage me={me.data} onChanged={(m) => qc.setQueryData(["me"], m)} onLogout={logout} />;
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-4 border-b border-border px-4 py-2">
         <span className="font-semibold">EnterpriseRAG</span>
-        <span className="text-xs text-muted-foreground">ACME Corp demo</span>
+        {info.data?.company_name && <span className="text-xs text-muted-foreground" data-testid="company-name">{info.data.company_name}</span>}
         <nav className="ml-6 flex gap-1">
           <Button variant={view === "chat" ? "outline" : "ghost"} size="sm" onClick={() => setView("chat")}>
             <MessageSquare className="h-4 w-4" /> Chat
@@ -73,6 +91,11 @@ export default function App() {
           </Button>
         </div>
       </header>
+      {info.data?.demo && (
+        <div className="bg-amber-100 px-4 py-1 text-center text-xs text-amber-900" role="status" data-testid="demo-banner">
+          {T.demoBanner}
+        </div>
+      )}
       <main className="min-h-0 flex-1">
         {view === "chat" ? (
           <ChatPage />
@@ -81,7 +104,7 @@ export default function App() {
         ) : view === "account" ? (
           <AccountPage me={me.data} />
         ) : (
-          <AdminPage />
+          <AdminPage me={me.data} />
         )}
       </main>
       <StepUpDialog mfa={me.data.mfa_enabled} />

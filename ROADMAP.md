@@ -15,6 +15,14 @@ Items outside the scope of the MVP (docs/PLAN.md section 1), v0.2 (docs/PLAN-v0.
 - An open decider on a GPU (Open-Jev 2B takes about a minute per decision on this machine's CPU, ADR 0031) and a quality benchmark of deciders on our own questions.
 - Periodic re-evaluation of provider and decider locality (today at router build and per request).
 
+## Left open in v0.4
+
+- Translations of the interface (the setup texts are already in one file, `frontend/src/lib/texts.ts`; older screens still keep theirs inline).
+- Email invitations and SSO for the people step (no mail server is assumed; temporary passwords are handed out by the administrator).
+- A legal review of the license notice shown in the wizard (ADR 0035).
+- Model downloads that survive an application restart (the progress view lives in the app process today).
+- Exporting the setup report as PDF; a signed (tamper-evident) setup record.
+
 ## Left open in v0.5
 
 - **SSO, SCIM and IdP groups** (out of v0.5 by decision 4).

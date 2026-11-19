@@ -52,6 +52,7 @@ class UserOut(BaseModel):
     role_ids: list[uuid.UUID]
     mfa_enabled: bool = False
     last_login_at: datetime | None = None
+    must_change_password: bool = False
 
 
 class UserPage(BaseModel):
@@ -256,6 +257,7 @@ def _user_out(u: User) -> UserOut:
         role_ids=sorted((r.id for r in u.roles), key=str),
         mfa_enabled=u.mfa_enabled,
         last_login_at=u.last_login_at,
+        must_change_password=u.must_change_password,
     )
 
 
@@ -400,11 +402,14 @@ async def create_user(
 ) -> UserOut:
     if body.is_admin:
         _require_recent_auth(auth)
+    # The password was chosen by the administrator, so it is temporary: the user replaces it at the first login
+    # (PLAN-v0.4 decision 2, ADR 0037).
     user = User(
         email=body.email.strip().lower(),
         display_name=body.display_name,
         password_hash=hash_password(body.password),
         is_admin=body.is_admin,
+        must_change_password=True,
     )
     db.add(user)
     try:
@@ -431,7 +436,11 @@ async def update_user(
         changes["display_name"] = body.display_name
     if body.password is not None:
         user.password_hash = hash_password(body.password)
+        # Set by an administrator for someone else: temporary, to be replaced at the next login (ADR 0037).
+        user.must_change_password = user.id != auth.user.id
         changes["password"] = "changed"  # noqa: S105 - audit marker, not a secret
+        if user.must_change_password:
+            await db.execute(delete(Session).where(Session.user_id == user.id))
     if body.is_admin is not None:
         if body.is_admin and not user.is_admin:
             _require_recent_auth(auth)  # promoting to admin is a step-up action (ADR 0019)
