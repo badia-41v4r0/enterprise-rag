@@ -26,6 +26,7 @@ from app.models import (
     Document,
     DocumentVersion,
     IngestionJob,
+    JobState,
     ResourceType,
     User,
     VersionStatus,
@@ -106,6 +107,8 @@ class JobView(BaseModel):
     attempts: int
     error: str | None
     created_at: datetime
+    priority: int = 0
+    next_attempt_at: datetime | None = None
 
 
 @router.get("/containers")
@@ -455,6 +458,43 @@ async def list_jobs(_: AuthContext = Depends(require_admin), db: AsyncSession = 
             attempts=j.attempts,
             error=j.error,
             created_at=j.created_at,
+            priority=j.priority,
+            next_attempt_at=j.next_attempt_at,
         )
         for j in jobs
     ]
+
+
+@router.post("/admin/jobs/{job_id}/retry")
+async def retry_job(
+    job_id: uuid.UUID, auth: AuthContext = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> JobView:
+    """Put a dead-letter (or failed) job back in the queue with fresh attempts (R18)."""
+    job = await db.get(IngestionJob, job_id)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
+    if job.state not in (JobState.dead, JobState.failed):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"Only dead or failed jobs can be retried (this one is {job.state})"
+        )
+    job.state = JobState.queued
+    job.attempts = 0
+    job.next_attempt_at = None
+    job.locked_until = None
+    job.error = None
+    version = await db.get(DocumentVersion, job.version_id)
+    if version is not None and version.status == VersionStatus.failed:
+        version.status = VersionStatus.pending
+        version.error = None
+    audit(db, "ingestion.retry", user_id=auth.user.id, resource=f"version:{job.version_id}")
+    await db.commit()
+    return JobView(
+        id=job.id,
+        version_id=job.version_id,
+        state=job.state.value,
+        attempts=job.attempts,
+        error=job.error,
+        created_at=job.created_at,
+        priority=job.priority,
+        next_attempt_at=job.next_attempt_at,
+    )

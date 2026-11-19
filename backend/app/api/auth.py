@@ -13,6 +13,7 @@ from app.api.deps import AuthContext, get_auth, get_pending_mfa, recently_authen
 from app.authz.policy import EffectivePermissions, content_containers, effective_permissions
 from app.core.config import get_settings
 from app.core.db import get_db
+from app.core.metrics import LOGIN_FAILURES, STEP_UP_FAILURES
 from app.core.ratelimit import RateLimiter
 from app.core.security import new_token, sha256_hex, verify_password
 from app.models import Session, User
@@ -20,9 +21,9 @@ from app.services import mfa
 from app.services.audit import audit
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-login_limiter = RateLimiter(get_settings().login_rate_limit_per_minute)
+login_limiter = RateLimiter("login", get_settings().login_rate_limit_per_minute)
 # Second-factor attempts (verify, step-up) per user, on top of the per-session attempt counter.
-mfa_limiter = RateLimiter(get_settings().login_rate_limit_per_minute)
+mfa_limiter = RateLimiter("mfa", get_settings().login_rate_limit_per_minute)
 
 
 class LoginIn(BaseModel):
@@ -121,18 +122,21 @@ def _new_session(db: AsyncSession, user: User, *, pending: bool) -> tuple[str, S
 async def login(body: LoginIn, request: Request, response: Response, db: AsyncSession = Depends(get_db)) -> MeOut:
     email = body.email.strip().lower()
     client_ip = request.client.host if request.client else "?"
-    if not login_limiter.allow(f"{client_ip}:{email}"):
+    if not await login_limiter.allow(f"{client_ip}:{email}"):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many login attempts")
     user = await db.scalar(select(User).where(User.email == email))
     ok = verify_password(user.password_hash if user else None, body.password)
     if user is None or not ok or not user.is_active:
         audit(db, "auth.login", user_id=user.id if user else None, resource=f"email:{email}", decision="deny")
+        LOGIN_FAILURES.inc(step="password")
         await db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
     now = datetime.now(UTC)
     await db.execute(delete(Session).where(Session.user_id == user.id, Session.expires_at <= now))
     token, sess = _new_session(db, user, pending=user.mfa_enabled)
+    if not user.mfa_enabled:
+        user.last_login_at = now
     audit(
         db,
         "auth.login",
@@ -162,7 +166,7 @@ async def mfa_verify(
 ) -> MeOut:
     """Second login step. On success the pending session is replaced by a fresh one (no fixation)."""
     sess, user = pending
-    if not mfa_limiter.allow(str(user.id)):
+    if not await mfa_limiter.allow(str(user.id)):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts")
     sess.mfa_attempts += 1
     if sess.mfa_attempts > get_settings().mfa_max_attempts:
@@ -173,10 +177,12 @@ async def mfa_verify(
     used_recovery = bool(body.recovery_code) and not body.code
     if not await _check_second_factor(db, user, body):
         audit(db, "auth.mfa", user_id=user.id, decision="deny")
+        LOGIN_FAILURES.inc(step="mfa")
         await db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid code")
     await db.delete(sess)
     token, new = _new_session(db, user, pending=False)
+    user.last_login_at = datetime.now(UTC)
     audit(db, "auth.mfa", user_id=user.id, details={"recovery_code": used_recovery})
     await db.commit()
     _set_cookie(response, token)
@@ -191,6 +197,17 @@ async def logout(response: Response, auth: AuthContext = Depends(get_auth), db: 
     response.delete_cookie(get_settings().session_cookie_name, path="/")
 
 
+@router.post("/logout-all", status_code=204)
+async def logout_everywhere(
+    response: Response, auth: AuthContext = Depends(get_auth), db: AsyncSession = Depends(get_db)
+) -> None:
+    """End every session of the current user, on every device, including this one (R16)."""
+    result = await db.execute(delete(Session).where(Session.user_id == auth.user.id))
+    audit(db, "auth.logout_all", user_id=auth.user.id, details={"sessions": result.rowcount})  # type: ignore[attr-defined]
+    await db.commit()
+    response.delete_cookie(get_settings().session_cookie_name, path="/")
+
+
 @router.get("/me")
 async def me(auth: AuthContext = Depends(get_auth)) -> MeOut:
     return _me(auth.user, auth.session, auth.perms)
@@ -200,7 +217,7 @@ async def me(auth: AuthContext = Depends(get_auth)) -> MeOut:
 async def step_up(body: StepUpIn, auth: AuthContext = Depends(get_auth), db: AsyncSession = Depends(get_db)) -> MeOut:
     """Re-authenticate for sensitive actions: a TOTP (or recovery) code when MFA is on, else the password."""
     user = auth.user
-    if not mfa_limiter.allow(str(user.id)):
+    if not await mfa_limiter.allow(str(user.id)):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts")
     if user.mfa_enabled:
         ok = await _check_second_factor(db, user, body)
@@ -208,6 +225,7 @@ async def step_up(body: StepUpIn, auth: AuthContext = Depends(get_auth), db: Asy
         ok = bool(body.password) and verify_password(user.password_hash, str(body.password))
     if not ok:
         audit(db, "auth.step_up", user_id=user.id, decision="deny")
+        STEP_UP_FAILURES.inc()
         await db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Re-authentication failed")
     auth.session.reauth_at = datetime.now(UTC)
@@ -248,7 +266,7 @@ async def mfa_enable(
     user = auth.user
     if user.mfa_enabled:
         raise HTTPException(status.HTTP_409_CONFLICT, "MFA is already enabled")
-    if not mfa_limiter.allow(str(user.id)):
+    if not await mfa_limiter.allow(str(user.id)):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts")
     if not body.code or not mfa.verify_totp(user, body.code):
         audit(db, "auth.mfa.enable", user_id=user.id, decision="deny")
@@ -267,7 +285,7 @@ async def mfa_disable(body: CodeIn, auth: AuthContext = Depends(get_auth), db: A
     user = auth.user
     if not user.mfa_enabled:
         raise HTTPException(status.HTTP_409_CONFLICT, "MFA is not enabled")
-    if not mfa_limiter.allow(str(user.id)):
+    if not await mfa_limiter.allow(str(user.id)):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts")
     if not await _check_second_factor(db, user, body):
         audit(db, "auth.mfa.disable", user_id=user.id, decision="deny")

@@ -24,6 +24,7 @@ from app.llm.providers.base import (
     emit_egress,
 )
 from app.models import Classification
+from app.services.genqueue import Endpoint
 
 THINK_END = "</think>"
 
@@ -78,6 +79,7 @@ class OpenAICompatProvider:
         extra_body: dict[str, Any] | None = None,
         allow_private: bool | None = None,
         cloud_cap: Classification = Classification.internal,
+        endpoints: list[tuple[str, int | None]] | None = None,
     ) -> None:
         self.provider = provider
         self.base_url = base_url.rstrip("/")
@@ -98,6 +100,10 @@ class OpenAICompatProvider:
         self.timeout = timeout
         self.transport = transport
         self.extra_body = extra_body or {}
+        # The endpoint pool (R17): the primary URL plus the provider's extra endpoints, each with its maximum of
+        # concurrent generations (None: no limit). A request may only go to one of these, chosen by the queue.
+        pool = endpoints or [(self.base_url, None)]
+        self.endpoints = [Endpoint(url.rstrip("/"), limit) for url, limit in pool]
 
     @property
     def model_id(self) -> str:
@@ -123,10 +129,16 @@ class OpenAICompatProvider:
         tools: list[ToolSpec] | None = None,
         classification: Classification,
         max_tokens: int | None = None,
+        endpoint: str | None = None,
     ) -> AsyncIterator[StreamEvent]:
         check_clearance(self.max_classification, classification, self.model_id)
+        base = self.base_url
+        if endpoint is not None:
+            if endpoint not in {e.url for e in self.endpoints}:
+                raise ProviderError(f"{self.model_id}: {endpoint} is not one of its endpoints")
+            base = endpoint
         payload = self.build_payload(messages, tools, max_tokens)
-        url = f"{self.base_url}/chat/completions"
+        url = f"{base}/chat/completions"
         await emit_egress(EgressRecord(self.provider, self.model, self.locality, url, classification, payload))
 
         headers = {"Content-Type": "application/json", **self.extra_headers}

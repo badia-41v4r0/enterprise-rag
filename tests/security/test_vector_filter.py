@@ -179,7 +179,7 @@ async def test_restricted_neighbours_are_compensated_by_over_fetching(db: AsyncS
     q = vec(9000)
     # 30 restricted documents whose chunks are all near the query, then 12 open ones further away.
     for i in range(30):
-        d, chunks = await add_doc(db, c, f"secret-{i}", 9100 + i, restricted=True, n_chunks=1)
+        _doc, chunks = await add_doc(db, c, f"secret-{i}", 9100 + i, restricted=True, n_chunks=1)
         chunks[0].embedding = [a + 0.001 * b for a, b in zip(q, vec(9500 + i), strict=True)]
     for i in range(12):
         await add_doc(db, c, f"open-{i}", 9700 + i, n_chunks=1)
@@ -187,3 +187,53 @@ async def test_restricted_neighbours_are_compensated_by_over_fetching(db: AsyncS
     hits = await PgVectorStore(db).search(q, AccessFilter(frozenset({c.id})), 8)
     assert len(hits) == 8
     assert all(not h.restricted for h in hits)
+
+
+async def test_exact_plan_for_selective_users_returns_the_same_filtered_hits(db: AsyncSession) -> None:
+    """A user who reads little gets an exact scan instead of the filtered HNSW scan (R16). Only the plan
+    changes: the hits are the same allowed rows, never a forbidden one, in exact order."""
+    from app.rag import vector_store as vs
+
+    small = await make_container(db, "Small", Classification.internal)
+    big = await make_container(db, "Big", Classification.internal)
+    q = vec(4242)
+    for i in range(6):
+        await add_doc(db, small, f"small-{i}", 4300 + i, n_chunks=2)
+    for i in range(20):
+        _d, chunks = await add_doc(db, big, f"big-{i}", 4400 + i, n_chunks=1)
+        chunks[0].embedding = q  # forbidden rows identical to the query
+    await db.flush()
+    access = AccessFilter(frozenset({small.id}))
+    store = PgVectorStore(db)
+
+    vs._ESTIMATES.clear()
+    assert await store.prefers_exact_scan(access)  # a handful of rows
+    exact = await store.search(q, access, 5)
+
+    vs._ESTIMATES[access.container_ids] = (10**9, 10**9)  # pretend the user reads everything: HNSW plan
+    hnsw = await store.search(q, access, 5)
+    vs._ESTIMATES.clear()
+
+    assert [h.chunk_id for h in exact] == [h.chunk_id for h in hnsw]
+    assert len(exact) == 5 and all(h.container_id == small.id for h in exact)
+    # The planner setting used for the exact plan does not leak into the rest of the transaction.
+    from sqlalchemy import text
+
+    assert (await db.scalar(text("SHOW enable_indexscan"))) == "on"
+
+
+async def test_many_restricted_grants_are_one_array_parameter(db: AsyncSession) -> None:
+    """Thousands of restricted-document grants go to Postgres as one array value, and only the granted
+    restricted documents come back."""
+    c = await make_container(db, "Lots", Classification.internal)
+    q = vec(5000)
+    granted: set[uuid.UUID] = set()
+    for i in range(12):
+        d, chunks = await add_doc(db, c, f"r-{i}", 5100 + i, restricted=True, n_chunks=1)
+        chunks[0].embedding = q
+        if i % 2 == 0:
+            granted.add(d.id)
+    await db.flush()
+    noise = frozenset(uuid.uuid4() for _ in range(5000))
+    hits = await PgVectorStore(db).search(q, AccessFilter(frozenset({c.id}), frozenset(granted) | noise), 10)
+    assert {h.document_id for h in hits} == granted

@@ -8,11 +8,13 @@ import uuid
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.ingestion.blobstore import BlobStore
-from app.ingestion.chunker import chunk_sections
+from app.ingestion.chunker import CHUNKER_VERSION, chunk_sections
 from app.ingestion.embedder import Embedder
 from app.ingestion.parsers import parse
 from app.models import Chunk, Document, DocumentVersion, VersionStatus
+from app.rag.lexical import detect_language, index_version_text
 from app.rag.vector_store import PgVectorStore
 
 log = logging.getLogger(__name__)
@@ -42,8 +44,18 @@ async def index_version(db: AsyncSession, version_id: uuid.UUID, blobs: BlobStor
     if doc is None:
         raise IngestionError(f"document {version.document_id} not found")
 
+    cap_mb = get_settings().ingest_max_blob_mb
+    if version.size_bytes and version.size_bytes > cap_mb * 1024 * 1024:
+        # Memory cap per job (R18): refused before the blob is read; a permanent error, not retried.
+        raise ValueError(f"file is larger than the ingestion limit of {cap_mb} MB")
     data = await blobs.get(version.blob_key)
-    sections = parse(data, doc.filename)
+    try:
+        sections = parse(data, doc.filename)
+    except ValueError:
+        raise
+    except Exception as exc:
+        # A file the parser cannot read will not parse on a retry either (R18: no backoff for it).
+        raise IngestionError(f"could not read {doc.filename}: {type(exc).__name__}: {exc}"[:500]) from exc
     drafts = chunk_sections(sections)
     if not drafts:
         raise IngestionError("no extractable text")
@@ -71,6 +83,7 @@ async def index_version(db: AsyncSession, version_id: uuid.UUID, blobs: BlobStor
                 token_count=d.token_count,
                 embedding=vec,
                 meta=d.meta,
+                chunker_version=CHUNKER_VERSION,
             )
             for d, vec in zip(drafts, vectors, strict=True)
         ]
@@ -81,6 +94,9 @@ async def index_version(db: AsyncSession, version_id: uuid.UUID, blobs: BlobStor
             .where(DocumentVersion.id.in_(old_versions), DocumentVersion.status == VersionStatus.ready)
             .values(status=VersionStatus.superseded)
         )
+    await db.flush()
+    lang = detect_language(doc.title + "\n" + "\n".join(d.text for d in drafts[:20]))
+    await index_version_text(db, version.id, lang)
     version.status = VersionStatus.ready
     version.error = None
     doc.current_version_id = version.id

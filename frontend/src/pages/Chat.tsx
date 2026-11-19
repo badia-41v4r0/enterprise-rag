@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, Plus, Send, Trash2, Wrench, X } from "lucide-react";
+import { Cpu, Plus, Send, ThumbsDown, ThumbsUp, Trash2, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, ClassBadge } from "@/components/ui/card";
@@ -35,12 +35,16 @@ interface UiMessage {
   refusal?: string;
   error?: string;
   errorCode?: string;
+  notice?: string;
+  queuePosition?: number;
+  messageId?: string;
   pending?: boolean;
 }
 
 function fromRow(m: MessageRow): UiMessage {
   return {
     key: m.id,
+    messageId: m.role === "assistant" ? m.id : undefined,
     role: m.role,
     content: m.content,
     citations: m.citations.items ?? [],
@@ -151,7 +155,7 @@ export default function ChatPage() {
           patch((m) => ({ ...m, model: e.model, classification: e.classification }));
           break;
         case "delta":
-          patch((m) => ({ ...m, content: m.content + e.text }));
+          patch((m) => ({ ...m, content: m.content + e.text, queuePosition: undefined }));
           break;
         case "tool_call":
           patch((m) => ({ ...m, tools: [...m.tools, { name: e.name, args: e.arguments }] }));
@@ -167,11 +171,24 @@ export default function ChatPage() {
         case "refusal":
           patch((m) => ({ ...m, refusal: e.reason, classification: e.classification }));
           break;
+        case "queue":
+          patch((m) => ({ ...m, queuePosition: e.position }));
+          break;
+        case "notice":
+          patch((m) => ({ ...m, notice: e.message }));
+          break;
         case "error":
           patch((m) => ({ ...m, error: e.message, errorCode: e.code }));
           break;
         case "done":
-          patch((m) => ({ ...m, content: e.answer, model: e.model, classification: e.classification, pending: false }));
+          patch((m) => ({
+            ...m,
+            content: e.answer,
+            model: e.model,
+            classification: e.classification,
+            messageId: e.message_id,
+            pending: false,
+          }));
           break;
       }
     };
@@ -264,6 +281,12 @@ export default function ChatPage() {
                 ) : (
                   <AnswerText text={m.content} citations={m.citations} onCite={openCitation} />
                 )}
+                {m.notice && <p className="mt-2 text-xs text-muted-foreground" data-testid="retrieval-notice">{m.notice}</p>}
+                {m.pending && m.queuePosition !== undefined && (
+                  <p className="mt-2 text-xs text-muted-foreground" data-testid="queue-position" aria-live="polite">
+                    All model slots are busy: waiting, position {m.queuePosition}.
+                  </p>
+                )}
                 {m.error &&
                   (m.errorCode === "quota_exceeded" || m.errorCode === "limit_reached" ? (
                     <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900" data-testid="limit-message">
@@ -273,6 +296,7 @@ export default function ChatPage() {
                   ) : (
                     <p className="mt-2 text-sm text-red-600">{m.error}</p>
                   ))}
+                {m.messageId && !m.pending && <Feedback messageId={m.messageId} />}
                 {m.citations.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1 border-t border-border pt-2">
                     {m.citations.map((c) => (
@@ -353,6 +377,71 @@ export default function ChatPage() {
             </>
           )}
         </aside>
+      )}
+    </div>
+  );
+}
+
+// Thumbs up or down on an answer (R15). A thumbs down can be proposed as a test question: an administrator who
+// can read the cited sources reviews it before it joins the company's evaluation set.
+function Feedback({ messageId }: { messageId: string }) {
+  const [rating, setRating] = useState<1 | -1 | null>(null);
+  const [open, setOpen] = useState(false);
+  const [comment, setComment] = useState("");
+  const [propose, setPropose] = useState(true);
+  const [sent, setSent] = useState<string | null>(null);
+  const send = async (r: 1 | -1, extra: { comment?: string; propose?: boolean } = {}) => {
+    setRating(r);
+    await api("/api/chat/feedback", {
+      method: "POST",
+      body: JSON.stringify({ message_id: messageId, rating: r, ...extra }),
+    });
+    setSent(r === 1 ? "Thanks." : extra.propose ? "Thanks, sent for review." : "Thanks.");
+  };
+  return (
+    <div className="mt-2 text-xs text-muted-foreground" data-testid="answer-feedback">
+      <div className="flex items-center gap-2">
+        <button
+          aria-label="Helpful answer"
+          className={cn("rounded p-1 hover:bg-muted", rating === 1 && "text-emerald-700")}
+          onClick={() => {
+            setOpen(false);
+            void send(1);
+          }}
+        >
+          <ThumbsUp size={14} />
+        </button>
+        <button
+          aria-label="Unhelpful answer"
+          className={cn("rounded p-1 hover:bg-muted", rating === -1 && "text-red-700")}
+          onClick={() => setOpen(true)}
+        >
+          <ThumbsDown size={14} />
+        </button>
+        {sent && <span>{sent}</span>}
+      </div>
+      {open && (
+        <div className="mt-2 space-y-2 rounded border border-border p-2">
+          <Textarea
+            placeholder="What was wrong or missing? (optional)"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            rows={2}
+          />
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={propose} onChange={(e) => setPropose(e.target.checked)} />
+            Propose this question as a test case (an administrator reviews it)
+          </label>
+          <Button
+            size="sm"
+            onClick={() => {
+              setOpen(false);
+              void send(-1, { comment, propose });
+            }}
+          >
+            Send
+          </Button>
+        </div>
       )}
     </div>
   );

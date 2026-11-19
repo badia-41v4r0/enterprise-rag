@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_sessionmaker
 from app.models import Container, Document, User
+from app.rag.settings import KEY as RETRIEVAL_KEY
+from app.services.settings_store import put_setting
 from demo.acme.seed import CONTAINERS, PERSONAS, Persona, seed
 from tests.conftest import truncate_all
 
@@ -22,6 +24,13 @@ RESTRICTED_CANARIES = {fn: canary for c in CONTAINERS for fn, canary in c.restri
 async def acme() -> AsyncIterator[None]:
     await truncate_all()
     await seed(password=DEMO_PASSWORD, ingest=True)
+    # Deterministic retrieval for these suites: the fused order without the reranker, whatever model files
+    # happen to be installed on the machine running the tests. Their canary checks are chunk-level markers, and
+    # the reranker legitimately drops a document's marker chunk when it is not relevant to the question. Leakage
+    # with the reranker on is tested in tests/security/test_hybrid_retrieval.py.
+    async with get_sessionmaker()() as db:
+        await put_setting(db, RETRIEVAL_KEY, {"reranker": ""}, user_id=None)
+        await db.commit()
     yield
     await truncate_all()
 

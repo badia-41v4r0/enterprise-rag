@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -16,30 +17,47 @@ from app.api import (
     chat,
     connectors,
     documents,
+    evaluation,
     health,
     mcp_registry,
     model_router,
     providers,
     quotas,
+    retrieval,
     secrets,
     tools,
 )
 from app.core.config import get_settings, warn_removed_settings
 from app.core.db import dispose_engine
 from app.core.logging import configure_logging
+from app.core.metrics import start as start_metrics
 from app.core.middleware import SecurityHeadersMiddleware
+from app.core.tracing import configure_tracing
+from app.services import genqueue, maintenance
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    yield
-    await dispose_engine()
+    s = get_settings()
+    housekeeping = asyncio.create_task(maintenance.loop(), name="maintenance")
+    metrics_server = await start_metrics(s.metrics_host, s.metrics_port)
+    try:
+        yield
+    finally:
+        housekeeping.cancel()
+        with suppress(asyncio.CancelledError):
+            await housekeeping
+        if metrics_server is not None:
+            metrics_server.close()
+        await genqueue.listener.close()
+        await dispose_engine()
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
     settings.check_secrets()
     configure_logging(settings.log_level, settings.log_json)
+    configure_tracing(settings.otel_endpoint, settings.otel_service_name)
     warn_removed_settings()
 
     app = FastAPI(title="EnterpriseRAG", version="0.1.0.dev0", lifespan=lifespan)
@@ -57,6 +75,9 @@ def create_app() -> FastAPI:
     app.include_router(mcp_registry.router)
     app.include_router(quotas.router)
     app.include_router(model_router.router)
+    app.include_router(retrieval.router)
+    app.include_router(evaluation.router)
+    app.include_router(evaluation.chat_router)
 
     _mount_frontend(app, settings.frontend_dist)
     return app

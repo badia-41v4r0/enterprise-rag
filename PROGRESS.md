@@ -64,6 +64,99 @@ Plan: [`docs/PLAN-v0.5.md`](docs/PLAN-v0.5.md) (PR #11). The branch starts from 
 - `--with-answers` (citation correctness with a local chat model) is moved to R15, together with the faithfulness judge. The R13 gate measures retrieval only, as planned.
 - While developing, `erag_test` was once found stamped at 0012 without the evaluation tables. Re-applying the migration fixed it and the cause could not be reproduced. The migration round trip below runs on a clean state.
 
+
+### R14 and R15: hybrid search, reranker, Admin > Retrieval; Admin > Evaluation, feedback, faithfulness judge
+
+Built in the session of 2026-11-18 (morning) and committed with R16 on branch `feat/v0.5-cont` (commit `de6d315`), because that session ended before committing. Details are in ADR 0038 and ADR 0039 and the code (`app.rag.lexical`, `fusion`, `reranker`, `settings`, `app.services.reindex`, `app.eval.answers`, `app.eval.live`, `app.api.retrieval`, `app.api.evaluation`, migrations 0013 and 0014).
+
+**Fixed afterwards (2026-11-18)**
+- **The full-text OR query matched almost everything.** The question was passed through both the Spanish and the English analyzer, and each keeps the other language's stop words, so "what", "is", "the", "el", "de" became search terms. Words that are stop words in either language are now dropped. Found by `test_no_authorized_context_means_no_model_call`: a new hire asking about salaries got handbook chunks as context. Not a leak (all were chunks the new hire may read), but a model call where none was needed.
+- **A term every document shares** (the company name in every title) was enough to bring an unrelated chunk into the context when the reranker is not installed, which raised the classification of public questions and blocked cloud routing (`test_public_context_may_use_cloud_even_with_the_strictest_ceiling`). Text-only hits now also need `text_relative_floor` (default 0.5) of the best full-text match; adjustable in Admin > Retrieval.
+
+**Not done / to check**
+- `docs/benchmarks/r14-retrieval.md`, cited by ADR 0039 for the reranker calibration, **does not exist**: the calibration numbers were not written down. The reranker model is not installed on this machine, so the default pipeline (hybrid + reranker) has not been measured here; every evaluation run below used the fallback (247 reranker fallbacks).
+
+### R16: many users in one company
+
+**What was built**
+- Permission cache by (user, epoch), invalidated in the same transaction as any permission change (ADR 0034, migration 0015).
+- The index-driven vector search (commit `69ae29d`); an exact plan for users who read little (planner estimate, cached per container set); ACL id lists as one array parameter.
+- Admin > Users: keyset pagination, search, filters (role, status, admin, never logged in), bulk actions (add/remove role, activate, deactivate, sign out), CSV export (formula cells neutralized) and CSV import (`app.services.user_directory`, reusable by the v0.4 wizard: whole-file validation, dry run by default, step-up to apply, roles only added, no admin by file, temporary passwords shown once and never audited). `users.last_login_at`.
+- Admin > Audit: keyset pagination, prefix filters (literal `%` and `_`), decision, date range.
+- Sessions: idle timeout (`last_seen_at`, written at most once a minute, best effort with SKIP LOCKED), "sign out everywhere"; a maintenance task (advisory-lock singleton, `erag maintenance`) for expired and idle sessions and conversation retention (audited as counts).
+- Usage per role (`/api/admin/usage/by-role`, JSON or CSV).
+
+**Verified (R16)**
+- `tests/security/test_vector_filter.py` (exact plan returns the same hits as the HNSW plan; 5,000 restricted grants as one parameter), `tests/integration/test_user_directory.py` (10), `tests/integration/test_sessions_retention_usage.py` (7). The permission cache stays exact through bulk role changes.
+- A hang found on the way: the first version of the session "touch" waited on a row lock held by the request's own caller. Fixed with SKIP LOCKED.
+
+### R17: shared limits, reservations, generation queue, endpoint pools
+
+**What was built** (ADR 0035, 0036, 0037; migration 0016)
+- Rate limits in an UNLOGGED Postgres table behind `LimitStore` (login, MFA, chat, tools).
+- Budget reservations: ordered advisory locks per scope, check with others' reservations, reserve, settle with the usage record; usage of a stream that fails mid-way is recorded.
+- Fair generation queue: leases with heartbeat, waiters, role priority, fewest in flight, LISTEN/NOTIFY plus polling, position shown in the chat, timeout. Endpoint pools (`llm_endpoints`, `max_concurrency`), least-loaded endpoint, locality checked when added and at every build. Admin UI for both and for role priority.
+- Query embeddings on their own endpoint; the connector scheduler as an advisory-lock singleton.
+
+**Verified (R17)**
+- `tests/security/test_shared_limits.py` (13): limits shared across limiter instances; sliding window; **6 concurrent requests against a budget with room for 2: exactly 2 pass**; settle and expiry; queue fairness by in-flight count and by priority; positions and timeout; a dead lease frees its slot; least-loaded endpoint; a provider refuses an endpoint outside its pool; usage recorded on a mid-stream failure.
+
+### R18: ingestion at scale, storage, PgBouncer
+
+**What was built** (ADR 0041, 0042; migrations 0017 and 0018)
+- Job priorities, exponential backoff, dead letters with Retry (API and Jobs tab), heartbeat and reaper for jobs and sync runs, N jobs per worker, memory cap per job, parse failures permanent, SIGTERM drains the worker. Back-pressure on connectors; `max_items` per connector. Ingestion embeddings over a pool with several batches in flight.
+- S3-compatible blob store (SigV4 on httpx) and `erag blobs migrate --to s3`.
+- `halfvec` embeddings.
+- PgBouncer transaction-mode settings; Compose `scale` profile; uvicorn graceful shutdown.
+
+**Verified (R18)**
+- `tests/integration/test_ingestion_at_scale.py` (8), `tests/unit/test_embedder_pool.py`, `tests/unit/test_s3_signing.py` (the SigV4 signature equals AWS's documented example).
+- **Against real servers:** `tests/integration/test_s3_seaweedfs.py` (3) against SeaweedFS 3.90 in a throw-away container; `tests/integration/test_pgbouncer.py` against PgBouncer 1.24 in transaction mode (20 concurrent sessions over 5 server connections). Both skip without `ERAG_TEST_S3_ENDPOINT` / `ERAG_TEST_PGBOUNCER_URL`.
+- `halfvec` on the evaluation set: identical recall@5/8, MRR, nDCG and abstention to the float32 baseline (`docs/benchmarks/r18-halfvec.md`). `erag eval gate` passes.
+
+**Known issues / not done (R18)**
+- "Streaming parse" is a memory cap (refuse before reading), not a streaming parser: PDF and DOCX parsing still loads the file.
+- Migration 0018 is not rolling-update compatible (column type change); it declares `REQUIRES_DOWNTIME` and the README says to stop the app.
+- The 50,000 documents/day throughput target has not been measured.
+
+### R19: observability, backups
+
+**What was built** (ADR 0043, 0044; migration 0019)
+- Prometheus metrics from a built-in registry on an internal port (app 9464, worker 9465): stage latencies, HTTP by route template, generations, queue depth and timeouts, refusals, tokens and cost, ingestion, and security signals. Alert rules (`deploy/monitoring/alerts.yml`, 16 rules) and a reference (`docs/operations/metrics.md`).
+- Correlation id in responses, logs, audit entries (`audit_log.correlation_id`) and spans; OpenTelemetry API spans (export when an SDK is installed).
+- `/health/live`, `/health/ready`.
+- `erag backup verify` (schema, master key, blobs, embeddings), `scripts/restore_drill.py`, `deploy/backup/pgbackrest.conf`, `docs/operations/backup.md`.
+- Expand/contract check for migrations (`tests/unit/test_migrations_expand_contract.py`).
+
+**Verified (R19)**
+- `tests/integration/test_observability.py` (5: text format, internal endpoint, correlation id in header, logs and audit, no user text in a scrape, health), `tests/integration/test_backup_verify.py` (4: passes, wrong key, corrupt and missing blobs, missing embeddings).
+- **Restore drill** on `erag_eval`: dump, restore into a throw-away database, migrate 0018 → 0019, verify, 20/20 searches identical. The login step was not exercised (the evaluation personas have no known password); blobs skipped (the evaluation database keeps none, by design, and `verify` correctly reported them all missing when not skipped).
+- Full suite: **363 passed, 5 skipped** (S3, PgBouncer, reranker-dependent tests skip without their servers or model).
+
+**Not done (R19)**
+- pgBackRest PITR itself was not run on this machine (configuration and procedure only).
+- The restore drill does not run in CI yet.
+
+### R20: Helm, load tests, the reranker measured, final pass
+
+**What was built**
+- Helm chart `deploy/helm/enterprise-rag` (app with HPA, PDB and probes; workers; PgBouncer; migrations as a pre-install/pre-upgrade hook; internal metrics service; optional ingress; reranker files by init container), a CloudNativePG `Cluster` example, `docs/operations/kubernetes.md`, ADR 0045.
+- Load test: `loadtest/` (Locust, a stand-in model server, a setup that imports users through the app's CSV import).
+- `docs/benchmarks/r14-retrieval.md` (the file ADR 0039 cited) with the default pipeline measured for the first time.
+- ROADMAP, architecture, threat model (T43-T50), README final pass.
+
+**Verified (R20)**
+- `helm lint` passes; the rendered chart (11 resources) validates with `kubeconform -strict`.
+- **Reranker on the evaluation set** (`mmarco-minilm-l12` installed): abstention on unanswerable questions 0.307 → 0.960, MRR 0.899 → 0.966, recall@8 0.980 → 0.966 (5 paraphrase, acronym and cross-lingual runs below the floor; a lower floor recovers none of them), no leaks, about 1.3 s per search on this CPU.
+- **Load test** (`docs/benchmarks/r20-load.md`): the slot limit held exactly with one and two replicas; with the app as the bottleneck, two replicas gave ×1.89 chat throughput (9.6 → 18.1/s) and a first token at 1.9 s instead of 5.9 s.
+
+**Found by the load test and fixed**
+- **Pool exhaustion:** side operations (rate limits, session activity, reservations, queue leases) took a second connection from the request pool while the request held one; under load the pool ran dry and every endpoint returned 500. Now a separate side pool, and a chat releases its connection while queued and while streaming.
+- **Queue dispatch at a quarter of capacity:** every waiter competed for the pool lock on each release. Now the releasing request hands the slot to the next waiter (handoff) and notifies only that waiter. 2.1 → 5.2 chats/s on the same 8 slots. New tests: 40 requests on 4 slots never exceed 4 and finish in time; a slot granted to a request that gave up goes to the next one.
+- **Security suites depended on the machine:** with the reranker installed, the canary positive controls and three routing tests failed, because the reranker (correctly) drops a document's canary chunk when it is not relevant to the question while keeping the relevant chunk of the same document. The canary matrix and routing suites now pin their retrieval to the fused order (no reranker), whatever is installed; no assertion was changed. Leakage with the reranker on is covered by `test_hybrid_retrieval.py`, which now runs instead of skipping.
+
+**Not done (R20)**
+- No real Kubernetes install; no load test above 200 users or on real GPUs; ingestion throughput (50,000 documents/day) not measured; the previous release's suite against the new schema is approximated by a static check; the restore drill is not in CI; Qdrant not needed (and not built).
 ## v0.3, branch `feat/v0.3` (built autonomously overnight, not pushed)
 
 Plan: [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md). Branch created from `main` (d615639). Open questions became ADRs from 0026 on. Sections below are per release (R6 to R9) and are updated at each release boundary.

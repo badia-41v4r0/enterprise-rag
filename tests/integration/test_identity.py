@@ -17,8 +17,8 @@ pytestmark = pytest.mark.db
 
 
 @pytest.fixture(autouse=True)
-def _reset_limiter() -> None:
-    login_limiter.reset()
+async def _reset_limiter() -> None:
+    await login_limiter.reset()
 
 
 async def test_effective_permissions_union_of_roles(db: AsyncSession) -> None:

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "erag.name" . }}
+  labels:
+    {{- include "erag.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.env }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  ERAG_WORKER_CONCURRENCY: {{ .Values.worker.concurrency | quote }}
+  ERAG_MODELS_DIR: /models
+  {{- if .Values.pgbouncer.enabled }}
+  ERAG_DB_PGBOUNCER: "true"
+  {{- end }}
