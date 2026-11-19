@@ -49,3 +49,4 @@ Decisions that the owner may want to revisit are marked **Owner review**.
 | [0042](0042-s3-blob-store-and-vector-scaling-path.md) | S3-compatible blob store (SigV4 on httpx), halfvec embeddings, Qdrant only if pgvector misses the target | Accepted |
 | [0043](0043-backup-and-recovery.md) | Backup and recovery: pgBackRest PITR, keys apart from data, `erag backup verify`, the restore drill | Accepted |
 | [0044](0044-observability-without-content.md) | Observability without content: internal metrics, security alerts, correlation ids, traces, health | Accepted |
+| [0045](0045-helm-and-zero-downtime-upgrades.md) | Helm chart, CloudNativePG, migrations as a hook, expand/contract enforced by a test | Accepted |

@@ -1,0 +1,53 @@
+{{- if .Values.pgbouncer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "erag.name" . }}-pgbouncer
+  labels:
+    {{- include "erag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+spec:
+  replicas: {{ .Values.pgbouncer.replicas }}
+  selector:
+    matchLabels:
+      {{- include "erag.selector" . | nindent 6 }}
+      app.kubernetes.io/component: pgbouncer
+  template:
+    metadata:
+      labels:
+        {{- include "erag.selector" . | nindent 8 }}
+        app.kubernetes.io/component: pgbouncer
+    spec:
+      containers:
+        - name: pgbouncer
+          image: {{ .Values.pgbouncer.image }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secrets.existingSecret }}, key: {{ .Values.pgbouncer.upstreamSecretKey }} }
+            - { name: POOL_MODE, value: {{ .Values.pgbouncer.poolMode | quote }} }
+            - { name: DEFAULT_POOL_SIZE, value: {{ .Values.pgbouncer.defaultPoolSize | quote }} }
+            - { name: MAX_CLIENT_CONN, value: {{ .Values.pgbouncer.maxClientConn | quote }} }
+            - { name: MAX_PREPARED_STATEMENTS, value: "200" }
+            - { name: AUTH_TYPE, value: scram-sha-256 }
+          ports:
+            - { name: pg, containerPort: 5432 }
+          readinessProbe:
+            tcpSocket: { port: pg }
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+            limits: { memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "erag.name" . }}-pgbouncer
+  labels:
+    {{- include "erag.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "erag.selector" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+  ports:
+    - { name: pg, port: 5432, targetPort: pg }
+{{- end }}

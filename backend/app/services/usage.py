@@ -469,12 +469,12 @@ async def reserve(
     in its own transaction, lock every budget this request touches (fixed order), check with the reservations
     of others included, reserve this request's worst case and commit. Settle with `reservations.release` in
     the transaction that records the real usage."""
-    from app.core.db import get_sessionmaker
+    from app.core.db import get_side_sessionmaker
 
     request_id = uuid.uuid4()
     worst_tokens = input_tokens + lim.max_output_tokens
     worst_usd = lim.worst_case_usd(input_tokens)
-    async with get_sessionmaker()() as db:
+    async with get_side_sessionmaker()() as db:
         caps = await applicable_caps(db, user_id, role_ids, lim.provider) if user_id is not None else []
         pools = [reservations.pool_scope(c.quota_id) for c in caps if c.kind == "collective" and c.quota_id]
         scopes = [reservations.provider_scope(lim.provider), reservations.model_scope(lim.provider, lim.model), *pools]

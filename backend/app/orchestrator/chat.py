@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policy import EffectivePermissions, readable_document_ids
 from app.core.config import Settings, get_settings
-from app.core.db import get_sessionmaker
+from app.core.db import get_side_sessionmaker
 from app.core.metrics import COST_USD, GENERATIONS, LIMIT_REFUSALS, QUEUE_TIMEOUTS, STAGE_LATENCY, TOKENS
 from app.core.tracing import stage
 from app.ingestion.embedder import Embedder
@@ -315,6 +315,11 @@ class ChatOrchestrator:
                         endpoints = getattr(provider, "endpoints", None) or [genqueue.Endpoint(provider.model_id, None)]
                         priority = await self._priority(perms) if genqueue.limited(endpoints) else 0
                         lease: genqueue.Lease | None = None
+                        # Give the request's connection back to the pool while waiting for a slot and while
+                        # the model streams (seconds to minutes): connections then scale with database work,
+                        # not with open conversations (found by the R20 load test). The session reconnects
+                        # for the usage record after the stream.
+                        await self.db.commit()
                         waited = time.perf_counter()
                         async for slot in genqueue.acquire(provider.provider, endpoints, user.id, priority=priority):
                             if isinstance(slot, genqueue.Lease):
@@ -520,6 +525,6 @@ def sse(event: dict[str, Any]) -> str:
 
 async def _release_reservation(request_id: uuid.UUID) -> None:
     """Drop the reservation of a step that never reached the model (refused, timed out, cancelled)."""
-    async with get_sessionmaker()() as db:
+    async with get_side_sessionmaker()() as db:
         await reservations.release(db, request_id)
         await db.commit()

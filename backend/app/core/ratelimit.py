@@ -20,7 +20,7 @@ from typing import Protocol
 
 from sqlalchemy import text
 
-from app.core.db import get_engine
+from app.core.db import get_side_engine
 
 
 class LimitStore(Protocol):
@@ -46,13 +46,13 @@ _HIT = text(
 
 class PostgresLimitStore:
     async def hit(self, key: str, window_start: int, previous_start: int) -> tuple[int, int]:
-        async with get_engine().connect() as conn:
+        async with get_side_engine().connect() as conn:
             conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
             row = (await conn.execute(_HIT, {"key": key, "w": window_start, "prev": previous_start})).one()
             return int(row[0]), int(row[1])
 
     async def reset(self, prefix: str) -> None:
-        async with get_engine().connect() as conn:
+        async with get_side_engine().connect() as conn:
             conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
             await conn.execute(
                 text("DELETE FROM rate_limit_counters WHERE key LIKE :p ESCAPE '\\'"),

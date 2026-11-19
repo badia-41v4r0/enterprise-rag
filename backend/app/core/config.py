@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # db_direct_url (default: database_url).
     db_pool_size: int = 10
     db_max_overflow: int = 10
+    # Short side operations (rate limits, session activity, reservations, queue leases) use their own pool so
+    # they never wait behind the requests that need them (R20).
+    db_side_pool_size: int = 5
+    db_side_max_overflow: int = 20
     db_pgbouncer: bool = False
     db_direct_url: str = ""
     # Evaluation and benchmark databases (ADR 0040). Default: the application's server with the database names

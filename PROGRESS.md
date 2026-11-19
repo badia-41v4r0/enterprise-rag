@@ -136,6 +136,27 @@ Built in the session of 2026-11-18 (morning) and committed with R16 on branch `f
 **Not done (R19)**
 - pgBackRest PITR itself was not run on this machine (configuration and procedure only).
 - The restore drill does not run in CI yet.
+
+### R20: Helm, load tests, the reranker measured, final pass
+
+**What was built**
+- Helm chart `deploy/helm/enterprise-rag` (app with HPA, PDB and probes; workers; PgBouncer; migrations as a pre-install/pre-upgrade hook; internal metrics service; optional ingress; reranker files by init container), a CloudNativePG `Cluster` example, `docs/operations/kubernetes.md`, ADR 0045.
+- Load test: `loadtest/` (Locust, a stand-in model server, a setup that imports users through the app's CSV import).
+- `docs/benchmarks/r14-retrieval.md` (the file ADR 0039 cited) with the default pipeline measured for the first time.
+- ROADMAP, architecture, threat model (T43-T50), README final pass.
+
+**Verified (R20)**
+- `helm lint` passes; the rendered chart (11 resources) validates with `kubeconform -strict`.
+- **Reranker on the evaluation set** (`mmarco-minilm-l12` installed): abstention on unanswerable questions 0.307 → 0.960, MRR 0.899 → 0.966, recall@8 0.980 → 0.966 (5 paraphrase, acronym and cross-lingual runs below the floor; a lower floor recovers none of them), no leaks, about 1.3 s per search on this CPU.
+- **Load test** (`docs/benchmarks/r20-load.md`): the slot limit held exactly with one and two replicas; with the app as the bottleneck, two replicas gave ×1.89 chat throughput (9.6 → 18.1/s) and a first token at 1.9 s instead of 5.9 s.
+
+**Found by the load test and fixed**
+- **Pool exhaustion:** side operations (rate limits, session activity, reservations, queue leases) took a second connection from the request pool while the request held one; under load the pool ran dry and every endpoint returned 500. Now a separate side pool, and a chat releases its connection while queued and while streaming.
+- **Queue dispatch at a quarter of capacity:** every waiter competed for the pool lock on each release. Now the releasing request hands the slot to the next waiter (handoff) and notifies only that waiter. 2.1 → 5.2 chats/s on the same 8 slots. New tests: 40 requests on 4 slots never exceed 4 and finish in time; a slot granted to a request that gave up goes to the next one.
+- **Security suites depended on the machine:** with the reranker installed, the canary positive controls and three routing tests failed, because the reranker (correctly) drops a document's canary chunk when it is not relevant to the question while keeping the relevant chunk of the same document. The canary matrix and routing suites now pin their retrieval to the fused order (no reranker), whatever is installed; no assertion was changed. Leakage with the reranker on is covered by `test_hybrid_retrieval.py`, which now runs instead of skipping.
+
+**Not done (R20)**
+- No real Kubernetes install; no load test above 200 users or on real GPUs; ingestion throughput (50,000 documents/day) not measured; the previous release's suite against the new schema is approximated by a static check; the restore drill is not in CI; Qdrant not needed (and not built).
 ## v0.3, branch `feat/v0.3` (built autonomously overnight, not pushed)
 
 Plan: [`docs/PLAN-v0.3.md`](docs/PLAN-v0.3.md). Branch created from `main` (d615639). Open questions became ADRs from 0026 on. Sections below are per release (R6 to R9) and are updated at each release boundary.

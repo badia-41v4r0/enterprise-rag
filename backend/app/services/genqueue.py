@@ -30,7 +30,7 @@ from typing import Any
 from sqlalchemy import delete, func, select, text, update
 
 from app.core.config import get_settings
-from app.core.db import get_sessionmaker
+from app.core.db import get_side_sessionmaker
 from app.models import GenerationLease, GenerationWaiter
 
 log = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ LEASE_TTL = timedelta(seconds=60)
 HEARTBEAT_SECONDS = 20.0
 WAITER_TTL = timedelta(seconds=30)
 POLL_SECONDS = 1.0
+FALLBACK_SECONDS = 3.0  # how often a waiter looks for slots freed without a release (expired leases)
 CHANNEL = "erag_genq"
 
 
@@ -50,9 +51,10 @@ class Endpoint:
 
 @dataclass
 class Lease:
-    id: uuid.UUID | None  # None when the pool is unlimited (no row)
+    id: uuid.UUID | None  # None when the pool is unlimited (no row); else the waiter's id (handoff)
     pool: str
     endpoint: str
+    endpoints: tuple[Endpoint, ...] = ()  # the pool's capacities, so a release can hand the slot on
 
 
 class QueueTimeout(Exception):
@@ -63,7 +65,7 @@ class QueueTimeout(Exception):
 
 
 class _Listener:
-    """One LISTEN connection per process; wakes the waiters of a pool when a slot is released anywhere."""
+    """One LISTEN connection per process. A grant notifies with the waiter's id, so only that request wakes."""
 
     def __init__(self) -> None:
         self._conn: Any = None
@@ -71,17 +73,21 @@ class _Listener:
         self._lock = asyncio.Lock()
         self.failed = False
 
-    async def subscribe(self, pool: str) -> asyncio.Event:
+    async def subscribe(self, key: str) -> asyncio.Event:
         ev = asyncio.Event()
-        self._events.setdefault(pool, set()).add(ev)
+        self._events.setdefault(key, set()).add(ev)
         await self._ensure()
         return ev
 
-    def unsubscribe(self, pool: str, ev: asyncio.Event) -> None:
-        self._events.get(pool, set()).discard(ev)
+    def unsubscribe(self, key: str, ev: asyncio.Event) -> None:
+        events = self._events.get(key)
+        if events is not None:
+            events.discard(ev)
+            if not events:
+                del self._events[key]
 
-    def _wake(self, _conn: object, _pid: int, _channel: str, pool: str) -> None:
-        for ev in list(self._events.get(pool, ())):
+    def _wake(self, _conn: object, _pid: int, _channel: str, key: str) -> None:
+        for ev in list(self._events.get(key, ())):
             ev.set()
 
     async def _ensure(self) -> None:
@@ -120,57 +126,96 @@ def limited(endpoints: list[Endpoint]) -> bool:
     return any(e.max_concurrency is not None for e in endpoints)
 
 
-def _lock(pool: str) -> Any:
-    return text("SELECT pg_advisory_xact_lock(hashtext(:k))").bindparams(k="genq:" + pool)
+def _key(pool: str) -> str:
+    return "genq:" + pool
 
 
-async def _try_take(
-    pool: str, endpoints: list[Endpoint], waiter_id: uuid.UUID, user_id: uuid.UUID, now: datetime
-) -> tuple[Lease | None, int]:
-    """One attempt under the pool lock: (lease, 0) or (None, position in the queue, 1-based)."""
-    async with get_sessionmaker()() as db:
-        await db.execute(_lock(pool))
-        await db.execute(delete(GenerationLease).where(GenerationLease.pool == pool, GenerationLease.expires_at <= now))
-        await db.execute(
-            delete(GenerationWaiter).where(GenerationWaiter.pool == pool, GenerationWaiter.seen_at <= now - WAITER_TTL)
-        )
-        await db.execute(update(GenerationWaiter).where(GenerationWaiter.id == waiter_id).values(seen_at=now))
-        active = dict(
-            (
-                await db.execute(
-                    select(GenerationLease.endpoint, func.count())
-                    .where(GenerationLease.pool == pool)
-                    .group_by(GenerationLease.endpoint)
-                )
-            ).all()
-        )
-        free = [e for e in endpoints if e.max_concurrency is None or active.get(e.url, 0) < e.max_concurrency]
-        in_flight = (
-            select(func.count())
-            .select_from(GenerationLease)
-            .where(GenerationLease.pool == pool, GenerationLease.user_id == GenerationWaiter.user_id)
-            .scalar_subquery()
-        )
-        order = (
-            await db.scalars(
-                select(GenerationWaiter.id)
-                .where(GenerationWaiter.pool == pool)
-                .order_by(GenerationWaiter.priority.desc(), in_flight.asc(), GenerationWaiter.enqueued_at.asc())
+async def _dispatch(db: Any, pool: str, endpoints: list[Endpoint], now: datetime) -> int:
+    """Hand free slots to waiters, in fair order (call with the pool lock held). Returns how many were granted.
+
+    A grant is a lease whose id is the waiter's id: the waiter finds it by primary key, without the lock. This
+    is the handoff that keeps the lock work per release constant however many requests wait (R20: with every
+    waiter competing for the lock on each release, dispatch fell to a quarter of the pool's capacity)."""
+    await db.execute(delete(GenerationLease).where(GenerationLease.pool == pool, GenerationLease.expires_at <= now))
+    await db.execute(
+        delete(GenerationWaiter).where(GenerationWaiter.pool == pool, GenerationWaiter.seen_at <= now - WAITER_TTL)
+    )
+    active: dict[str, int] = dict(
+        (
+            await db.execute(
+                select(GenerationLease.endpoint, func.count())
+                .where(GenerationLease.pool == pool)
+                .group_by(GenerationLease.endpoint)
             )
         ).all()
-        position = order.index(waiter_id) + 1 if waiter_id in order else len(order) + 1
-        slots = sum(
-            (e.max_concurrency - active.get(e.url, 0)) if e.max_concurrency is not None else 10**6 for e in free
-        )
-        if free and position <= slots:
-            endpoint = min(free, key=lambda e: active.get(e.url, 0))
-            lease = GenerationLease(pool=pool, endpoint=endpoint.url, user_id=user_id, expires_at=now + LEASE_TTL)
-            db.add(lease)
-            await db.execute(delete(GenerationWaiter).where(GenerationWaiter.id == waiter_id))
-            await db.commit()
-            return Lease(lease.id, pool, endpoint.url), 0
+    )
+    in_flight = (
+        select(func.count())
+        .select_from(GenerationLease)
+        .where(GenerationLease.pool == pool, GenerationLease.user_id == GenerationWaiter.user_id)
+        .scalar_subquery()
+    )
+    granted = 0
+    while True:
+        free = [e for e in endpoints if e.max_concurrency is None or active.get(e.url, 0) < e.max_concurrency]
+        if not free:
+            break
+        # Re-ranked after every grant: a user who just got a slot now has one more in flight.
+        nxt = (
+            await db.execute(
+                select(GenerationWaiter.id, GenerationWaiter.user_id)
+                .where(GenerationWaiter.pool == pool)
+                .order_by(GenerationWaiter.priority.desc(), in_flight.asc(), GenerationWaiter.enqueued_at.asc())
+                .limit(1)
+            )
+        ).first()
+        if nxt is None:
+            break
+        endpoint = min(free, key=lambda e: active.get(e.url, 0))
+        db.add(GenerationLease(id=nxt[0], pool=pool, endpoint=endpoint.url, user_id=nxt[1], expires_at=now + LEASE_TTL))
+        await db.execute(delete(GenerationWaiter).where(GenerationWaiter.id == nxt[0]))
+        await db.flush()
+        await db.execute(text("SELECT pg_notify(:c, :p)"), {"c": CHANNEL, "p": str(nxt[0])})
+        active[endpoint.url] = active.get(endpoint.url, 0) + 1
+        granted += 1
+    return granted
+
+
+async def _locked_dispatch(pool: str, endpoints: list[Endpoint], *, wait: bool) -> None:
+    """Dispatch under the pool lock. With `wait=False` (periodic fallback) skip if someone else holds it."""
+    async with get_side_sessionmaker()() as db:
+        if wait:
+            await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": _key(pool)})
+        elif not await db.scalar(text("SELECT pg_try_advisory_xact_lock(hashtext(:k))"), {"k": _key(pool)}):
+            return
+        await _dispatch(db, pool, endpoints, datetime.now(UTC))
         await db.commit()
-        return None, max(position - slots, 1)
+
+
+async def _granted(waiter_id: uuid.UUID) -> str | None:
+    async with get_side_sessionmaker()() as db:
+        return await db.scalar(select(GenerationLease.endpoint).where(GenerationLease.id == waiter_id))
+
+
+async def _position(waiter: GenerationWaiter) -> int:
+    """Approximate place in the queue (priority, then age), and a heartbeat for the waiter row. No lock."""
+    async with get_side_sessionmaker()() as db:
+        await db.execute(
+            update(GenerationWaiter).where(GenerationWaiter.id == waiter.id).values(seen_at=datetime.now(UTC))
+        )
+        ahead = await db.scalar(
+            select(func.count())
+            .select_from(GenerationWaiter)
+            .where(
+                GenerationWaiter.pool == waiter.pool,
+                (GenerationWaiter.priority > waiter.priority)
+                | (
+                    (GenerationWaiter.priority == waiter.priority) & (GenerationWaiter.enqueued_at < waiter.enqueued_at)
+                ),
+            )
+        )
+        await db.commit()
+        return int(ahead or 0) + 1
 
 
 async def acquire(
@@ -190,21 +235,31 @@ async def acquire(
     timeout = get_settings().generation_queue_timeout_seconds if wait_seconds is None else wait_seconds
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
-    waiter = GenerationWaiter(pool=pool, user_id=user_id, priority=priority)
-    now = datetime.now(UTC)
-    waiter.enqueued_at = waiter.seen_at = now
-    async with get_sessionmaker()() as db:
+    waiter = GenerationWaiter(id=uuid.uuid4(), pool=pool, user_id=user_id, priority=priority)
+    waiter.enqueued_at = waiter.seen_at = datetime.now(UTC)
+    async with get_side_sessionmaker()() as db:
         db.add(waiter)
         await db.commit()
-    event = await listener.subscribe(pool)
+    event = await listener.subscribe(str(waiter.id))
+    granted = False
     last_position = 0
+    last_fallback = loop.time()
     try:
+        await _locked_dispatch(pool, endpoints, wait=True)  # a free slot goes to the fairest waiter, maybe us
         while True:
             event.clear()
-            lease, position = await _try_take(pool, endpoints, waiter.id, user_id, datetime.now(UTC))
-            if lease is not None:
-                yield lease
+            endpoint = await _granted(waiter.id)
+            if endpoint is not None:
+                granted = True
+                yield Lease(waiter.id, pool, endpoint, tuple(endpoints))
                 return
+            if loop.time() - last_fallback >= FALLBACK_SECONDS:
+                # Slots freed without a release (a dead replica's lease expired) are only found by looking.
+                last_fallback = loop.time()
+                await _locked_dispatch(pool, endpoints, wait=False)
+                if await _granted(waiter.id) is not None:
+                    continue
+            position = await _position(waiter)
             if position != last_position:
                 last_position = position
                 yield position
@@ -216,25 +271,35 @@ async def acquire(
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(event.wait(), min(POLL_SECONDS, remaining))
     finally:
-        listener.unsubscribe(pool, event)
-        async with get_sessionmaker()() as db:
+        listener.unsubscribe(str(waiter.id), event)
+        async with get_side_sessionmaker()() as db:
             await db.execute(delete(GenerationWaiter).where(GenerationWaiter.id == waiter.id))
+            # Granted at the last moment but never used (timeout, cancelled stream): give the slot back.
+            abandoned = 0
+            if not granted:
+                res = await db.execute(delete(GenerationLease).where(GenerationLease.id == waiter.id))
+                abandoned = int(res.rowcount)  # type: ignore[attr-defined]
             await db.commit()
+        if abandoned:
+            await asyncio.shield(_locked_dispatch(pool, endpoints, wait=True))
 
 
 async def release(lease: Lease) -> None:
+    """Free the slot and hand it straight to the next waiter (same transaction, under the pool lock)."""
     if lease.id is None:
         return
-    async with get_sessionmaker()() as db:
+    async with get_side_sessionmaker()() as db:
+        await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": _key(lease.pool)})
         await db.execute(delete(GenerationLease).where(GenerationLease.id == lease.id))
-        await db.execute(text("SELECT pg_notify(:c, :p)"), {"c": CHANNEL, "p": lease.pool})
+        if lease.endpoints:
+            await _dispatch(db, lease.pool, list(lease.endpoints), datetime.now(UTC))
         await db.commit()
 
 
 async def _heartbeat(lease: Lease) -> None:
     while True:
         await asyncio.sleep(HEARTBEAT_SECONDS)
-        async with get_sessionmaker()() as db:
+        async with get_side_sessionmaker()() as db:
             await db.execute(
                 update(GenerationLease)
                 .where(GenerationLease.id == lease.id)
@@ -259,7 +324,7 @@ async def held(lease: Lease) -> AsyncIterator[Lease]:
 
 async def depth(pool: str | None = None) -> dict[str, int]:
     """Waiting requests per pool (a metric)."""
-    async with get_sessionmaker()() as db:
+    async with get_side_sessionmaker()() as db:
         q = select(GenerationWaiter.pool, func.count()).group_by(GenerationWaiter.pool)
         if pool:
             q = q.where(GenerationWaiter.pool == pool)
@@ -268,7 +333,7 @@ async def depth(pool: str | None = None) -> dict[str, int]:
 
 async def purge_expired(now: datetime | None = None) -> int:
     now = now or datetime.now(UTC)
-    async with get_sessionmaker()() as db:
+    async with get_side_sessionmaker()() as db:
         a = await db.execute(delete(GenerationLease).where(GenerationLease.expires_at <= now))
         b = await db.execute(delete(GenerationWaiter).where(GenerationWaiter.seen_at <= now - WAITER_TTL))
         await db.commit()

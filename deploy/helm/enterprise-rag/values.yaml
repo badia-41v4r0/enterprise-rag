@@ -1,0 +1,88 @@
+# EnterpriseRAG Helm values. See docs/operations/kubernetes.md.
+
+image:
+  repository: ghcr.io/your-org/enterprise-rag
+  tag: "0.5.0"
+  pullPolicy: IfNotPresent
+
+# Secrets are never in values: point at existing Kubernetes Secrets (or an external secret operator that
+# creates them). Required keys are listed below.
+secrets:
+  # Keys: ERAG_DATABASE_URL (through PgBouncer if enabled), ERAG_DB_DIRECT_URL (direct to Postgres: LISTEN and
+  # migrations), ERAG_SECRET_KEY, ERAG_MCP_CONTEXT_SECRET, ERAG_SECRETS_KEY (the master key; back it up apart
+  # from the database), and when used ERAG_S3_ACCESS_KEY_ID, ERAG_S3_SECRET_ACCESS_KEY, ERAG_RUNNER_TOKEN.
+  existingSecret: enterprise-rag
+
+# Non-secret settings (ERAG_*), passed to app, worker and the migration job.
+env:
+  ERAG_ENV: prod
+  ERAG_COOKIE_SECURE: "true"
+  ERAG_SEED_DEMO: "false"
+  ERAG_LOG_JSON: "true"
+  ERAG_OLLAMA_BASE_URL: http://ollama.models.svc:11434
+  ERAG_BLOB_BACKEND: s3
+  ERAG_S3_ENDPOINT: ""
+  ERAG_S3_BUCKET: ""
+  ERAG_METRICS_HOST: 0.0.0.0
+  ERAG_METRICS_PORT: "9464"
+
+app:
+  replicas: 2
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { memory: 2Gi } # the in-process reranker needs about 300 MB (small model) to 1 GB (large)
+  # SIGTERM: stop taking requests, let chat streams finish. Keep above uvicorn's 60 s graceful timeout.
+  terminationGracePeriodSeconds: 75
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    minAvailable: 1
+  service:
+    port: 8000
+
+worker:
+  replicas: 2
+  concurrency: 2
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1Gi }
+  # The worker finishes the jobs it holds on SIGTERM; give it time.
+  terminationGracePeriodSeconds: 130
+
+# Reranker model files (ADR 0039): installed by an init container into an emptyDir at each start (pinned by
+# hash), or mounted from a volume you prepare (offline clusters: `erag models install --from-dir`).
+models:
+  install: [mmarco-minilm-l12]
+  existingClaim: ""
+
+pgbouncer:
+  enabled: true
+  image: edoburu/pgbouncer:v1.24.1-p1
+  replicas: 2
+  poolMode: transaction
+  defaultPoolSize: 40
+  maxClientConn: 2000
+  # The Secret key holding the upstream URL, postgres://user:pass@host:5432/db
+  upstreamSecretKey: PGBOUNCER_DATABASE_URL
+
+migrations:
+  # Runs `alembic upgrade head` before install and upgrade (Helm hook), with the direct database URL.
+  enabled: true
+  backoffLimit: 1
+
+metrics:
+  # A ClusterIP service for Prometheus; never exposed by the ingress.
+  enabled: true
+
+ingress:
+  enabled: false
+  className: ""
+  host: rag.example.com
+  tlsSecret: ""
+  annotations:
+    # Chat answers stream (SSE): long read timeouts, no buffering.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"

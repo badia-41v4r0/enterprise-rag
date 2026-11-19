@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policy import EffectivePermissions, effective_permissions
 from app.core.config import get_settings
-from app.core.db import get_db, get_sessionmaker
+from app.core.db import get_db, get_side_sessionmaker
 from app.core.security import constant_time_equals, sha256_hex
 from app.models import Session, User
 
@@ -26,7 +26,7 @@ async def _touch(session_id: str, now: datetime) -> None:
     the request's own transaction is not affected. Best effort: if another transaction holds the row (a login
     step, a step-up), skip instead of waiting, which could wait on this very request."""
     locked = select(Session.id).where(Session.id == session_id).with_for_update(skip_locked=True).scalar_subquery()
-    async with get_sessionmaker()() as s:
+    async with get_side_sessionmaker()() as s:
         await s.execute(update(Session).where(Session.id == locked).values(last_seen_at=now))
         await s.commit()
 
